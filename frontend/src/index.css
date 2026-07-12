@@ -555,3 +555,83 @@ tr:hover td {
   margin-bottom: 16px;
   letter-spacing: -0.2px;
 }
+/* ── Alerts ──────────────────────────────── */
+.alerts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.alert-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.alert-card:hover {
+  border-color: #333;
+  background: var(--surface-2);
+}
+
+.alert-card.unread {
+  border-left: 3px solid var(--accent);
+}
+
+.alert-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.alert-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex-shrink: 0;
+}
+
+.dot-green  { background: var(--green); }
+.dot-orange { background: var(--orange); }
+.dot-red    { background: var(--red); }
+.dot-blue   { background: var(--blue); }
+
+.alert-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.alert-subdomain {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.alert-ip {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.alert-detail {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.alert-time {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  margin-left: 16px;
+}
+
+.badge-orange { background: var(--orange-dim); color: var(--orange); }

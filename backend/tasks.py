@@ -35,6 +35,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
     from backend.db import SessionLocal
     from backend.models.scan import Scan
     from backend.models.asset import Asset
+    from backend.models.alert import Alert
     import hashlib
     import json
     from datetime import datetime, timezone
@@ -85,7 +86,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         screenshot_data = run_eyewitness(host_urls)
         module_results["screenshot"] = screenshot_data["module_status"]
 
-        # Stage 7: Save assets to DB with upsert (idempotency)
+        # Stage 7: Save assets to DB with upsert + change detection
         self.update_state(state="PROGRESS", meta={"stage": "saving_results"})
 
         http_lookup = {h["host"]: h for h in http_data["hosts"]}
@@ -93,6 +94,30 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
 
         new_count = 0
         changed_count = 0
+        disappeared_count = 0
+
+        # Track subdomains found in this scan
+        found_subdomains = set(h["subdomain"] for h in live_hosts)
+
+        # Check for disappeared assets
+        existing_assets = db.query(Asset).filter(
+            Asset.target_id == target_id,
+            Asset.status != "disappeared"
+        ).all()
+
+        for existing_asset in existing_assets:
+            if existing_asset.subdomain not in found_subdomains:
+                existing_asset.status = "disappeared"
+                disappeared_count += 1
+                alert = Alert(
+                    target_id=target_id,
+                    scan_id=scan_id,
+                    alert_type="disappeared_asset",
+                    asset_subdomain=existing_asset.subdomain,
+                    asset_ip=existing_asset.ip,
+                    detail={"reason": "Asset not found in latest scan"}
+                )
+                db.add(alert)
 
         for host in live_hosts:
             subdomain = host["subdomain"]
@@ -118,6 +143,14 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
 
             if existing:
                 if existing.content_hash != content_hash:
+                    old_detail = {
+                        "old_ports": [p["port"] for p in (existing.open_ports or [])],
+                        "new_ports": [p["port"] for p in ports],
+                        "old_technologies": existing.technologies or [],
+                        "new_technologies": technologies,
+                        "old_http_status": existing.http_status,
+                        "new_http_status": http_status,
+                    }
                     existing.content_hash = content_hash
                     existing.ip = ip
                     existing.open_ports = ports
@@ -127,6 +160,17 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                     existing.status = "changed"
                     existing.last_seen = datetime.now(timezone.utc)
                     changed_count += 1
+                    alert = Alert(
+                        target_id=target_id,
+                        scan_id=scan_id,
+                        alert_type="changed_asset",
+                        asset_subdomain=subdomain,
+                        asset_ip=ip,
+                        detail=old_detail
+                    )
+                    db.add(alert)
+                else:
+                    existing.last_seen = datetime.now(timezone.utc)
             else:
                 new_asset = Asset(
                     target_id=target_id,
@@ -142,6 +186,15 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                 )
                 db.add(new_asset)
                 new_count += 1
+                alert = Alert(
+                    target_id=target_id,
+                    scan_id=scan_id,
+                    alert_type="new_asset",
+                    asset_subdomain=subdomain,
+                    asset_ip=ip,
+                    detail={"technologies": technologies, "http_status": http_status}
+                )
+                db.add(alert)
 
         db.commit()
 
@@ -151,6 +204,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             scan.total_assets = len(live_hosts)
             scan.new_assets = new_count
             scan.changed_assets = changed_count
+            scan.disappeared_assets = disappeared_count
             scan.module_results = module_results
             db.commit()
 
@@ -161,6 +215,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             "total_assets": len(live_hosts),
             "new_assets": new_count,
             "changed_assets": changed_count,
+            "disappeared_assets": disappeared_count,
             "module_results": module_results
         }
 
