@@ -1,0 +1,175 @@
+from celery import Celery
+from backend.config import settings
+
+celery_app = Celery(
+    "asm_platform",
+    broker=settings.redis_url,
+    backend=settings.redis_url,
+    include=["backend.tasks"]
+)
+
+celery_app.conf.update(
+    task_serializer="json",
+    accept_content=["json"],
+    result_serializer="json",
+    timezone="UTC",
+    enable_utc=True,
+    task_track_started=True,
+    task_acks_late=True,
+    broker_connection_retry_on_startup=True,
+)
+
+@celery_app.task(bind=True, name="run_scan")
+def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: int = None):
+    """
+    Full ASM pipeline task.
+    Runs all scanner modules sequentially.
+    Updates scan record in DB at each stage.
+    """
+    from backend.scanner.subdomain import enumerate_subdomains
+    from backend.scanner.dns import resolve_subdomains
+    from backend.scanner.portscan import scan_multiple_hosts
+    from backend.scanner.httpprobe import run_httpx
+    from backend.scanner.vuln import run_nuclei
+    from backend.scanner.screenshot import run_eyewitness
+    from backend.db import SessionLocal
+    from backend.models.scan import Scan
+    from backend.models.asset import Asset
+    import hashlib
+    import json
+    from datetime import datetime, timezone
+
+    db = SessionLocal()
+    module_results = {}
+    scan = None
+
+    try:
+        # Update scan status to running
+        if scan_id:
+            scan = db.query(Scan).filter(Scan.id == scan_id).first()
+            if scan:
+                scan.status = "running"
+                scan.started_at = datetime.now(timezone.utc)
+                db.commit()
+
+        # Stage 1: Subdomain enumeration
+        self.update_state(state="PROGRESS", meta={"stage": "subdomain_enumeration"})
+        subdomain_data = enumerate_subdomains(domain, rate_limit)
+        module_results["subdomain"] = subdomain_data["module_status"]["subfinder"]
+        subdomains = subdomain_data["subdomains"]
+
+        # Stage 2: DNS resolution
+        self.update_state(state="PROGRESS", meta={"stage": "dns_resolution"})
+        dns_data = resolve_subdomains(subdomains)
+        module_results["dns"] = dns_data["module_status"]
+        live_hosts = dns_data["live"]
+
+        # Stage 3: Port scanning
+        self.update_state(state="PROGRESS", meta={"stage": "port_scanning"})
+        port_data = scan_multiple_hosts(live_hosts, rate_limit)
+        module_results["portscan"] = port_data["module_status"]
+
+        # Stage 4: HTTP probing
+        self.update_state(state="PROGRESS", meta={"stage": "http_probing"})
+        host_urls = [f"http://{h['subdomain']}" for h in live_hosts]
+        http_data = run_httpx(host_urls, rate_limit)
+        module_results["httpprobe"] = http_data["module_status"]
+
+        # Stage 5: Vulnerability scanning
+        self.update_state(state="PROGRESS", meta={"stage": "vuln_scanning"})
+        vuln_data = run_nuclei(host_urls, rate_limit)
+        module_results["vuln"] = vuln_data["module_status"]
+
+        # Stage 6: Screenshots
+        self.update_state(state="PROGRESS", meta={"stage": "screenshots"})
+        screenshot_data = run_eyewitness(host_urls)
+        module_results["screenshot"] = screenshot_data["module_status"]
+
+        # Stage 7: Save assets to DB with upsert (idempotency)
+        self.update_state(state="PROGRESS", meta={"stage": "saving_results"})
+
+        http_lookup = {h["host"]: h for h in http_data["hosts"]}
+        port_lookup = {h["subdomain"]: h["ports"] for h in port_data["hosts"]}
+
+        new_count = 0
+        changed_count = 0
+
+        for host in live_hosts:
+            subdomain = host["subdomain"]
+            ip = host["ip"]
+            ports = port_lookup.get(subdomain, [])
+            http_info = http_lookup.get(subdomain, {})
+            technologies = http_info.get("technologies", [])
+            http_status = http_info.get("status_code")
+            http_title = http_info.get("title", "")
+
+            hash_input = json.dumps({
+                "ports": sorted([p["port"] for p in ports]),
+                "technologies": sorted(technologies),
+                "http_status": http_status,
+                "http_title": http_title
+            }, sort_keys=True)
+            content_hash = hashlib.sha256(hash_input.encode()).hexdigest()
+
+            existing = db.query(Asset).filter(
+                Asset.target_id == target_id,
+                Asset.subdomain == subdomain
+            ).first()
+
+            if existing:
+                if existing.content_hash != content_hash:
+                    existing.content_hash = content_hash
+                    existing.ip = ip
+                    existing.open_ports = ports
+                    existing.technologies = technologies
+                    existing.http_status = http_status
+                    existing.http_title = http_title
+                    existing.status = "changed"
+                    existing.last_seen = datetime.now(timezone.utc)
+                    changed_count += 1
+            else:
+                new_asset = Asset(
+                    target_id=target_id,
+                    subdomain=subdomain,
+                    ip=ip,
+                    open_ports=ports,
+                    technologies=technologies,
+                    http_status=http_status,
+                    http_title=http_title,
+                    content_hash=content_hash,
+                    status="new",
+                    last_seen=datetime.now(timezone.utc)
+                )
+                db.add(new_asset)
+                new_count += 1
+
+        db.commit()
+
+        if scan:
+            scan.status = "completed"
+            scan.completed_at = datetime.now(timezone.utc)
+            scan.total_assets = len(live_hosts)
+            scan.new_assets = new_count
+            scan.changed_assets = changed_count
+            scan.module_results = module_results
+            db.commit()
+
+        return {
+            "status": "completed",
+            "target_id": target_id,
+            "domain": domain,
+            "total_assets": len(live_hosts),
+            "new_assets": new_count,
+            "changed_assets": changed_count,
+            "module_results": module_results
+        }
+
+    except Exception as e:
+        if scan:
+            scan.status = "failed"
+            scan.error_log = str(e)
+            db.commit()
+        raise
+
+    finally:
+        db.close()
