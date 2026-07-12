@@ -1,0 +1,68 @@
+<center><html>
+        <head>
+        <title>EyeWitness Report Table of Contents</title>
+        </head>
+        <h2>Table of Contents</h2><li><a href="report.html#uncat">Uncategorized (Page 1)</a></li></ul><br><br><table class="table"><tr><td>Uncategorized</td><td>1</td><tr><td>Errors</td><td>0</td></tr><tr><th>Total</th><td>1</td></tr></table><br><br></center><html>
+        <head>
+        <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" type="text/css"/>
+        <title>EyeWitness Report</title>
+        <script src="jquery-1.11.3.min.js"></script>
+        <script type="text/javascript">
+        function toggleUA(id, url){
+        idi = "." + id;
+        $(idi).toggle();
+        change = document.getElementById(id);
+        if (change.innerHTML.indexOf("expand") > -1){
+            change.innerHTML = "Click to collapse User Agents for " + url;
+        }else{
+            change.innerHTML = "Click to expand User Agents for " + url;
+        }
+        }
+
+        document.onkeydown = function(event){
+            event = event || window.event;
+            switch (event.keyCode){
+                case 37:
+                    leftArrow();
+                    break;
+                case 39:
+                    rightArrow();
+                    break;
+            }
+        };
+                
+        function leftArrow(){
+            $('#previous')[0].click();
+        };
+
+        function rightArrow(){
+            $('#next')[0].click();
+        };
+
+        </script>
+        </head>
+        <body>
+        <center>
+        <center>Report Generated on 2026/07/12 at 13:25:27</center><h2 id="uncat">Uncategorized</h2><table border="1">
+        <tr>
+        <th>Web Request Info</th>
+        <th>Web Screenshot</th>
+        </tr><tr>
+            <td><div style="display: inline-block; width: 300px; word-wrap: break-word">
+            <a href="http://192.168.75.130" target="_blank">http://192.168.75.130</a><br>
+            
+<br><b> Page Title: </b>Metasploitable2 - Linux
+<br><b> Date:</b> Sun, 12 Jul 2026 07:36:56 GMT
+<br><b> Server:</b> Apache/2.2.8 (Ubuntu) DAV/2
+<br><b> X-Powered-By:</b> PHP/5.2.4-2ubuntu5.10
+<br><b> Content-Length:</b> 891
+<br><b> Connection:</b> close
+<br><b> Content-Type:</b> text/html
+<br><b> Response Code:</b> 200
+<br><br><a href="source/http.192.168.75.130.txt"
+                target="_blank">Source Code</a></div></td>
+                <td><div id="screenshot"><a href="screens/http.192.168.75.130.png"
+                target="_blank"><img src="screens/http.192.168.75.130.png"
+                height="400"></a></div></td></tr></div>
+        </div></table><br></table><br></body>
+</html>
