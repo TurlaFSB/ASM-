@@ -1,2 +1,0 @@
-Protocol,Port,Domain,Request Status,Screenshot Path, Source Path
-http,80,192.168.75.130,Successful,/home/worm/projects/asm-platform/screenshots/screens/http.192.168.75.130.png,/home/worm/projects/asm-platform/screenshots/source/http.192.168.75.130.txt
