@@ -74,7 +74,7 @@ export default function Dashboard() {
           <tbody>
             {scans.map(scan => (
               <tr key={scan.id}>
-                <td>{scan.target_id}</td>
+                <td>Target #{scan.target_id}</td>
                 <td>
                   <span className={`badge badge-${scan.status}`}>
                     {scan.status}
@@ -83,7 +83,7 @@ export default function Dashboard() {
                 <td>{scan.total_assets || 0}</td>
                 <td>{scan.new_assets || 0}</td>
                 <td>{scan.changed_assets || 0}</td>
-                <td>{scan.started_at ? new Date(scan.started_at).toLocaleString() : "—"}</td>
+                <td>{scan.started_at ? new Date(scan.started_at).toLocaleString() : "-"}</td>
               </tr>
             ))}
           </tbody>
