@@ -1,5 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { Shield, Target, Activity, Database } from "lucide-react";
+import turlaLogo from "../assets/TURLA.png";
 
 export default function Navbar() {
   const location = useLocation();
@@ -14,7 +15,7 @@ export default function Navbar() {
   return (
     <nav className="navbar">
       <div className="navbar-brand">
-        <Shield size={24} />
+       <img src={turlaLogo} alt="Turla" style={{ width: 60, height: 60, borderRadius: '50%', objectFit: 'cover' }} />
         <span>ASM Platform</span>
       </div>
       <ul className="navbar-links">
