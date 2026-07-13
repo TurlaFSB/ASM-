@@ -36,6 +36,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
     from backend.models.scan import Scan
     from backend.models.asset import Asset
     from backend.models.alert import Alert
+    from backend.models.vulnerability import Vulnerability
     import hashlib
     import json
     from datetime import datetime, timezone
@@ -81,6 +82,37 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         vuln_data = run_nuclei(host_urls, rate_limit)
         module_results["vuln"] = vuln_data["module_status"]
 
+        # Save Nuclei findings to DB
+        for finding in vuln_data.get("findings", []):
+            cve_id = None
+            tags = finding.get("tags", [])
+            if isinstance(tags, list):
+                for tag in tags:
+                    if str(tag).upper().startswith("CVE-"):
+                        cve_id = str(tag).upper()
+                        break
+
+            template_id = finding.get("template_id", "")
+            if not cve_id and template_id.upper().startswith("CVE-"):
+                cve_id = template_id.upper()
+
+            vuln = Vulnerability(
+                target_id=target_id,
+                scan_id=scan_id,
+                template_id=template_id,
+                name=finding.get("name", ""),
+                severity=finding.get("severity", "info"),
+                description=finding.get("description", ""),
+                matched_at=finding.get("matched_at", ""),
+                vuln_type=finding.get("type", ""),
+                tags=tags,
+                host=finding.get("host", ""),
+                cve_id=cve_id
+            )
+            db.add(vuln)
+
+        db.commit()
+
         # Stage 6: Screenshots
         self.update_state(state="PROGRESS", meta={"stage": "screenshots"})
         screenshot_data = run_eyewitness(host_urls)
@@ -96,10 +128,8 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         changed_count = 0
         disappeared_count = 0
 
-        # Track subdomains found in this scan
         found_subdomains = set(h["subdomain"] for h in live_hosts)
 
-        # Check for disappeared assets
         existing_assets = db.query(Asset).filter(
             Asset.target_id == target_id,
             Asset.status != "disappeared"

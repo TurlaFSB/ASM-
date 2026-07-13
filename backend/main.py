@@ -8,6 +8,7 @@ from backend.models.asset import Asset
 from backend.api.targets import router as targets_router
 from backend.api.scans import router as scans_router
 from backend.api.alerts import router as alerts_router
+from backend.api.vulnerabilities import router as vulnerabilities_router
 
 app = FastAPI(
     title="ASM Platform",
@@ -26,6 +27,7 @@ app.add_middleware(
 app.include_router(targets_router)
 app.include_router(scans_router)
 app.include_router(alerts_router)
+app.include_router(vulnerabilities_router)
 
 @app.on_event("startup")
 async def startup():
