@@ -17,6 +17,9 @@ export default function Dashboard() {
       .finally(() => setLoading(false));
   }, []);
 
+  const targetMap = {};
+  targets.forEach(t => { targetMap[t.id] = t.domain; });
+
   const completedScans = scans.filter(s => s.status === "completed").length;
   const runningScans = scans.filter(s => s.status === "running").length;
   const totalAssets = scans.reduce((acc, s) => acc + (s.total_assets || 0), 0);
@@ -63,7 +66,7 @@ export default function Dashboard() {
         <table>
           <thead>
             <tr>
-              <th>Target</th>
+              <th>Domain</th>
               <th>Status</th>
               <th>Assets</th>
               <th>New</th>
@@ -74,16 +77,18 @@ export default function Dashboard() {
           <tbody>
             {scans.map(scan => (
               <tr key={scan.id}>
-                <td>Target #{scan.target_id}</td>
+                <td style={{ color: "var(--text-primary)", fontWeight: 500 }}>
+                  {targetMap[scan.target_id] || "Target #" + scan.target_id}
+                </td>
                 <td>
-                  <span className={`badge badge-${scan.status}`}>
+                  <span className={"badge badge-" + scan.status}>
                     {scan.status}
                   </span>
                 </td>
                 <td>{scan.total_assets || 0}</td>
                 <td>{scan.new_assets || 0}</td>
                 <td>{scan.changed_assets || 0}</td>
-                <td>{scan.started_at ? new Date(scan.started_at).toLocaleString() : "-"}</td>
+                <td>{scan.started_at ? new Date(scan.started_at).toLocaleString() : "—"}</td>
               </tr>
             ))}
           </tbody>

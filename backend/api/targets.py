@@ -29,16 +29,24 @@ class TargetResponse(BaseModel):
 
 @router.post("/", response_model=TargetResponse)
 def create_target(target: TargetCreate, db: Session = Depends(get_db)):
-    # Authorization gate — cannot add unauthorized target
     if not target.authorized:
         raise HTTPException(
             status_code=400,
             detail="Target must be explicitly authorized before adding. Check the authorization box to confirm you have permission to scan this domain."
         )
 
-    # Check duplicate
     existing = db.query(Target).filter(Target.domain == target.domain).first()
     if existing:
+        if not existing.is_active:
+            existing.is_active = True
+            existing.authorized = target.authorized
+            existing.authorized_by = target.authorized_by
+            existing.authorized_at = datetime.now(timezone.utc)
+            existing.scope_note = target.scope_note
+            existing.rate_limit = target.rate_limit
+            db.commit()
+            db.refresh(existing)
+            return existing
         raise HTTPException(status_code=409, detail=f"Target {target.domain} already exists")
 
     db_target = Target(
