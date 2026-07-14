@@ -25,6 +25,8 @@ SEVERITY_CVSS_MIDPOINT = {
     "informational": 0.5,
 }
 
+from backend.kev import is_known_exploited
+
 HIGH_RISK_PORTS = {
     3306: "MySQL", 5432: "PostgreSQL", 27017: "MongoDB", 6379: "Redis",
     1433: "MSSQL", 3389: "RDP", 5985: "WinRM", 5986: "WinRM (SSL)",
@@ -50,12 +52,20 @@ def score_asset(asset, vulns_for_asset: list) -> dict:
     Compute risk score + level for a single asset given its associated vulnerabilities.
     vulns_for_asset: list of Vulnerability ORM objects matched to this asset's host.
     """
+    kev_hit = any(is_known_exploited(v.cve_id) for v in vulns_for_asset if v.cve_id)
+
     if vulns_for_asset:
         cvss_scores = [cvss_for_vuln(v) for v in vulns_for_asset]
         base_score = max(cvss_scores) * 10  # scale 0-10 CVSS to 0-100
     else:
         base_score = 0.0
         cvss_scores = []
+
+    if kev_hit:
+        # Active exploitation confirmed by CISA -- force into Critical band
+        # regardless of CVSS, since real-world attacker interest outweighs
+        # theoretical severity.
+        base_score = max(base_score, 90.0)
 
     # Modifier: multiple high-severity findings compound risk
     high_or_above = sum(1 for v in vulns_for_asset if (v.severity or "").lower() in ("critical", "high"))
@@ -95,6 +105,7 @@ def score_asset(asset, vulns_for_asset: list) -> dict:
         "risk_level": level,
         "max_cvss": max(cvss_scores) if cvss_scores else 0.0,
         "finding_count": len(vulns_for_asset),
+        "known_exploited": kev_hit,
     }
 
 

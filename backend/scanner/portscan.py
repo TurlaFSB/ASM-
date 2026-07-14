@@ -2,8 +2,12 @@ import subprocess
 import xml.etree.ElementTree as ET
 import logging
 from typing import List, Dict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logger = logging.getLogger(__name__)
+
+MAX_CONCURRENT_SCANS = 5  # cap concurrent Nmap processes to avoid overwhelming the host/network
+
 
 def parse_nmap_xml(xml_output: str) -> List[Dict]:
     """Parse nmap XML output into structured port list."""
@@ -79,8 +83,15 @@ def scan_ports(host: str, rate_limit: int = 10) -> Dict:
 
 def scan_multiple_hosts(hosts: List[Dict], rate_limit: int = 10) -> Dict:
     """
-    Scan all live hosts from DNS resolution results.
-    Continues if individual host fails — never crashes the pipeline.
+    Scan all live hosts from DNS resolution results, concurrently.
+
+    Nmap subprocess calls are I/O-bound (waiting on network responses),
+    so a thread pool gives real wall-clock speedup without needing
+    async rewrites. Concurrency is capped at MAX_CONCURRENT_SCANS to
+    avoid overwhelming the local network stack or triggering aggressive
+    rate-limiting/WAF blocks on the target -- this is a deliberate
+    trade-off between speed and stealth/politeness, same consideration
+    real engagement tooling has to make.
     """
     results = {
         "hosts": [],
@@ -88,21 +99,35 @@ def scan_multiple_hosts(hosts: List[Dict], rate_limit: int = 10) -> Dict:
         "failed_hosts": []
     }
 
-    for host_data in hosts:
-        host = host_data["subdomain"]
-        scan = scan_ports(host, rate_limit)
-        
-        if scan["module_status"] == "ok":
-            results["hosts"].append({
-                "subdomain": host,
-                "ip": host_data["ip"],
-                "ports": scan["ports"]
-            })
-        else:
-            results["failed_hosts"].append({
-                "subdomain": host,
-                "reason": scan["module_status"]
-            })
+    if not hosts:
+        return results
+
+    with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_SCANS) as executor:
+        future_to_host = {
+            executor.submit(scan_ports, h["subdomain"], rate_limit): h
+            for h in hosts
+        }
+        for future in as_completed(future_to_host):
+            host_data = future_to_host[future]
+            host = host_data["subdomain"]
+            try:
+                scan = future.result()
+            except Exception as e:
+                logger.error(f"Unexpected error scanning {host}: {e}")
+                results["failed_hosts"].append({"subdomain": host, "reason": str(e)})
+                continue
+
+            if scan["module_status"] == "ok":
+                results["hosts"].append({
+                    "subdomain": host,
+                    "ip": host_data["ip"],
+                    "ports": scan["ports"]
+                })
+            else:
+                results["failed_hosts"].append({
+                    "subdomain": host,
+                    "reason": scan["module_status"]
+                })
 
     if results["failed_hosts"]:
         results["module_status"] = "partial"
