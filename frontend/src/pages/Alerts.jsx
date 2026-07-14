@@ -1,15 +1,13 @@
 import { useState, useEffect } from "react";
 import { Bell, CheckCheck } from "lucide-react";
-import axios from "axios";
-
-const API = "http://192.168.16.130:8000";
+import { getAlerts, markAlertRead, markAllAlertsRead } from "../api";
 
 export default function Alerts() {
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const fetchAlerts = () => {
-    axios.get(`${API}/alerts/`)
+    getAlerts()
       .then(r => setAlerts(r.data))
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -17,13 +15,13 @@ export default function Alerts() {
 
   useEffect(() => { fetchAlerts(); }, []);
 
-  const markAllRead = async () => {
-    await axios.patch(`${API}/alerts/mark-all-read`);
+  const handleMarkAllRead = async () => {
+    await markAllAlertsRead();
     fetchAlerts();
   };
 
-  const markRead = async (id) => {
-    await axios.patch(`${API}/alerts/${id}/read`);
+  const handleMarkRead = async (id) => {
+    await markAlertRead(id);
     fetchAlerts();
   };
 
@@ -54,7 +52,7 @@ export default function Alerts() {
             <span className="badge badge-pending">{unreadCount} unread</span>
           )}
         </div>
-        <button className="btn btn-secondary" onClick={markAllRead}>
+        <button className="btn btn-secondary" onClick={handleMarkAllRead}>
           <CheckCheck size={16} /> Mark all read
         </button>
       </div>
@@ -68,7 +66,7 @@ export default function Alerts() {
           <div
             key={alert.id}
             className={`alert-card ${alert.is_read === "unread" ? "unread" : ""}`}
-            onClick={() => markRead(alert.id)}
+            onClick={() => handleMarkRead(alert.id)}
           >
             <div className="alert-left">
               <span className={`alert-dot dot-${alertColor(alert.alert_type)}`} />

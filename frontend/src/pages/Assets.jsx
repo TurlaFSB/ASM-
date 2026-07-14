@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
-import { getTargets } from "../api";
+import { getAssets } from "../api";
 import { Database, Search } from "lucide-react";
-import axios from "axios";
 
 export default function Assets() {
   const [assets, setAssets] = useState([]);
@@ -9,7 +8,7 @@ export default function Assets() {
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    axios.get("http://192.168.16.130:8000/assets/")
+    getAssets()
       .then(r => setAssets(r.data))
       .catch(console.error)
       .finally(() => setLoading(false));

@@ -63,7 +63,7 @@ body {
   padding: 32px 12px;
   display: flex;
   flex-direction: column;
-  gap: 48px;
+  gap: 0;
   position: fixed;
   height: 100vh;
   border-right: 1px solid var(--border);
@@ -86,6 +86,7 @@ body {
 }
 
 .navbar-links {
+  margin-top: 48px;
   list-style: none;
   display: flex;
   flex-direction: column;
@@ -767,4 +768,123 @@ tr:hover td {
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+/* ── Navbar footer / logout ─────────────────── */
+.navbar-footer {
+  margin-top: auto;
+  padding: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.logout-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.logout-btn:hover {
+  background: var(--surface-2);
+  color: var(--red);
+  border-color: var(--red);
+}
+
+/* ── Design Upgrades ─────────────────────── */
+
+/* Active nav — left border indicator */
+.navbar-links a.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-weight: 600;
+  border-left: 3px solid var(--accent);
+  padding-left: 9px;
+}
+
+/* Stat cards — accent left border + hover */
+.stat-card {
+  border-left: 3px solid var(--accent);
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.15);
+}
+
+/* Table row hover */
+tbody tr {
+  transition: background 0.1s ease;
+}
+
+tbody tr:hover {
+  background: var(--surface-2);
+}
+
+/* Better page headers */
+.page-header h1, .dashboard h1 {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: var(--text-primary);
+}
+
+/* Empty state styling */
+.empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-tertiary);
+  font-size: 14px;
+}
+
+/* Badge pulse for running status */
+.badge-running {
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+/* Card subtle glow on hover */
+.table-container:hover {
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+/* Loading state */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 60vh;
+  color: var(--text-tertiary);
+  font-size: 14px;
+  letter-spacing: 0.05em;
 }

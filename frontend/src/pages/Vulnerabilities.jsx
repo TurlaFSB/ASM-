@@ -1,8 +1,6 @@
 import { useState, useEffect } from "react";
 import { AlertTriangle } from "lucide-react";
-import axios from "axios";
-
-const API = "http://192.168.16.130:8000";
+import { getVulnerabilities, getVulnSummary } from "../api";
 
 export default function Vulnerabilities() {
   const [vulns, setVulns] = useState([]);
@@ -11,10 +9,7 @@ export default function Vulnerabilities() {
   const [filter, setFilter] = useState("all");
 
   useEffect(() => {
-    Promise.all([
-      axios.get(API + "/vulnerabilities/"),
-      axios.get(API + "/vulnerabilities/summary")
-    ])
+    Promise.all([getVulnerabilities(), getVulnSummary()])
       .then(([v, s]) => {
         setVulns(v.data);
         setSummary(s.data);
@@ -84,14 +79,14 @@ export default function Vulnerabilities() {
                   {vuln.host}
                 </td>
                 <td style={{ fontFamily: "monospace", fontSize: 12 }}>
-                  {vuln.matched_at || ""}
+                  {vuln.matched_at || "—"}
                 </td>
                 <td>
                   {vuln.cve_id ? (
                     <a href={cveUrl(vuln.cve_id)} target="_blank" rel="noreferrer" className="cve-link">
                       {vuln.cve_id}
                     </a>
-                  ) : ""}
+                  ) : "—"}
                 </td>
                 <td style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
                   {vuln.template_id}

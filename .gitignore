@@ -1,1 +1,14 @@
 screenshots/
+.env
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+node_modules/
+frontend/dist/
+report.pdf
+screenshots/
+.vscode/
+.idea/
+.DS_Store

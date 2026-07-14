@@ -1,87 +1,53 @@
-import { useState, useEffect, useRef } from "react";
-import { getScans, getScanAssets, getTargets } from "../api";
-import { Activity, ChevronDown, ChevronUp, Loader } from "lucide-react";
-import axios from "axios";
-
-const API = "http://192.168.16.130:8000";
-
-const STAGES = {
-  subdomain_enumeration: "Running subdomain enumeration...",
-  dns_resolution: "Resolving DNS for live hosts...",
-  port_scanning: "Scanning open ports...",
-  http_probing: "Probing HTTP services...",
-  vuln_scanning: "Running vulnerability scan...",
-  screenshots: "Capturing screenshots...",
-  saving_results: "Saving results to database...",
-  unknown: "Processing..."
-};
+import { useState, useEffect } from "react";
+import { Activity, Play, X, Download } from "lucide-react";
+import { getScans, getScanProgress, cancelScan, downloadScanReport } from "../api";
 
 export default function Scans() {
   const [scans, setScans] = useState([]);
-  const [targets, setTargets] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState(null);
-  const [assets, setAssets] = useState({});
-  const [progress, setProgress] = useState({});
-  const pollRef = useRef({});
+  const [downloadingId, setDownloadingId] = useState(null);
 
   const fetchScans = () => {
-    Promise.all([getScans(), getTargets()])
-      .then(([s, t]) => {
-        setScans(s.data);
-        setTargets(t.data);
+    getScans()
+      .then(r => setScans(r.data || []))
+      .catch(err => {
+        console.error("Error fetching scans:", err);
+        setScans([]);
       })
-      .catch(console.error)
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     fetchScans();
+    const interval = setInterval(fetchScans, 3000);
+    return () => clearInterval(interval);
   }, []);
 
-  // Poll progress for running scans
-  useEffect(() => {
-    scans.forEach(scan => {
-      if (scan.status === "running" || scan.status === "pending") {
-        if (!pollRef.current[scan.id]) {
-          pollRef.current[scan.id] = setInterval(async () => {
-            try {
-              const r = await axios.get(API + "/scans/" + scan.id + "/progress");
-              setProgress(prev => ({ ...prev, [scan.id]: r.data }));
-              if (r.data.status === "completed" || r.data.status === "failed" || r.data.status === "cancelled") {
-                clearInterval(pollRef.current[scan.id]);
-                delete pollRef.current[scan.id];
-                fetchScans();
-              }
-            } catch (e) {
-              console.error(e);
-            }
-          }, 5000);
-        }
-      }
-    });
-
-    return () => {
-      Object.values(pollRef.current).forEach(clearInterval);
-    };
-  }, [scans]);
-
-  const targetMap = {};
-  targets.forEach(t => { targetMap[t.id] = t.domain; });
-
-  const toggleExpand = async (scanId) => {
-    if (expanded === scanId) {
-      setExpanded(null);
-      return;
+  const handleCancel = async (id) => {
+    if (window.confirm("Cancel this scan?")) {
+      await cancelScan(id);
+      fetchScans();
     }
-    setExpanded(scanId);
-    if (!assets[scanId]) {
-      try {
-        const r = await getScanAssets(scanId);
-        setAssets(prev => ({ ...prev, [scanId]: r.data }));
-      } catch (e) {
-        console.error(e);
-      }
+  };
+
+  const handleDownloadReport = async (id) => {
+    setDownloadingId(id);
+    try {
+      const response = await downloadScanReport(id);
+      const blob = new Blob([response.data], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `asm_report_scan_${id}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Failed to download report:", err);
+      alert("Failed to generate report. Check console for details.");
+    } finally {
+      setDownloadingId(null);
     }
   };
 
@@ -90,95 +56,75 @@ export default function Scans() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Scan History</h1>
+        <h1>Scans</h1>
         <Activity size={24} />
       </div>
 
-      <div className="scans-list">
-        {scans.map(scan => (
-          <div key={scan.id} className="scan-card">
-            <div className="scan-header" onClick={() => toggleExpand(scan.id)}>
-              <div className="scan-info">
-                <span className={"badge badge-" + scan.status}>{scan.status}</span>
-                <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>
-                  {targetMap[scan.target_id] || "Target #" + scan.target_id}
-                </span>
-                <span>{scan.total_assets || 0} assets</span>
-                <span style={{ color: "var(--green)" }}>{scan.new_assets || 0} new</span>
-                <span style={{ color: "var(--orange)" }}>{scan.changed_assets || 0} changed</span>
-              </div>
-              <div className="scan-meta">
-                {(scan.status === "running" || scan.status === "pending") && progress[scan.id] && (
-                  <span className="progress-stage">
-                    <Loader size={12} className="spin" />
-                    {STAGES[progress[scan.id].stage] || STAGES.unknown}
+      <div className="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Target</th>
+              <th>Status</th>
+              <th>Assets Found</th>
+              <th>New</th>
+              <th>Changed</th>
+              <th>Started</th>
+              <th>Completed</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {scans.map(scan => (
+              <tr key={scan.id}>
+                <td style={{ fontFamily: "monospace", fontSize: 12 }}>
+                  #{scan.id}
+                </td>
+                <td style={{ color: "var(--text-primary)", fontWeight: 500 }}>
+                  {scan.target?.domain || "Target #" + scan.target_id}
+                </td>
+                <td>
+                  <span className={"badge badge-" + scan.status}>
+                    {scan.status}
                   </span>
-                )}
-                <span>{scan.started_at ? new Date(scan.started_at).toLocaleString() : "Pending"}</span>
-                {(scan.status === "running" || scan.status === "pending") && (
-                  <button
-                    className="btn btn-danger btn-sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      fetch(API + "/scans/" + scan.id + "/cancel", { method: "PATCH" })
-                        .then(() => fetchScans());
-                    }}
-                  >
-                    Cancel
-                  </button>
-                )}
-                {expanded === scan.id ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-              </div>
-            </div>
-
-            {expanded === scan.id && (
-              <div className="scan-assets">
-                {scan.module_results && (
-                  <div className="module-results">
-                    <h4>Module Results</h4>
-                    <div className="module-grid">
-                      {Object.entries(scan.module_results).map(([mod, status]) => (
-                        <span key={mod} className={"module-badge " + (status === "ok" ? "ok" : "fail")}>
-                          {mod}: {status}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <h4>Assets Discovered</h4>
-                {assets[scan.id] ? (
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Subdomain</th>
-                        <th>IP</th>
-                        <th>Status</th>
-                        <th>HTTP</th>
-                        <th>Title</th>
-                        <th>Technologies</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {assets[scan.id].map(asset => (
-                        <tr key={asset.id}>
-                          <td>{asset.subdomain}</td>
-                          <td>{asset.ip}</td>
-                          <td><span className={"badge badge-" + asset.status}>{asset.status}</span></td>
-                          <td>{asset.http_status || "—"}</td>
-                          <td>{asset.http_title || "—"}</td>
-                          <td>{asset.technologies ? asset.technologies.join(", ") : "—"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <div className="loading">Loading assets...</div>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
+                </td>
+                <td>{scan.total_assets || 0}</td>
+                <td style={{ color: "var(--green)" }}>{scan.new_assets || 0}</td>
+                <td style={{ color: "var(--orange)" }}>{scan.changed_assets || 0}</td>
+                <td style={{ fontSize: 12 }}>
+                  {scan.started_at ? new Date(scan.started_at).toLocaleString() : "—"}
+                </td>
+                <td style={{ fontSize: 12 }}>
+                  {scan.completed_at ? new Date(scan.completed_at).toLocaleString() : "—"}
+                </td>
+                <td className="actions">
+                  {scan.status === "running" && (
+                    <button
+                      className="btn btn-sm btn-danger"
+                      onClick={() => handleCancel(scan.id)}
+                    >
+                      <X size={14} /> Cancel
+                    </button>
+                  )}
+                  {scan.status === "completed" && (
+                    <button
+                      className="btn btn-sm btn-primary"
+                      onClick={() => handleDownloadReport(scan.id)}
+                      disabled={downloadingId === scan.id}
+                    >
+                      <Download size={14} />
+                      {downloadingId === scan.id ? "Generating..." : "Report"}
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {scans.length === 0 && (
+          <div className="empty">No scans yet. Add a target and trigger a scan.</div>
+        )}
       </div>
     </div>
   );

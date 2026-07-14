@@ -7,6 +7,7 @@ from backend.models.scan import Scan
 from backend.models.target import Target
 from backend.models.asset import Asset
 from backend.tasks import run_scan, celery_app
+from backend.auth import get_current_user
 
 router = APIRouter(prefix="/scans", tags=["scans"])
 
@@ -14,7 +15,7 @@ class ScanCreate(BaseModel):
     target_id: int
 
 @router.post("/")
-def trigger_scan(scan: ScanCreate, db: Session = Depends(get_db)):
+def trigger_scan(scan: ScanCreate, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     target = db.query(Target).filter(Target.id == scan.target_id).first()
     if not target:
         raise HTTPException(status_code=404, detail="Target not found")
@@ -50,19 +51,19 @@ def trigger_scan(scan: ScanCreate, db: Session = Depends(get_db)):
     }
 
 @router.get("/")
-def list_scans(db: Session = Depends(get_db)):
+def list_scans(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     scans = db.query(Scan).order_by(Scan.created_at.desc()).all()
     return scans
 
 @router.get("/{scan_id}")
-def get_scan(scan_id: int, db: Session = Depends(get_db)):
+def get_scan(scan_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     scan = db.query(Scan).filter(Scan.id == scan_id).first()
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
     return scan
 
 @router.get("/{scan_id}/assets")
-def get_scan_assets(scan_id: int, db: Session = Depends(get_db)):
+def get_scan_assets(scan_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     scan = db.query(Scan).filter(Scan.id == scan_id).first()
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
@@ -70,7 +71,7 @@ def get_scan_assets(scan_id: int, db: Session = Depends(get_db)):
     return assets
 
 @router.get("/{scan_id}/progress")
-def scan_progress(scan_id: int, db: Session = Depends(get_db)):
+def scan_progress(scan_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     scan = db.query(Scan).filter(Scan.id == scan_id).first()
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
@@ -82,7 +83,7 @@ def scan_progress(scan_id: int, db: Session = Depends(get_db)):
     }
 
 @router.patch("/{scan_id}/cancel")
-def cancel_scan(scan_id: int, db: Session = Depends(get_db)):
+def cancel_scan(scan_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     scan = db.query(Scan).filter(Scan.id == scan_id).first()
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
@@ -92,3 +93,21 @@ def cancel_scan(scan_id: int, db: Session = Depends(get_db)):
     scan.status = "cancelled"
     db.commit()
     return {"message": "Scan cancelled"}
+
+from fastapi.responses import Response
+from backend.reports import generate_pdf_report
+
+@router.get("/{scan_id}/report")
+def download_scan_report(scan_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    scan = db.query(Scan).filter(Scan.id == scan_id).first()
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    try:
+        pdf_bytes = generate_pdf_report(db, scan_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=asm_report_scan_{scan_id}.pdf"}
+    )

@@ -9,6 +9,8 @@ from backend.api.targets import router as targets_router
 from backend.api.scans import router as scans_router
 from backend.api.alerts import router as alerts_router
 from backend.api.vulnerabilities import router as vulnerabilities_router
+from backend.api.auth import router as auth_router
+from backend.auth import get_current_user
 
 app = FastAPI(
     title="ASM Platform",
@@ -24,6 +26,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router)
 app.include_router(targets_router)
 app.include_router(scans_router)
 app.include_router(alerts_router)
@@ -42,6 +45,6 @@ async def health_check():
     }
 
 @app.get("/assets/")
-def list_assets(db: Session = Depends(get_db)):
+def list_assets(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     assets = db.query(Asset).order_by(Asset.created_at.desc()).all()
     return assets

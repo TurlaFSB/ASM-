@@ -1,8 +1,8 @@
 import { Link, useLocation } from "react-router-dom";
-import { Shield, Target, Activity, Database, Bell, AlertTriangle } from "lucide-react";
+import { Shield, Target, Activity, Database, Bell, AlertTriangle, LogOut } from "lucide-react";
 import turlaLogo from "../assets/TURLA.png";
 
-export default function Navbar() {
+export default function Navbar({ onLogout }) {
   const location = useLocation();
 
   const links = [
@@ -33,6 +33,12 @@ export default function Navbar() {
           </li>
         ))}
       </ul>
+      <div className="navbar-footer">
+        <button className="logout-btn" onClick={onLogout}>
+          <LogOut size={16} />
+          Logout
+        </button>
+      </div>
     </nav>
   );
 }

@@ -751,3 +751,5 @@ zope.event==6.0
 zope.interface==8.5
 zopfli==0.4.3
 zstandard==0.25.0
+weasyprint
+jinja2
