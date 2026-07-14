@@ -27,6 +27,7 @@
   --red-dim: rgba(255, 69, 58, 0.1);
   --orange: #ff9f0a;
   --orange-dim: rgba(255, 159, 10, 0.1);
+  --font-mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
   --radius-sm: 8px;
   --radius: 12px;
   --radius-lg: 16px;
@@ -693,62 +694,6 @@ tr:hover td {
 
 .cve-link:hover { text-decoration: underline; }
 
-/* ── Vulnerabilities ─────────────────────── */
-.vuln-summary {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-  margin-bottom: 8px;
-}
-
-.vuln-stat {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 20px;
-  text-align: center;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.vuln-stat:hover { border-color: #333; }
-.vuln-stat.active { border-color: var(--accent); }
-
-.vuln-count {
-  display: block;
-  font-size: 36px;
-  font-weight: 700;
-  letter-spacing: -1px;
-  line-height: 1;
-  margin-bottom: 6px;
-}
-
-.vuln-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  color: var(--text-tertiary);
-}
-
-.sev-critical .vuln-count { color: var(--red); }
-.sev-high .vuln-count     { color: var(--orange); }
-.sev-medium .vuln-count   { color: var(--yellow); }
-.sev-low .vuln-count      { color: var(--blue); }
-
-.badge-sev-critical { background: var(--red-dim);    color: var(--red); }
-.badge-sev-high     { background: var(--orange-dim); color: var(--orange); }
-.badge-sev-medium   { background: var(--yellow-dim); color: var(--yellow); }
-.badge-sev-low      { background: var(--blue-dim);   color: var(--blue); }
-.badge-sev-info     { background: var(--surface-3);  color: var(--text-secondary); }
-
-.cve-link {
-  color: var(--accent);
-  text-decoration: none;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.cve-link:hover { text-decoration: underline; }
 /* ── Progress ────────────────────────────── */
 .progress-stage {
   display: flex;
@@ -861,7 +806,7 @@ tbody tr:hover {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--bg);
+  background: var(--black);
 }
 
 ::-webkit-scrollbar-thumb {
@@ -887,4 +832,83 @@ tbody tr:hover {
   color: var(--text-tertiary);
   font-size: 14px;
   letter-spacing: 0.05em;
+}
+
+/* ── Form validation states ─────────────── */
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+}
+
+.form-card input.input-error {
+  border-color: var(--red);
+}
+
+.form-card input.input-valid {
+  border-color: var(--green);
+}
+
+.field-error {
+  font-size: 11.5px;
+  color: var(--red);
+  font-weight: 500;
+}
+
+.char-count {
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+  align-self: flex-end;
+}
+
+/* ── Disabled button state ──────────────── */
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ── Risk badges (asset risk_level) ─────── */
+.badge-risk-critical { background: var(--red-dim);    color: var(--red); }
+.badge-risk-high      { background: var(--orange-dim); color: var(--orange); }
+.badge-risk-medium    { background: var(--yellow-dim); color: var(--yellow); }
+.badge-risk-low       { background: var(--green-dim);  color: var(--green); }
+.badge-risk-informational { background: var(--surface-3); color: var(--text-secondary); }
+
+/* ── Monospace for technical data ───────── */
+.mono {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  letter-spacing: -0.2px;
+}
+
+/* ── Schedule cards ──────────────────────── */
+.schedule-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.schedule-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.schedule-status.enabled { color: var(--green); }
+.schedule-status.disabled { color: var(--text-tertiary); }
+
+/* ── Focus-visible for accessibility ────── */
+.btn:focus-visible,
+.navbar-links a:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
