@@ -6,6 +6,7 @@ export default function Assets() {
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [showDisappeared, setShowDisappeared] = useState(false);
 
   useEffect(() => {
     getAssets()
@@ -14,11 +15,22 @@ export default function Assets() {
       .finally(() => setLoading(false));
   }, []);
 
-  const filtered = assets.filter(a =>
-    a.subdomain.toLowerCase().includes(search.toLowerCase()) ||
-    (a.ip && a.ip.includes(search)) ||
-    (a.http_title && a.http_title.toLowerCase().includes(search.toLowerCase()))
-  );
+  const filtered = assets
+    .filter(a => showDisappeared || a.status !== "disappeared")
+    .filter(a =>
+      a.subdomain.toLowerCase().includes(search.toLowerCase()) ||
+      (a.ip && a.ip.includes(search)) ||
+      (a.http_title && a.http_title.toLowerCase().includes(search.toLowerCase()))
+    );
+
+  const disappearedCount = assets.filter(a => a.status === "disappeared").length;
+
+  const formatDate = (d) => {
+    if (!d) return "—";
+    return new Date(d).toLocaleString(undefined, {
+      month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"
+    });
+  };
 
   if (loading) return <div className="loading">Loading...</div>;
 
@@ -29,13 +41,21 @@ export default function Assets() {
         <Database size={24} />
       </div>
 
-      <div className="search-bar">
-        <Search size={18} />
-        <input
-          placeholder="Search by subdomain, IP, or title..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
+      <div style={{ display: "flex", gap: "12px", alignItems: "center", marginBottom: "16px" }}>
+        <div className="search-bar" style={{ marginBottom: 0 }}>
+          <Search size={18} />
+          <input
+            placeholder="Search by subdomain, IP, or title..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+        <button
+          className={showDisappeared ? "btn btn-primary btn-sm" : "btn btn-secondary btn-sm"}
+          onClick={() => setShowDisappeared(!showDisappeared)}
+        >
+          {showDisappeared ? "Hide" : "Show"} Disappeared ({disappearedCount})
+        </button>
       </div>
 
       <div className="table-container">
@@ -48,6 +68,7 @@ export default function Assets() {
               <th>Title</th>
               <th>Technologies</th>
               <th>Open Ports</th>
+              <th>Risk</th>
               <th>Status</th>
               <th>Last Seen</th>
             </tr>
@@ -55,22 +76,31 @@ export default function Assets() {
           <tbody>
             {filtered.map(asset => (
               <tr key={asset.id}>
-                <td>{asset.subdomain}</td>
-                <td>{asset.ip || "—"}</td>
+                <td className="mono">{asset.subdomain}</td>
+                <td className="mono">{asset.ip || "—"}</td>
                 <td>{asset.http_status || "—"}</td>
-                <td>{asset.http_title || "—"}</td>
-                <td>{asset.technologies?.join(", ") || "—"}</td>
+                <td className="wrap">{asset.http_title || "—"}</td>
+                <td className="wrap">{asset.technologies?.join(", ") || "—"}</td>
                 <td>
                   {asset.open_ports?.length > 0
                     ? asset.open_ports.map(p => p.port).join(", ")
                     : "—"}
                 </td>
                 <td>
+                  {asset.risk_level ? (
+                    <span className={`badge badge-risk-${asset.risk_level.toLowerCase()}`}>
+                      {asset.risk_level}{asset.risk_score != null ? ` (${asset.risk_score})` : ""}
+                    </span>
+                  ) : (
+                    <span className="badge badge-risk-informational">Unscored</span>
+                  )}
+                </td>
+                <td>
                   <span className={`badge badge-${asset.status}`}>
                     {asset.status}
                   </span>
                 </td>
-                <td>{asset.last_seen ? new Date(asset.last_seen).toLocaleString() : "—"}</td>
+                <td style={{ fontSize: 12 }}>{formatDate(asset.last_seen)}</td>
               </tr>
             ))}
           </tbody>

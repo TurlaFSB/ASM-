@@ -7,6 +7,7 @@ import Scans from "./pages/Scans";
 import Assets from "./pages/Assets";
 import Alerts from "./pages/Alerts";
 import Vulnerabilities from "./pages/Vulnerabilities";
+import Schedules from "./pages/Schedules";
 import Login from "./pages/Login";
 import "./App.css";
 
@@ -27,6 +28,7 @@ export default function App() {
             <Route path="/assets" element={<Assets />} />
             <Route path="/alerts" element={<Alerts />} />
             <Route path="/vulnerabilities" element={<Vulnerabilities />} />
+            <Route path="/schedules" element={<Schedules />} />
           </Routes>
         </main>
       </div>

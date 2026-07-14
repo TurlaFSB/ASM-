@@ -79,6 +79,7 @@ def scan_progress(scan_id: int, db: Session = Depends(get_db), current_user: dic
         "scan_id": scan_id,
         "status": scan.status,
         "started_at": scan.started_at,
+        "current_stage": scan.current_stage,
         "module_results": scan.module_results
     }
 

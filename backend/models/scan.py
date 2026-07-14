@@ -11,6 +11,7 @@ class Scan(Base):
 
     # Scan lifecycle
     status = Column(String, default="pending")     # pending, running, completed, failed
+    current_stage = Column(String, nullable=True)   # e.g. "subdomain_enumeration", "vuln_scanning"
     started_at = Column(DateTime(timezone=True), nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
 

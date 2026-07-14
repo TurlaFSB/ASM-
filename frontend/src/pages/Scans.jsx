@@ -2,14 +2,37 @@ import { useState, useEffect } from "react";
 import { Activity, Play, X, Download } from "lucide-react";
 import { getScans, getScanProgress, cancelScan, downloadScanReport } from "../api";
 
+const STAGE_LABELS = {
+  subdomain_enumeration: "Subfinder + Amass",
+  dns_resolution: "DNS Resolution",
+  port_scanning: "Nmap Port Scan",
+  http_probing: "HTTPX Probing",
+  vuln_scanning: "Nuclei Scan",
+  screenshots: "EyeWitness",
+  saving_results: "Saving Results",
+  risk_scoring: "Risk Scoring",
+};
+
 export default function Scans() {
   const [scans, setScans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [downloadingId, setDownloadingId] = useState(null);
+  const [stages, setStages] = useState({}); // { scanId: current_stage }
 
   const fetchScans = () => {
     getScans()
-      .then(r => setScans(r.data || []))
+      .then(r => {
+        const data = r.data || [];
+        setScans(data);
+        // For any running scan, poll its progress for current_stage
+        data.filter(s => s.status === "running").forEach(s => {
+          getScanProgress(s.id)
+            .then(res => {
+              setStages(prev => ({ ...prev, [s.id]: res.data.current_stage }));
+            })
+            .catch(() => {});
+        });
+      })
       .catch(err => {
         console.error("Error fetching scans:", err);
         setScans([]);
@@ -88,6 +111,11 @@ export default function Scans() {
                   <span className={"badge badge-" + scan.status}>
                     {scan.status}
                   </span>
+                  {scan.status === "running" && stages[scan.id] && (
+                    <div className="progress-stage" style={{ marginTop: 6 }}>
+                      {STAGE_LABELS[stages[scan.id]] || stages[scan.id]}
+                    </div>
+                  )}
                 </td>
                 <td>{scan.total_assets || 0}</td>
                 <td style={{ color: "var(--green)" }}>{scan.new_assets || 0}</td>

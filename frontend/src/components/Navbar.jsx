@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { Shield, Target, Activity, Database, Bell, AlertTriangle, LogOut } from "lucide-react";
+import { Shield, Target, Activity, Database, Bell, AlertTriangle, LogOut, Clock } from "lucide-react";
 import turlaLogo from "../assets/TURLA.png";
 
 export default function Navbar({ onLogout }) {
@@ -10,6 +10,7 @@ export default function Navbar({ onLogout }) {
     { path: "/targets", label: "Targets", icon: <Target size={18} /> },
     { path: "/scans", label: "Scans", icon: <Activity size={18} /> },
     { path: "/assets", label: "Assets", icon: <Database size={18} /> },
+    { path: "/schedules", label: "Schedules", icon: <Clock size={18} /> },
     { path: "/vulnerabilities", label: "Vulnerabilities", icon: <AlertTriangle size={18} /> },
     { path: "/alerts", label: "Alerts", icon: <Bell size={18} /> },
   ];

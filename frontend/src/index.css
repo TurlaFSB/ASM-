@@ -912,3 +912,20 @@ input:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* ── Table overflow + column control ────── */
+.table-container {
+  overflow-x: auto;
+}
+
+table {
+  min-width: 100%;
+}
+
+td, th {
+  white-space: nowrap;
+}
+
+td.wrap {
+  white-space: normal;
+}

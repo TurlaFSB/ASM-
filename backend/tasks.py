@@ -62,29 +62,44 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
 
         # Stage 1: Subdomain enumeration
         self.update_state(state="PROGRESS", meta={"stage": "subdomain_enumeration"})
+        if scan:
+            scan.current_stage = "subdomain_enumeration"
+            db.commit()
         subdomain_data = enumerate_subdomains(domain, rate_limit)
         module_results["subdomain"] = subdomain_data["module_status"]["subfinder"]
         subdomains = subdomain_data["subdomains"]
 
         # Stage 2: DNS resolution
         self.update_state(state="PROGRESS", meta={"stage": "dns_resolution"})
+        if scan:
+            scan.current_stage = "dns_resolution"
+            db.commit()
         dns_data = resolve_subdomains(subdomains)
         module_results["dns"] = dns_data["module_status"]
         live_hosts = dns_data["live"]
 
         # Stage 3: Port scanning
         self.update_state(state="PROGRESS", meta={"stage": "port_scanning"})
+        if scan:
+            scan.current_stage = "port_scanning"
+            db.commit()
         port_data = scan_multiple_hosts(live_hosts, rate_limit)
         module_results["portscan"] = port_data["module_status"]
 
         # Stage 4: HTTP probing
         self.update_state(state="PROGRESS", meta={"stage": "http_probing"})
+        if scan:
+            scan.current_stage = "http_probing"
+            db.commit()
         host_urls = [f"http://{h['subdomain']}" for h in live_hosts]
         http_data = run_httpx(host_urls, rate_limit)
         module_results["httpprobe"] = http_data["module_status"]
 
         # Stage 5: Vulnerability scanning
         self.update_state(state="PROGRESS", meta={"stage": "vuln_scanning"})
+        if scan:
+            scan.current_stage = "vuln_scanning"
+            db.commit()
         vuln_data = run_nuclei(host_urls, rate_limit)
         module_results["vuln"] = vuln_data["module_status"]
 
@@ -124,11 +139,17 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
 
         # Stage 6: Screenshots
         self.update_state(state="PROGRESS", meta={"stage": "screenshots"})
+        if scan:
+            scan.current_stage = "screenshots"
+            db.commit()
         screenshot_data = run_eyewitness(host_urls)
         module_results["screenshot"] = screenshot_data["module_status"]
 
         # Stage 7: Save assets to DB with upsert + change detection
         self.update_state(state="PROGRESS", meta={"stage": "saving_results"})
+        if scan:
+            scan.current_stage = "saving_results"
+            db.commit()
 
         http_lookup = {h["host"]: h for h in http_data["hosts"]}
         port_lookup = {h["subdomain"]: h["ports"] for h in port_data["hosts"]}
@@ -239,6 +260,9 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
 
         # Stage 8: Risk scoring
         self.update_state(state="PROGRESS", meta={"stage": "risk_scoring"})
+        if scan:
+            scan.current_stage = "risk_scoring"
+            db.commit()
         from backend.risk_scoring import score_all_assets
         score_all_assets(db, target_id, scan_id)
 
