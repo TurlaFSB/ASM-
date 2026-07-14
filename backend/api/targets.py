@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from backend.db import get_db
 from backend.models.target import Target
 from backend.auth import get_current_user
+from backend.audit import log_action
 
 router = APIRouter(prefix="/targets", tags=["targets"])
 
@@ -106,6 +107,8 @@ def create_target(target: TargetCreate, db: Session = Depends(get_db), current_u
     db.add(db_target)
     db.commit()
     db.refresh(db_target)
+    log_action(db, current_user.username, "target_created", target_id=db_target.id,
+               detail={"domain": db_target.domain, "authorized_by": db_target.authorized_by})
     return db_target
 
 @router.get("/")
@@ -127,4 +130,6 @@ def delete_target(target_id: int, db: Session = Depends(get_db), current_user: d
         raise HTTPException(status_code=404, detail="Target not found")
     target.is_active = False
     db.commit()
+    log_action(db, current_user.username, "target_deleted", target_id=target.id,
+               detail={"domain": target.domain})
     return {"message": f"Target {target.domain} deactivated"}

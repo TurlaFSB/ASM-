@@ -8,6 +8,7 @@ from backend.models.target import Target
 from backend.models.asset import Asset
 from backend.tasks import run_scan, celery_app
 from backend.auth import get_current_user
+from backend.audit import log_action
 
 router = APIRouter(prefix="/scans", tags=["scans"])
 
@@ -44,6 +45,8 @@ def trigger_scan(scan: ScanCreate, db: Session = Depends(get_db), current_user: 
     db.add(db_scan)
     db.commit()
     db.refresh(db_scan)
+    log_action(db, current_user.username, "scan_triggered", target_id=target.id,
+               scan_id=db_scan.id, detail={"domain": target.domain})
 
     task = run_scan.delay(
         target_id=target.id,
@@ -103,6 +106,8 @@ def cancel_scan(scan_id: int, db: Session = Depends(get_db), current_user: dict 
     celery_app.control.revoke(str(scan.id), terminate=True)
     scan.status = "cancelled"
     db.commit()
+    log_action(db, current_user.username, "scan_cancelled", target_id=scan.target_id,
+               scan_id=scan.id)
     return {"message": "Scan cancelled"}
 
 from fastapi.responses import Response

@@ -11,6 +11,7 @@ from backend.api.alerts import router as alerts_router
 from backend.api.vulnerabilities import router as vulnerabilities_router
 from backend.api.auth import router as auth_router
 from backend.api.schedules import router as schedules_router
+from backend.api.audit import router as audit_router
 from backend.auth import get_current_user
 
 app = FastAPI(
@@ -33,6 +34,7 @@ app.include_router(scans_router)
 app.include_router(alerts_router)
 app.include_router(vulnerabilities_router)
 app.include_router(schedules_router)
+app.include_router(audit_router)
 
 @app.on_event("startup")
 async def startup():
