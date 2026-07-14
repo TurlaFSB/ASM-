@@ -1,17 +1,19 @@
 import { useState, useEffect } from "react";
-import { getTargets, getScans } from "../api";
-import { Shield, Activity, AlertTriangle, CheckCircle } from "lucide-react";
+import { getTargets, getScans, getAssets } from "../api";
+import { Shield, Activity, AlertTriangle, CheckCircle, Flame } from "lucide-react";
 
 export default function Dashboard() {
   const [targets, setTargets] = useState([]);
   const [scans, setScans] = useState([]);
+  const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([getTargets(), getScans()])
-      .then(([t, s]) => {
+    Promise.all([getTargets(), getScans(), getAssets()])
+      .then(([t, s, a]) => {
         setTargets(t.data);
         setScans(s.data);
+        setAssets(a.data);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -23,6 +25,15 @@ export default function Dashboard() {
   const completedScans = scans.filter(s => s.status === "completed").length;
   const runningScans = scans.filter(s => s.status === "running").length;
   const totalAssets = scans.reduce((acc, s) => acc + (s.total_assets || 0), 0);
+
+  const highRiskCount = assets.filter(a =>
+    a.risk_level === "Critical" || a.risk_level === "High"
+  ).length;
+
+  const topRiskAssets = [...assets]
+    .filter(a => a.risk_score != null && a.status !== "disappeared")
+    .sort((a, b) => (b.risk_score || 0) - (a.risk_score || 0))
+    .slice(0, 5);
 
   if (loading) return <div className="loading">Loading...</div>;
 
@@ -53,13 +64,43 @@ export default function Dashboard() {
           </div>
         </div>
         <div className="stat-card">
-          <AlertTriangle size={24} />
+          <Flame size={24} style={{ color: highRiskCount > 0 ? "var(--red)" : undefined }} />
           <div>
-            <h3>{runningScans}</h3>
-            <p>Running Scans</p>
+            <h3 style={{ color: highRiskCount > 0 ? "var(--red)" : undefined }}>{highRiskCount}</h3>
+            <p>High/Critical Risk Assets</p>
           </div>
         </div>
       </div>
+
+      {topRiskAssets.length > 0 && (
+        <div className="recent-scans" style={{ marginBottom: 32 }}>
+          <h2>Highest Risk Assets</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Subdomain</th>
+                <th>Target</th>
+                <th>Risk Level</th>
+                <th>Score</th>
+              </tr>
+            </thead>
+            <tbody>
+              {topRiskAssets.map(a => (
+                <tr key={a.id}>
+                  <td className="mono">{a.subdomain}</td>
+                  <td>{targetMap[a.target_id] || `Target #${a.target_id}`}</td>
+                  <td>
+                    <span className={`badge badge-risk-${a.risk_level.toLowerCase()}`}>
+                      {a.risk_level}
+                    </span>
+                  </td>
+                  <td style={{ fontFamily: "monospace" }}>{a.risk_score}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className="recent-scans">
         <h2>Recent Scans</h2>

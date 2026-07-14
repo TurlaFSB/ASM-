@@ -26,6 +26,16 @@ def trigger_scan(scan: ScanCreate, db: Session = Depends(get_db), current_user: 
             detail=f"Target {target.domain} is not authorized for scanning."
         )
 
+    active_scan = db.query(Scan).filter(
+        Scan.target_id == target.id,
+        Scan.status.in_(["pending", "running"])
+    ).first()
+    if active_scan:
+        raise HTTPException(
+            status_code=409,
+            detail=f"A scan (#{active_scan.id}) is already {active_scan.status} for {target.domain}. Wait for it to finish or cancel it first."
+        )
+
     db_scan = Scan(
         target_id=target.id,
         status="pending",
