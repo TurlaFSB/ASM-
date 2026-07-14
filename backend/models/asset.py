@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, JSON
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, JSON, Float
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from backend.db import Base
@@ -23,6 +23,8 @@ class Asset(Base):
     content_hash = Column(String, nullable=True)   # hash of ports+techs+status+title
     last_seen = Column(DateTime(timezone=True), nullable=True)
     status = Column(String, default="active")      # active, disappeared, new
+    risk_score = Column(Float, nullable=True)
+    risk_level = Column(String, nullable=True)  # Critical, High, Medium, Low, Informational
     
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())

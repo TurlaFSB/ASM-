@@ -17,6 +17,12 @@ celery_app.conf.update(
     task_track_started=True,
     task_acks_late=True,
     broker_connection_retry_on_startup=True,
+    beat_schedule={
+        "check-scheduled-scans-every-minute": {
+            "task": "check_scheduled_scans",
+            "schedule": 60.0,
+        },
+    },
 )
 
 @celery_app.task(bind=True, name="run_scan")
@@ -84,15 +90,17 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
 
         # Save Nuclei findings to DB
         for finding in vuln_data.get("findings", []):
-            cve_id = None
             tags = finding.get("tags", [])
-            if isinstance(tags, list):
+            template_id = finding.get("template_id", "")
+
+            # Prefer real CVE from Nuclei's classification block; fall back to
+            # tag/template-id pattern matching only if classification is absent.
+            cve_id = finding.get("cve_id")
+            if not cve_id and isinstance(tags, list):
                 for tag in tags:
                     if str(tag).upper().startswith("CVE-"):
                         cve_id = str(tag).upper()
                         break
-
-            template_id = finding.get("template_id", "")
             if not cve_id and template_id.upper().startswith("CVE-"):
                 cve_id = template_id.upper()
 
@@ -107,7 +115,8 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                 vuln_type=finding.get("type", ""),
                 tags=tags,
                 host=finding.get("host", ""),
-                cve_id=cve_id
+                cve_id=cve_id,
+                cvss_score=finding.get("cvss_score")
             )
             db.add(vuln)
 
@@ -228,6 +237,11 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
 
         db.commit()
 
+        # Stage 8: Risk scoring
+        self.update_state(state="PROGRESS", meta={"stage": "risk_scoring"})
+        from backend.risk_scoring import score_all_assets
+        score_all_assets(db, target_id, scan_id)
+
         if scan:
             scan.status = "completed"
             scan.completed_at = datetime.now(timezone.utc)
@@ -256,5 +270,58 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             db.commit()
         raise
 
+    finally:
+        db.close()
+
+@celery_app.task(name="check_scheduled_scans")
+def check_scheduled_scans():
+    """
+    Runs periodically (via Celery Beat). Checks for due ScheduledScan rows,
+    triggers a scan for each, and advances next_run_at.
+    """
+    from backend.db import SessionLocal
+    from backend.models.schedule import ScheduledScan
+    from backend.models.scan import Scan
+    from backend.models.target import Target
+    from croniter import croniter
+    from datetime import datetime, timezone
+
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        due = db.query(ScheduledScan).filter(
+            ScheduledScan.enabled == True,
+            ScheduledScan.next_run_at <= now
+        ).all()
+
+        for sched in due:
+            target = db.query(Target).filter(Target.id == sched.target_id).first()
+            if not target or not target.authorized or not target.is_active:
+                # Skip and push next_run forward so we don't spin on a dead/unauthorized target
+                itr = croniter(sched.cron_expression, now)
+                sched.next_run_at = itr.get_next(datetime)
+                continue
+
+            db_scan = Scan(
+                target_id=target.id,
+                status="pending",
+                created_at=now
+            )
+            db.add(db_scan)
+            db.commit()
+            db.refresh(db_scan)
+
+            run_scan.delay(
+                target_id=target.id,
+                domain=target.domain,
+                rate_limit=target.rate_limit,
+                scan_id=db_scan.id
+            )
+
+            sched.last_run_at = now
+            itr = croniter(sched.cron_expression, now)
+            sched.next_run_at = itr.get_next(datetime)
+
+        db.commit()
     finally:
         db.close()

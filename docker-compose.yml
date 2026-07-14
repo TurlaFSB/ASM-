@@ -1,0 +1,95 @@
+services:
+  postgres:
+    image: postgres:18.4
+    container_name: asm_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: asm_user
+      POSTGRES_PASSWORD: asm_password
+      POSTGRES_DB: asm_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U asm_user -d asm_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:8.0.6
+    container_name: asm_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: asm_backend
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - screenshots_data:/app/screenshots
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: asm_celery_worker
+    restart: unless-stopped
+    command: celery -A backend.tasks worker --loglevel=info
+    env_file:
+      - .env.docker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - screenshots_data:/app/screenshots
+
+  celery_beat:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: asm_celery_beat
+    restart: unless-stopped
+    command: celery -A backend.tasks beat --loglevel=info
+    env_file:
+      - .env.docker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: asm_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  screenshots_data:

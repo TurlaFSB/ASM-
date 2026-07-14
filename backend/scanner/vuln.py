@@ -48,15 +48,21 @@ def run_nuclei(hosts: List[str], rate_limit: int = 10) -> Dict:
                     continue
                 try:
                     data = json.loads(line)
+                    info = data.get("info", {})
+                    classification = info.get("classification", {}) or {}
+                    cve_ids = classification.get("cve-id") or []
                     result["findings"].append({
                         "host": data.get("host", ""),
                         "template_id": data.get("template-id", ""),
-                        "name": data.get("info", {}).get("name", ""),
-                        "severity": data.get("info", {}).get("severity", ""),
-                        "description": data.get("info", {}).get("description", ""),
+                        "name": info.get("name", ""),
+                        "severity": info.get("severity", ""),
+                        "description": info.get("description", ""),
                         "matched_at": data.get("matched-at", ""),
                         "type": data.get("type", ""),
-                        "tags": data.get("info", {}).get("tags", [])
+                        "tags": info.get("tags", []),
+                        "cvss_score": classification.get("cvss-score"),
+                        "cvss_metrics": classification.get("cvss-metrics"),
+                        "cve_id": cve_ids[0] if cve_ids else None
                     })
                 except json.JSONDecodeError:
                     continue

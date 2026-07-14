@@ -12,3 +12,5 @@ screenshots/
 .vscode/
 .idea/
 .DS_Store
+.env.docker
+celerybeat-schedule*
