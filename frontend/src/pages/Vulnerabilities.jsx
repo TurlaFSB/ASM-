@@ -59,6 +59,7 @@ export default function Vulnerabilities() {
               <th>Severity</th>
               <th>Name</th>
               <th>Host</th>
+              <th>Port</th>
               <th>Matched At</th>
               <th>CVE</th>
               <th>Template</th>
@@ -77,6 +78,9 @@ export default function Vulnerabilities() {
                 </td>
                 <td style={{ fontFamily: "monospace", fontSize: 12 }}>
                   {vuln.host}
+                </td>
+                <td style={{ fontFamily: "monospace", fontSize: 12 }}>
+                  {vuln.port || "—"}
                 </td>
                 <td style={{ fontFamily: "monospace", fontSize: 12 }}>
                   {vuln.matched_at || "—"}

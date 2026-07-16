@@ -929,3 +929,50 @@ td, th {
 td.wrap {
   white-space: normal;
 }
+
+/* ── Apple-style horizontal scroll for tables ────── */
+.table-container {
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.3s ease;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-container:hover {
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.table-container::-webkit-scrollbar {
+  height: 6px;
+}
+
+.table-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.table-container::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 10px;
+  transition: background 0.25s ease;
+}
+
+.table-container:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.table-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28) !important;
+}
+
+/* Soft edge fades instead of a visible cutoff — the real Apple cue */
+.table-container {
+  background:
+    linear-gradient(var(--surface), var(--surface)) left,
+    linear-gradient(var(--surface), var(--surface)) right,
+    linear-gradient(to right, rgba(0,0,0,0.35), rgba(0,0,0,0)) left,
+    linear-gradient(to left, rgba(0,0,0,0.35), rgba(0,0,0,0)) right;
+  background-repeat: no-repeat;
+  background-size: 24px 100%, 24px 100%, 24px 100%, 24px 100%;
+  background-attachment: local, local, scroll, scroll;
+}

@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: "http://192.168.16.130:8000"
+  baseURL: "http://192.168.75.129:8000"
 });
 
 api.interceptors.request.use(config => {
@@ -48,3 +48,9 @@ export const getSchedules = () => api.get("/schedules/");
 export const createSchedule = (data) => api.post("/schedules/", data);
 export const toggleSchedule = (id) => api.patch(`/schedules/${id}/toggle`);
 export const deleteSchedule = (id) => api.delete(`/schedules/${id}`);
+
+export const downloadAssetsCsv = (id) =>
+  api.get(`/scans/${id}/export/assets.csv`, { responseType: "blob" });
+
+export const downloadVulnerabilitiesCsv = (id) =>
+  api.get(`/scans/${id}/export/vulnerabilities.csv`, { responseType: "blob" });

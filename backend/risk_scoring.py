@@ -26,6 +26,7 @@ SEVERITY_CVSS_MIDPOINT = {
 }
 
 from backend.kev import is_known_exploited
+from urllib.parse import urlparse
 
 HIGH_RISK_PORTS = {
     3306: "MySQL", 5432: "PostgreSQL", 27017: "MongoDB", 6379: "Redis",
@@ -109,6 +110,13 @@ def score_asset(asset, vulns_for_asset: list) -> dict:
     }
 
 
+def _extract_host(url_or_host: str) -> str:
+    """Get bare hostname from a URL or already-bare host string."""
+    if "://" in url_or_host:
+        return urlparse(url_or_host).hostname or ""
+    return url_or_host.split("/")[0].split(":")[0]
+
+
 def score_all_assets(db, target_id: int, scan_id: int):
     """
     Score every asset belonging to target_id using vulnerabilities from scan_id.
@@ -123,15 +131,12 @@ def score_all_assets(db, target_id: int, scan_id: int):
 
     vulns_by_host = {}
     for v in vulns:
-        vulns_by_host.setdefault(v.host, []).append(v)
+        host = _extract_host(v.host or "")
+        if host:
+            vulns_by_host.setdefault(host.lower(), []).append(v)
 
     for asset in assets:
-        # Nuclei "host" values are full URLs (http://sub.domain.com); match loosely
-        matched = []
-        for host_key, host_vulns in vulns_by_host.items():
-            if asset.subdomain in host_key:
-                matched.extend(host_vulns)
-
+        matched = vulns_by_host.get((asset.subdomain or "").lower(), [])
         result = score_asset(asset, matched)
         asset.risk_score = result["risk_score"]
         asset.risk_level = result["risk_level"]

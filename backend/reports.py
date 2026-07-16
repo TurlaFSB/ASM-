@@ -19,7 +19,7 @@ SEVERITY_RECOMMENDATIONS = {
 }
 
 def calculate_risk_rating(vulns):
-    severities = {v.severity.lower() for v in vulns}
+    severities = {(v.severity or "informational").lower() for v in vulns}
     for level in SEVERITY_ORDER:
         if level in severities:
             return level.capitalize()
@@ -37,7 +37,7 @@ def build_report_context(db: Session, scan_id: int):
 
     severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
     for v in vulns:
-        sev = v.severity.lower()
+        sev = (v.severity or "informational").lower()
         if sev in severity_counts:
             severity_counts[sev] += 1
 

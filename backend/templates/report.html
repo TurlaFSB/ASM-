@@ -10,7 +10,7 @@
       content: "CONFIDENTIAL — Attack Surface Assessment — Page " counter(page) " of " counter(pages);
       font-size: 8px;
       color: #9ca3af;
-      font-family: 'DejaVu Sans', Arial, sans-serif;
+      font-family: 'Inter', 'DejaVu Sans', Arial, sans-serif;
     }
   }
   @page cover {
@@ -20,10 +20,11 @@
 
   * { box-sizing: border-box; }
   body {
-    font-family: 'DejaVu Sans', Arial, sans-serif;
+    font-family: 'Inter', 'DejaVu Sans', Arial, sans-serif;
     font-size: 10.5px;
     color: #1f2430;
-    line-height: 1.5;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
   }
 
   /* ---------- COVER PAGE ---------- */
@@ -35,21 +36,46 @@
     color: #ffffff;
     padding: 3cm 2.2cm;
     position: relative;
+    display: flex;
+    flex-direction: column;
   }
+  .cover .cover-body { flex: 1; display: flex; flex-direction: column; }
+  .cover .scope-block { margin-top: 50px; }
+  .cover .scope-block .label {
+    font-size: 9px; color: #94a3b8; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 10px;
+  }
+  .cover .scope-block p { font-size: 10.5px; color: #cbd5e1; line-height: 1.8; max-width: 85%; }
+  .cover .stat-row { display: flex; gap: 14px; margin-top: 40px; }
+  .cover .stat-chip {
+    flex: 1; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1);
+    border-top: 2px solid rgba(255,255,255,0.25);
+    border-radius: 4px; padding: 14px 16px; text-align: center;
+  }
+  .cover .stat-chip.critical { border-top-color: #f87171; }
+  .cover .stat-chip.high { border-top-color: #fb923c; }
+  .cover .stat-chip.medium { border-top-color: #fbbf24; }
+  .cover .stat-chip.low { border-top-color: #4ade80; }
+  .cover .stat-chip .n { font-size: 22px; font-weight: 700; }
+  .cover .stat-chip .l { font-size: 8px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.6px; margin-top: 3px; }
+  .cover .stat-chip.critical .n { color: #f87171; }
+  .cover .stat-chip.high .n { color: #fb923c; }
+  .cover .stat-chip.medium .n { color: #fbbf24; }
+  .cover .stat-chip.low .n { color: #4ade80; }
   .cover .tag {
     display: inline-block;
-    background: #dc2626;
-    color: #fff;
-    font-size: 10px;
-    font-weight: bold;
+    background: transparent;
+    border: 1px solid #dc2626;
+    color: #f87171;
+    font-size: 8.5px;
+    font-weight: 700;
     letter-spacing: 2px;
-    padding: 4px 12px;
+    padding: 4px 11px;
     border-radius: 3px;
-    margin-bottom: 40px;
   }
   .cover h1 {
     font-size: 34px;
-    font-weight: bold;
+    font-weight: 800;
+    letter-spacing: -0.5px;
     margin: 0 0 10px 0;
     line-height: 1.2;
   }
@@ -94,10 +120,7 @@
     margin-top: 4px;
   }
   .cover .risk-strip {
-    position: absolute;
-    bottom: 3cm;
-    left: 2.2cm;
-    right: 2.2cm;
+    margin-top: 40px;
     padding: 16px 20px;
     border-radius: 6px;
     display: flex;
@@ -135,7 +158,7 @@
   p.section-intro { color: #4b5563; font-size: 10px; margin-bottom: 16px; }
 
   /* ---------- TABLES ---------- */
-  table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 9.5px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 9.5px; word-wrap: break-word; }
   thead th {
     background: #0b0f1a;
     color: #fff;
@@ -160,11 +183,11 @@
     letter-spacing: 0.4px;
     text-transform: uppercase;
   }
-  .critical { background: #b91c1c; }
-  .high { background: #ea580c; }
-  .medium { background: #ca8a04; }
-  .low { background: #16a34a; }
-  .informational { background: #475569; }
+  .badge.critical { background: #b91c1c; }
+  .badge.high { background: #ea580c; }
+  .badge.medium { background: #ca8a04; }
+  .badge.low { background: #16a34a; }
+  .badge.informational { background: #475569; }
 
   /* ---------- SUMMARY BOXES ---------- */
   .summary-grid { display: flex; gap: 12px; margin: 16px 0 20px 0; }
@@ -214,6 +237,21 @@
   }
 
   a { color: #1d4ed8; text-decoration: none; }
+
+  /* ---------- WATERMARK ---------- */
+  .page-watermark {
+    position: fixed;
+    top: 45%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-32deg);
+    font-size: 52px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    color: rgba(11, 15, 26, 0.035);
+    z-index: -1;
+    white-space: nowrap;
+    pointer-events: none;
+  }
   .empty-state { color: #9ca3af; font-style: italic; font-size: 9.5px; padding: 10px 0; }
   .callout {
     background: #fef2f2;
@@ -229,33 +267,58 @@
 </head>
 <body>
 
+<div class="page-watermark">PRANAV — TurlaFSB</div>
+
 <!-- ================= COVER PAGE ================= -->
 <div class="cover">
-  <div class="tag">CONFIDENTIAL</div>
-  <h1>Attack Surface<br>Assessment Report</h1>
-  <div class="subtitle">Automated Attack Surface Management &amp; Vulnerability Assessment</div>
+  <div class="cover-body">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:40px;">
+      <div class="tag">CONFIDENTIAL</div>
+      <div style="text-align:right;">
+        <div style="font-size:11px; font-weight:700; letter-spacing:1px; color:#e2e8f0;">PRANAV <span style="color:#64748b; font-weight:400;">(TurlaFSB)</span></div>
+        <div style="font-size:7.5px; color:#64748b; letter-spacing:1.5px; text-transform:uppercase; margin-top:2px;">Offensive Security &amp; Detection Engineering</div>
+      </div>
+    </div>
+    <h1>Attack Surface<br>Assessment Report</h1>
+    <div class="subtitle">Automated Attack Surface Management &amp; Vulnerability Assessment</div>
 
-  <div class="domain-box">
-    <div class="label">Target Domain</div>
-    <div class="value">{{ target.domain }}</div>
-  </div>
+    <div class="domain-box">
+      <div class="label">Target Domain</div>
+      <div class="value">{{ target.domain }}</div>
+    </div>
 
-  <div class="meta-row">
-    <div class="meta-item">
-      <div class="label">Scan Date</div>
-      <div class="value">{{ scan.started_at.strftime('%d %B %Y') if scan.started_at else 'N/A' }}</div>
+    <div class="meta-row">
+      <div class="meta-item">
+        <div class="label">Scan Date</div>
+        <div class="value">{{ scan.started_at.strftime('%d %B %Y') if scan.started_at else 'N/A' }}</div>
+      </div>
+      <div class="meta-item">
+        <div class="label">Duration</div>
+        <div class="value">{{ duration or 'N/A' }}</div>
+      </div>
+      <div class="meta-item">
+        <div class="label">Assets Analyzed</div>
+        <div class="value">{{ assets|length }}</div>
+      </div>
+      <div class="meta-item">
+        <div class="label">Report Generated</div>
+        <div class="value">{{ generated_at.strftime('%d %B %Y') }}</div>
+      </div>
     </div>
-    <div class="meta-item">
-      <div class="label">Duration</div>
-      <div class="value">{{ duration or 'N/A' }}</div>
+
+    <div class="scope-block">
+      <div class="label">Assessment Scope</div>
+      <p>This assessment covers external attack surface enumeration, service fingerprinting, and vulnerability
+      detection across all discovered assets for <strong>{{ target.domain }}</strong>. Findings are classified
+      by severity in accordance with industry-standard CVSS scoring, and prioritized remediation guidance is
+      provided in Section 05 of this report.</p>
     </div>
-    <div class="meta-item">
-      <div class="label">Assets Analyzed</div>
-      <div class="value">{{ assets|length }}</div>
-    </div>
-    <div class="meta-item">
-      <div class="label">Report Generated</div>
-      <div class="value">{{ generated_at.strftime('%d %B %Y') }}</div>
+
+    <div class="stat-row">
+      <div class="stat-chip critical"><div class="n">{{ severity_counts.critical }}</div><div class="l">Critical</div></div>
+      <div class="stat-chip high"><div class="n">{{ severity_counts.high }}</div><div class="l">High</div></div>
+      <div class="stat-chip medium"><div class="n">{{ severity_counts.medium }}</div><div class="l">Medium</div></div>
+      <div class="stat-chip low"><div class="n">{{ severity_counts.low }}</div><div class="l">Low</div></div>
     </div>
   </div>
 
@@ -298,7 +361,15 @@
 <p class="section-intro">The following assets were discovered and enumerated during subdomain enumeration, DNS resolution, and HTTP probing.</p>
 
 {% if assets %}
-<table>
+<table style="table-layout: fixed;">
+<colgroup>
+  <col style="width: 15%;">
+  <col style="width: 11%;">
+  <col style="width: 7%;">
+  <col style="width: 15%;">
+  <col style="width: 17%;">
+  <col style="width: 35%;">
+</colgroup>
 <thead><tr><th>Subdomain</th><th>IP Address</th><th>HTTP Status</th><th>Page Title</th><th>Technologies</th><th>Open Ports</th></tr></thead>
 <tbody>
 {% for a in assets %}
@@ -308,7 +379,17 @@
   <td>{{ a.http_status or '—' }}</td>
   <td>{{ a.http_title or '—' }}</td>
   <td>{{ a.technologies|join(', ') if a.technologies else '—' }}</td>
-  <td>{{ a.open_ports|join(', ') if a.open_ports else '—' }}</td>
+  <td style="word-wrap: break-word; overflow-wrap: break-word; vertical-align: top;">
+    {% if a.open_ports %}
+    {% for p in a.open_ports %}
+      <div style="font-size:8px; line-height:1.5; {% if not loop.last %}border-bottom:1px solid #eef0f3; padding-bottom:3px; margin-bottom:3px;{% endif %}">
+        <span style="font-family:monospace; font-weight:600; color:#0b0f1a;">{{ p.port }}/{{ p.protocol }}</span>
+        <span style="color:#6b7280;"> — {{ p.service or 'unknown' }}</span>
+        {% if p.product %}<br><span style="color:#374151;">{{ p.product }}{% if p.version %} {{ p.version }}{% endif %}</span>{% endif %}
+      </div>
+    {% endfor %}
+    {% else %}<span style="color:#9ca3af;">—</span>{% endif %}
+  </td>
 </tr>
 {% endfor %}
 </tbody>

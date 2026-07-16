@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     app_port: int = 8000
     default_rate_limit: int = 10
     scan_timeout: int = 300
-    secret_key: str = "changeme"
+    secret_key: str          # no default — must be set via env/.env, app fails to start otherwise
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 480
 

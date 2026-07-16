@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
 from datetime import datetime, timezone
 from backend.db import get_db
 from backend.models.scan import Scan
 from backend.models.target import Target
 from backend.models.asset import Asset
+from backend.models.vulnerability import Vulnerability
 from backend.tasks import run_scan, celery_app
 from backend.auth import get_current_user
 from backend.audit import log_action
@@ -65,15 +66,22 @@ def trigger_scan(scan: ScanCreate, db: Session = Depends(get_db), current_user: 
 
 @router.get("/")
 def list_scans(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
-    scans = db.query(Scan).order_by(Scan.created_at.desc()).all()
-    return scans
+    scans = db.query(Scan).options(joinedload(Scan.target)).order_by(Scan.created_at.desc()).all()
+    result = []
+    for s in scans:
+        row = {c.name: getattr(s, c.name) for c in s.__table__.columns}
+        row["target_domain"] = s.target.domain if s.target else None
+        result.append(row)
+    return result
 
 @router.get("/{scan_id}")
 def get_scan(scan_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
-    scan = db.query(Scan).filter(Scan.id == scan_id).first()
+    scan = db.query(Scan).options(joinedload(Scan.target)).filter(Scan.id == scan_id).first()
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
-    return scan
+    row = {c.name: getattr(scan, c.name) for c in scan.__table__.columns}
+    row["target_domain"] = scan.target.domain if scan.target else None
+    return row
 
 @router.get("/{scan_id}/assets")
 def get_scan_assets(scan_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
@@ -126,4 +134,73 @@ def download_scan_report(scan_id: int, db: Session = Depends(get_db), current_us
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename=asm_report_scan_{scan_id}.pdf"}
+    )
+
+import csv
+import io
+from fastapi.responses import StreamingResponse
+
+@router.get("/{scan_id}/export/assets.csv")
+def export_assets_csv(scan_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    scan = db.query(Scan).filter(Scan.id == scan_id).first()
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    assets = db.query(Asset).filter(Asset.target_id == scan.target_id).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["subdomain", "ip", "http_status", "http_title", "technologies",
+                      "open_ports", "risk_score", "risk_level", "status", "last_seen"])
+    for a in assets:
+        writer.writerow([
+            a.subdomain,
+            a.ip or "",
+            a.http_status or "",
+            a.http_title or "",
+            ", ".join(a.technologies or []),
+            ", ".join(str(p.get("port")) for p in (a.open_ports or [])),
+            a.risk_score if a.risk_score is not None else "",
+            a.risk_level or "",
+            a.status or "",
+            a.last_seen.isoformat() if a.last_seen else "",
+        ])
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=assets_scan_{scan_id}.csv"}
+    )
+
+
+@router.get("/{scan_id}/export/vulnerabilities.csv")
+def export_vulnerabilities_csv(scan_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    scan = db.query(Scan).filter(Scan.id == scan_id).first()
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    vulns = db.query(Vulnerability).filter(Vulnerability.scan_id == scan_id).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["severity", "name", "host", "cve_id", "cvss_score",
+                      "template_id", "matched_at", "description"])
+    for v in vulns:
+        writer.writerow([
+            v.severity or "",
+            v.name or "",
+            v.host or "",
+            v.cve_id or "",
+            v.cvss_score if v.cvss_score is not None else "",
+            v.template_id or "",
+            v.matched_at or "",
+            (v.description or "").replace("\n", " ").strip(),
+        ])
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=vulnerabilities_scan_{scan_id}.csv"}
     )

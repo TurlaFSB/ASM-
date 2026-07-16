@@ -1,135 +1,225 @@
 import subprocess
-import xml.etree.ElementTree as ET
+import subprocess
 import logging
-from typing import List, Dict
+import time
+import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Dict, List
+
+from backend.scanner.subdomain import _run_with_process_group_cleanup
 
 logger = logging.getLogger(__name__)
 
-MAX_CONCURRENT_SCANS = 5  # cap concurrent Nmap processes to avoid overwhelming the host/network
+MAX_CONCURRENT_SCANS = 10  # cap concurrent Nmap processes
 
 
 def parse_nmap_xml(xml_output: str) -> List[Dict]:
     """Parse nmap XML output into structured port list."""
     ports = []
+
     try:
+        xml_start = xml_output.find("<?xml")
+        if xml_start > 0:
+            xml_output = xml_output[xml_start:]
+
         root = ET.fromstring(xml_output)
+
         for host in root.findall("host"):
             for port in host.findall("ports/port"):
+
                 state = port.find("state")
                 service = port.find("service")
+
                 if state is not None and state.get("state") == "open":
-                    ports.append({
-                        "port": int(port.get("portid")),
-                        "protocol": port.get("protocol"),
-                        "service": service.get("name") if service is not None else "unknown",
-                        "version": service.get("version", "") if service is not None else "",
-                        "product": service.get("product", "") if service is not None else ""
-                    })
+                    ports.append(
+                        {
+                            "port": int(port.get("portid")),
+                            "protocol": port.get("protocol"),
+                            "service": service.get("name") if service is not None else "unknown",
+                            "version": service.get("version", "") if service is not None else "",
+                            "product": service.get("product", "") if service is not None else "",
+                        }
+                    )
+
     except ET.ParseError as e:
-        logger.error(f"Failed to parse nmap XML: {e}")
+        logger.error(f"Failed to parse Nmap XML: {e}")
+
     return ports
 
 
-def scan_ports(host: str, rate_limit: int = 10) -> Dict:
+def scan_ports(host: str, rate_limit: int = 100) -> Dict:
     """
-    Run nmap against a single host.
-    Returns structured port data with module status.
+    Run Nmap against a single host.
     """
+
     result = {
         "host": host,
         "ports": [],
-        "module_status": "ok"
+        "module_status": "ok",
     }
 
+    start = time.time()
+
     try:
-        nmap_result = subprocess.run(
+        nmap_result = _run_with_process_group_cleanup(
             [
                 "nmap",
-                "-sV",                          # service version detection
-                "--top-ports", "1000",          # top 1000 ports
-                "--max-rate", str(rate_limit),  # rate limiting
-                "--open",                       # only show open ports
-                "-T4",                          # timing template
-                "--host-timeout", "120s",       # per host timeout
-                "-oX", "-",                     # XML output to stdout
-                host
+                "-Pn",
+                "-n",
+                "-sS",
+                "-sV",
+                "--version-light",
+                "--top-ports",
+                "1000",
+                "--min-rate",
+                str(rate_limit),
+                "--open",
+                "-T4",
+                "--host-timeout",
+                "60s",
+                "-oX",
+                "-",
+                host,
             ],
-            capture_output=True,
-            text=True,
-            timeout=180
+            timeout=180,
         )
 
         if nmap_result.returncode != 0:
-            logger.error(f"Nmap failed for {host}: {nmap_result.stderr}")
+            duration = time.time() - start
+
+            logger.error(
+                f"[nmap] host={host} "
+                f"status=failed "
+                f"returncode={nmap_result.returncode} "
+                f"duration={duration:.2f}s"
+            )
+
+            if nmap_result.stderr:
+                logger.error(nmap_result.stderr.strip())
+
             result["module_status"] = "failed"
             return result
 
         result["ports"] = parse_nmap_xml(nmap_result.stdout)
-        logger.info(f"Nmap found {len(result['ports'])} open ports on {host}")
+
+        duration = time.time() - start
+
+        logger.info(
+            f"[nmap] host={host} "
+            f"status=ok "
+            f"ports={len(result['ports'])} "
+            f"duration={duration:.2f}s"
+        )
 
     except subprocess.TimeoutExpired:
-        logger.error(f"Nmap timed out for {host}")
+        duration = time.time() - start
+
+        logger.error(
+            f"[nmap] host={host} "
+            f"status=timeout "
+            f"duration={duration:.2f}s"
+        )
+
         result["module_status"] = "timeout"
+
     except FileNotFoundError:
-        logger.error("Nmap not found")
+        logger.error("[nmap] tool_not_found")
         result["module_status"] = "tool_not_found"
+
     except Exception as e:
-        logger.error(f"Nmap failed for {host}: {e}")
+        duration = time.time() - start
+
+        logger.error(
+            f"[nmap] host={host} "
+            f"status=failed "
+            f"error={e} "
+            f"duration={duration:.2f}s"
+        )
+
         result["module_status"] = f"failed: {e}"
 
     return result
 
 
-def scan_multiple_hosts(hosts: List[Dict], rate_limit: int = 10) -> Dict:
+def scan_multiple_hosts(hosts: List[Dict], rate_limit: int = 100) -> Dict:
     """
-    Scan all live hosts from DNS resolution results, concurrently.
+    Scan all live hosts concurrently.
+    """
 
-    Nmap subprocess calls are I/O-bound (waiting on network responses),
-    so a thread pool gives real wall-clock speedup without needing
-    async rewrites. Concurrency is capped at MAX_CONCURRENT_SCANS to
-    avoid overwhelming the local network stack or triggering aggressive
-    rate-limiting/WAF blocks on the target -- this is a deliberate
-    trade-off between speed and stealth/politeness, same consideration
-    real engagement tooling has to make.
-    """
     results = {
         "hosts": [],
         "module_status": "ok",
-        "failed_hosts": []
+        "failed_hosts": [],
     }
 
     if not hosts:
         return results
 
+    # Deduplicate hosts
+    seen = set()
+    hosts = [
+        h for h in hosts
+        if not (
+            h["subdomain"] in seen
+            or seen.add(h["subdomain"])
+        )
+    ]
+
+    overall_start = time.time()
+
     with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_SCANS) as executor:
+
         future_to_host = {
             executor.submit(scan_ports, h["subdomain"], rate_limit): h
             for h in hosts
         }
+
         for future in as_completed(future_to_host):
+
             host_data = future_to_host[future]
             host = host_data["subdomain"]
+
             try:
                 scan = future.result()
+
             except Exception as e:
                 logger.error(f"Unexpected error scanning {host}: {e}")
-                results["failed_hosts"].append({"subdomain": host, "reason": str(e)})
+
+                results["failed_hosts"].append(
+                    {
+                        "subdomain": host,
+                        "reason": str(e),
+                    }
+                )
+
                 continue
 
             if scan["module_status"] == "ok":
-                results["hosts"].append({
-                    "subdomain": host,
-                    "ip": host_data["ip"],
-                    "ports": scan["ports"]
-                })
+
+                results["hosts"].append(
+                    {
+                        "subdomain": host,
+                        "ip": host_data["ip"],
+                        "ports": scan["ports"],
+                    }
+                )
+
             else:
-                results["failed_hosts"].append({
-                    "subdomain": host,
-                    "reason": scan["module_status"]
-                })
+
+                results["failed_hosts"].append(
+                    {
+                        "subdomain": host,
+                        "reason": scan["module_status"],
+                    }
+                )
 
     if results["failed_hosts"]:
         results["module_status"] = "partial"
+
+    logger.info(
+        f"[nmap] scanned={len(results['hosts'])} "
+        f"failed={len(results['failed_hosts'])} "
+        f"duration={time.time() - overall_start:.2f}s"
+    )
 
     return results

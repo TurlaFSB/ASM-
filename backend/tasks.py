@@ -1,5 +1,8 @@
 from celery import Celery
+import logging
 from backend.config import settings
+
+logger = logging.getLogger(__name__)
 
 celery_app = Celery(
     "asm_platform",
@@ -43,13 +46,17 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
     from backend.models.asset import Asset
     from backend.models.alert import Alert
     from backend.models.vulnerability import Vulnerability
+    from backend.models.scan_asset import ScanAsset
     import hashlib
+    import time
     import json
     from datetime import datetime, timezone
 
     db = SessionLocal()
     module_results = {}
+    stage_timings = {}
     scan = None
+    overall_start = time.time()
 
     try:
         # Update scan status to running
@@ -60,48 +67,92 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                 scan.started_at = datetime.now(timezone.utc)
                 db.commit()
 
+        stage_start = time.time()
+
         # Stage 1: Subdomain enumeration
         self.update_state(state="PROGRESS", meta={"stage": "subdomain_enumeration"})
         if scan:
             scan.current_stage = "subdomain_enumeration"
             db.commit()
         subdomain_data = enumerate_subdomains(domain, rate_limit)
-        module_results["subdomain"] = subdomain_data["module_status"]["subfinder"]
+        module_results["subfinder"] = subdomain_data["module_status"]["subfinder"]
+        module_results["amass"] = subdomain_data["module_status"]["amass"]
         subdomains = subdomain_data["subdomains"]
+
+        stage_timings["subdomain"] = round(time.time()-stage_start,2)
+        logger.info(f"[pipeline] Subdomain completed in {stage_timings['subdomain']}s ({len(subdomains)} subdomains)")
 
         # Stage 2: DNS resolution
         self.update_state(state="PROGRESS", meta={"stage": "dns_resolution"})
         if scan:
             scan.current_stage = "dns_resolution"
             db.commit()
+        stage_start = time.time()
+
         dns_data = resolve_subdomains(subdomains)
         module_results["dns"] = dns_data["module_status"]
         live_hosts = dns_data["live"]
+
+        stage_timings["dns"] = round(time.time()-stage_start,2)
+        logger.info(f"[pipeline] DNS completed in {stage_timings['dns']}s ({len(live_hosts)} live hosts)")
 
         # Stage 3: Port scanning
         self.update_state(state="PROGRESS", meta={"stage": "port_scanning"})
         if scan:
             scan.current_stage = "port_scanning"
             db.commit()
+        stage_start = time.time()
+
         port_data = scan_multiple_hosts(live_hosts, rate_limit)
         module_results["portscan"] = port_data["module_status"]
+
+        stage_timings["portscan"] = round(time.time()-stage_start,2)
+        logger.info(
+            f"[pipeline] PortScan completed in {stage_timings['portscan']}s "
+            f"({len(port_data['hosts'])} hosts scanned)"
+        )
 
         # Stage 4: HTTP probing
         self.update_state(state="PROGRESS", meta={"stage": "http_probing"})
         if scan:
             scan.current_stage = "http_probing"
             db.commit()
-        host_urls = [f"http://{h['subdomain']}" for h in live_hosts]
-        http_data = run_httpx(host_urls, rate_limit)
+        # Feed HTTPX bare hostnames -- it determines http/https itself via
+        # -follow-redirects, so we don't need to force a scheme upfront.
+        stage_start = time.time()
+
+        bare_hosts = [h["subdomain"] for h in live_hosts]
+        http_data = run_httpx(bare_hosts, rate_limit)
         module_results["httpprobe"] = http_data["module_status"]
+
+        # Use CONFIRMED live URLs (with correct scheme) from HTTPX output for
+        # downstream tools, instead of the original guessed http:// list.
+        # Falls back to bare hostnames only if HTTPX found nothing, so
+        # nuclei/eyewitness don't get an empty target list on partial failure.
+        confirmed_urls = [h["url"] for h in http_data["hosts"] if h.get("url")]
+        host_urls = confirmed_urls if confirmed_urls else bare_hosts
+
+        stage_timings["httpx"] = round(time.time()-stage_start,2)
+        logger.info(
+            f"[pipeline] HTTPX completed in {stage_timings['httpx']}s "
+            f"({len(http_data['hosts'])} live web services)"
+        )
 
         # Stage 5: Vulnerability scanning
         self.update_state(state="PROGRESS", meta={"stage": "vuln_scanning"})
         if scan:
             scan.current_stage = "vuln_scanning"
             db.commit()
+        stage_start = time.time()
+
         vuln_data = run_nuclei(host_urls, rate_limit)
         module_results["vuln"] = vuln_data["module_status"]
+
+        stage_timings["nuclei"] = round(time.time()-stage_start,2)
+        logger.info(
+            f"[pipeline] Nuclei completed in {stage_timings['nuclei']}s "
+            f"({len(vuln_data.get('findings', []))} findings)"
+        )
 
         # Save Nuclei findings to DB
         for finding in vuln_data.get("findings", []):
@@ -142,8 +193,16 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         if scan:
             scan.current_stage = "screenshots"
             db.commit()
+        stage_start = time.time()
+
         screenshot_data = run_eyewitness(host_urls)
         module_results["screenshot"] = screenshot_data["module_status"]
+
+        stage_timings["eyewitness"] = round(time.time()-stage_start,2)
+        logger.info(
+            f"[pipeline] EyeWitness completed in {stage_timings['eyewitness']}s "
+            f"({len(screenshot_data.get('screenshots', []))} screenshots)"
+        )
 
         # Stage 7: Save assets to DB with upsert + change detection
         self.update_state(state="PROGRESS", meta={"stage": "saving_results"})
@@ -159,6 +218,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         disappeared_count = 0
 
         found_subdomains = set(h["subdomain"] for h in live_hosts)
+        scanned_assets_this_run = []
 
         existing_assets = db.query(Asset).filter(
             Asset.target_id == target_id,
@@ -219,6 +279,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                     existing.http_title = http_title
                     existing.status = "changed"
                     existing.last_seen = datetime.now(timezone.utc)
+                    scanned_assets_this_run.append(existing)
                     changed_count += 1
                     alert = Alert(
                         target_id=target_id,
@@ -231,6 +292,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                     db.add(alert)
                 else:
                     existing.last_seen = datetime.now(timezone.utc)
+                    scanned_assets_this_run.append(existing)
             else:
                 new_asset = Asset(
                     target_id=target_id,
@@ -245,6 +307,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                     last_seen=datetime.now(timezone.utc)
                 )
                 db.add(new_asset)
+                scanned_assets_this_run.append(new_asset)
                 new_count += 1
                 alert = Alert(
                     target_id=target_id,
@@ -258,13 +321,27 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
 
         db.commit()
 
+        # Record which assets were actually observed in this scan, for
+        # point-in-time report scoping (independent of Asset's mutable state)
+        for a in scanned_assets_this_run:
+            db.add(ScanAsset(scan_id=scan_id, asset_id=a.id))
+        db.commit()
+
         # Stage 8: Risk scoring
         self.update_state(state="PROGRESS", meta={"stage": "risk_scoring"})
         if scan:
             scan.current_stage = "risk_scoring"
             db.commit()
         from backend.risk_scoring import score_all_assets
+
+        stage_start = time.time()
         score_all_assets(db, target_id, scan_id)
+        stage_timings["risk_scoring"] = round(time.time() - stage_start, 2)
+
+        logger.info(
+            f"[pipeline] Risk scoring completed in "
+            f"{stage_timings['risk_scoring']}s"
+        )
 
         if scan:
             scan.status = "completed"
@@ -273,8 +350,14 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             scan.new_assets = new_count
             scan.changed_assets = changed_count
             scan.disappeared_assets = disappeared_count
+            module_results["stage_timings"] = stage_timings
             scan.module_results = module_results
             db.commit()
+
+        logger.info(
+            f"[pipeline] Total scan completed in "
+            f"{round(time.time()-overall_start,2)}s"
+        )
 
         return {
             "status": "completed",
@@ -289,6 +372,8 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
 
     except Exception as e:
         if scan:
+            module_results["stage_timings"] = stage_timings
+            scan.module_results = module_results
             scan.status = "failed"
             scan.error_log = str(e)
             db.commit()

@@ -105,7 +105,7 @@ export default function Scans() {
                   #{scan.id}
                 </td>
                 <td style={{ color: "var(--text-primary)", fontWeight: 500 }}>
-                  {scan.target?.domain || "Target #" + scan.target_id}
+                  {scan.target_domain || "Target #" + scan.target_id}
                 </td>
                 <td>
                   <span className={"badge badge-" + scan.status}>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { getTargets, getScans, getAssets } from "../api";
+import api, { getTargets, getScans, getAssets } from "../api";
 import { Shield, Activity, AlertTriangle, CheckCircle, Flame } from "lucide-react";
 
 export default function Dashboard() {
@@ -31,7 +31,7 @@ export default function Dashboard() {
   ).length;
 
   const topRiskAssets = [...assets]
-    .filter(a => a.risk_score != null && a.status !== "disappeared")
+    .filter(a => a.risk_score != null && a.risk_score > 0 && a.status !== "disappeared")
     .sort((a, b) => (b.risk_score || 0) - (a.risk_score || 0))
     .slice(0, 5);
 
@@ -112,26 +112,44 @@ export default function Dashboard() {
               <th>Assets</th>
               <th>New</th>
               <th>Changed</th>
+              <th>Duration</th>
               <th>Started</th>
             </tr>
           </thead>
           <tbody>
-            {scans.map(scan => (
-              <tr key={scan.id}>
-                <td style={{ color: "var(--text-primary)", fontWeight: 500 }}>
-                  {targetMap[scan.target_id] || "Target #" + scan.target_id}
-                </td>
-                <td>
-                  <span className={"badge badge-" + scan.status}>
-                    {scan.status}
-                  </span>
-                </td>
-                <td>{scan.total_assets || 0}</td>
-                <td>{scan.new_assets || 0}</td>
-                <td>{scan.changed_assets || 0}</td>
-                <td>{scan.started_at ? new Date(scan.started_at).toLocaleString() : "—"}</td>
-              </tr>
-            ))}
+            {scans.map(scan => {
+              const noResults = scan.status === "completed" && !(scan.total_assets > 0);
+              const duration = (scan.started_at && scan.completed_at)
+                ? Math.round((new Date(scan.completed_at) - new Date(scan.started_at)) / 1000)
+                : null;
+              const durationLabel = duration == null ? "—"
+                : duration < 60 ? `${duration}s`
+                : `${Math.floor(duration / 60)}m ${duration % 60}s`;
+              const started = scan.started_at ? new Date(scan.started_at) : null;
+              const minsAgo = started ? Math.round((Date.now() - started) / 60000) : null;
+              const relTime = minsAgo == null ? "—"
+                : minsAgo < 1 ? "just now"
+                : minsAgo < 60 ? `${minsAgo}m ago`
+                : minsAgo < 1440 ? `${Math.floor(minsAgo / 60)}h ago`
+                : started.toLocaleDateString();
+              return (
+                <tr key={scan.id} style={noResults ? { opacity: 0.45 } : undefined}>
+                  <td style={{ color: "var(--text-primary)", fontWeight: 500 }}>
+                    {scan.target_domain || targetMap[scan.target_id] || "Target #" + scan.target_id}
+                  </td>
+                  <td>
+                    <span className={"badge badge-" + scan.status}>
+                      {scan.status}
+                    </span>
+                  </td>
+                  <td>{scan.total_assets || 0}</td>
+                  <td>{scan.new_assets || 0}</td>
+                  <td>{scan.changed_assets || 0}</td>
+                  <td style={{ fontFamily: "monospace", fontSize: 12 }}>{durationLabel}</td>
+                  <td title={started ? started.toLocaleString() : ""}>{relTime}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
