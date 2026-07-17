@@ -56,6 +56,9 @@ def trigger_scan(scan: ScanCreate, db: Session = Depends(get_db), current_user: 
         scan_id=db_scan.id
     )
 
+    db_scan.celery_task_id = task.id
+    db.commit()
+
     return {
         "scan_id": db_scan.id,
         "task_id": task.id,
@@ -111,7 +114,8 @@ def cancel_scan(scan_id: int, db: Session = Depends(get_db), current_user: dict 
         raise HTTPException(status_code=404, detail="Scan not found")
     if scan.status not in ["pending", "running"]:
         raise HTTPException(status_code=400, detail="Scan is not running")
-    celery_app.control.revoke(str(scan.id), terminate=True)
+    if scan.celery_task_id:
+        celery_app.control.revoke(scan.celery_task_id, terminate=True)
     scan.status = "cancelled"
     db.commit()
     log_action(db, current_user.username, "scan_cancelled", target_id=scan.target_id,

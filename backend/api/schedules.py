@@ -25,6 +25,18 @@ class ScheduleCreate(BaseModel):
             raise ValueError(f"preset must be one of {list(PRESET_CRON.keys())}")
         return v
 
+class ScheduleUpdate(BaseModel):
+    preset: Optional[str] = None
+    cron_expression: Optional[str] = None
+    enabled: Optional[bool] = None
+
+    @field_validator("preset")
+    @classmethod
+    def validate_preset(cls, v):
+        if v is not None and v not in PRESET_CRON:
+            raise ValueError(f"preset must be one of {list(PRESET_CRON.keys())}")
+        return v
+
 class ScheduleResponse(BaseModel):
     id: int
     target_id: int
@@ -75,6 +87,35 @@ def create_schedule(payload: ScheduleCreate, db: Session = Depends(get_db), curr
 @router.get("/", response_model=list[ScheduleResponse])
 def list_schedules(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     return db.query(ScheduledScan).order_by(ScheduledScan.created_at.desc()).all()
+
+@router.patch("/{schedule_id}", response_model=ScheduleResponse)
+def update_schedule(schedule_id: int, payload: ScheduleUpdate, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    schedule = db.query(ScheduledScan).filter(ScheduledScan.id == schedule_id).first()
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+
+    cron_changed = False
+
+    if payload.preset is not None:
+        schedule.preset = payload.preset
+        schedule.cron_expression = PRESET_CRON[payload.preset]
+        cron_changed = True
+    elif payload.cron_expression is not None:
+        if not croniter.is_valid(payload.cron_expression):
+            raise HTTPException(status_code=422, detail="Invalid cron expression")
+        schedule.preset = None
+        schedule.cron_expression = payload.cron_expression
+        cron_changed = True
+
+    if payload.enabled is not None:
+        schedule.enabled = payload.enabled
+
+    if cron_changed:
+        schedule.next_run_at = compute_next_run(schedule.cron_expression)
+
+    db.commit()
+    db.refresh(schedule)
+    return schedule
 
 @router.patch("/{schedule_id}/toggle")
 def toggle_schedule(schedule_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):

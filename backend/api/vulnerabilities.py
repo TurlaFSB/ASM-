@@ -33,8 +33,8 @@ def vuln_summary(db: Session = Depends(get_db), current_user: dict = Depends(get
     return {row.severity: row.count for row in summary}
 
 @router.get("/")
-def list_vulnerabilities(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
-    vulns = db.query(Vulnerability).order_by(Vulnerability.created_at.desc()).all()
+def list_vulnerabilities(limit: int = 100, offset: int = 0, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    vulns = db.query(Vulnerability).order_by(Vulnerability.created_at.desc()).limit(limit).offset(offset).all()
     return [_serialize(v) for v in vulns]
 
 @router.get("/target/{target_id}")

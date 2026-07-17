@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, JSON
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, JSON, Boolean
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from backend.db import Base
@@ -22,6 +22,7 @@ class Alert(Base):
     
     # Read status
     is_read = Column(String, default="unread")
+    webhook_sent = Column(Boolean, default=False)
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())

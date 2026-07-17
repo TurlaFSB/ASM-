@@ -14,6 +14,7 @@ class Target(Base):
     authorized_by = Column(String, nullable=True)
     authorized_at = Column(DateTime(timezone=True), nullable=True)
     scope_note = Column(Text, nullable=True)
+    webhook_url = Column(String, nullable=True)
     
     # Rate limiting per target
     rate_limit = Column(Integer, default=10)

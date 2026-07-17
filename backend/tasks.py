@@ -4,6 +4,38 @@ from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
+def send_webhook_alerts(db, target_id, alerts):
+    """
+    POST each newly created alert to the target's configured webhook_url,
+    if one is set. Never raises -- a webhook failure should never break
+    the scan pipeline that's delivering it.
+    """
+    import requests
+    from backend.models.target import Target
+
+    target = db.query(Target).filter(Target.id == target_id).first()
+    if not target or not target.webhook_url:
+        return
+
+    for alert in alerts:
+        payload = {
+            "alert_id": alert.id,
+            "target_id": target_id,
+            "target_domain": target.domain,
+            "alert_type": alert.alert_type,
+            "asset_subdomain": alert.asset_subdomain,
+            "asset_ip": alert.asset_ip,
+            "detail": alert.detail,
+        }
+        try:
+            resp = requests.post(target.webhook_url, json=payload, timeout=5)
+            if resp.ok:
+                alert.webhook_sent = True
+        except requests.RequestException as e:
+            logger.warning(f"[webhook] delivery failed for alert {alert.id}: {e}")
+
+    db.commit()
+
 celery_app = Celery(
     "asm_platform",
     broker=settings.redis_url,
@@ -47,6 +79,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
     from backend.models.alert import Alert
     from backend.models.vulnerability import Vulnerability
     from backend.models.scan_asset import ScanAsset
+    from backend.models.target import Target
     import hashlib
     import time
     import json
@@ -225,6 +258,8 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             Asset.status != "disappeared"
         ).all()
 
+        created_alerts = []
+
         for existing_asset in existing_assets:
             if existing_asset.subdomain not in found_subdomains:
                 existing_asset.status = "disappeared"
@@ -238,6 +273,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                     detail={"reason": "Asset not found in latest scan"}
                 )
                 db.add(alert)
+                created_alerts.append(alert)
 
         for host in live_hosts:
             subdomain = host["subdomain"]
@@ -290,6 +326,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                         detail=old_detail
                     )
                     db.add(alert)
+                    created_alerts.append(alert)
                 else:
                     existing.last_seen = datetime.now(timezone.utc)
                     scanned_assets_this_run.append(existing)
@@ -318,8 +355,13 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                     detail={"technologies": technologies, "http_status": http_status}
                 )
                 db.add(alert)
+                created_alerts.append(alert)
 
         db.commit()
+
+        # Deliver webhook notifications for all alerts generated this run
+        if created_alerts:
+            send_webhook_alerts(db, target_id, created_alerts)
 
         # Record which assets were actually observed in this scan, for
         # point-in-time report scoping (independent of Asset's mutable state)

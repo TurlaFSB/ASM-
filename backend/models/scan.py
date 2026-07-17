@@ -7,6 +7,7 @@ class Scan(Base):
     __tablename__ = "scans"
 
     id = Column(Integer, primary_key=True, index=True)
+    celery_task_id = Column(String, nullable=True, index=True)
     target_id = Column(Integer, ForeignKey("targets.id"), nullable=False)
 
     # Scan lifecycle
