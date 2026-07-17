@@ -1,5 +1,5 @@
 import re
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, field_validator
 from typing import Optional
@@ -75,7 +75,7 @@ class TargetResponse(BaseModel):
         from_attributes = True
 
 @router.post("/", response_model=TargetResponse)
-def create_target(target: TargetCreate, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def create_target(target: TargetCreate, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     if not target.authorized:
         raise HTTPException(
             status_code=400,
@@ -108,7 +108,8 @@ def create_target(target: TargetCreate, db: Session = Depends(get_db), current_u
     db.commit()
     db.refresh(db_target)
     log_action(db, current_user.username, "target_created", target_id=db_target.id,
-               detail={"domain": db_target.domain, "authorized_by": db_target.authorized_by})
+               detail={"domain": db_target.domain, "authorized_by": db_target.authorized_by},
+               ip_address=request.client.host)
     return db_target
 
 @router.get("/")
@@ -124,12 +125,12 @@ def get_target(target_id: int, db: Session = Depends(get_db), current_user: dict
     return target
 
 @router.delete("/{target_id}")
-def delete_target(target_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def delete_target(target_id: int, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     target = db.query(Target).filter(Target.id == target_id).first()
     if not target:
         raise HTTPException(status_code=404, detail="Target not found")
     target.is_active = False
     db.commit()
     log_action(db, current_user.username, "target_deleted", target_id=target.id,
-               detail={"domain": target.domain})
+               detail={"domain": target.domain}, ip_address=request.client.host)
     return {"message": f"Target {target.domain} deactivated"}

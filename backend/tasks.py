@@ -395,6 +395,10 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             module_results["stage_timings"] = stage_timings
             scan.module_results = module_results
             db.commit()
+            from backend.audit import log_action
+            log_action(db, "system", "scan_completed", target_id=target_id, scan_id=scan_id,
+                       detail={"new_assets": new_count, "changed_assets": changed_count,
+                               "disappeared_assets": disappeared_count})
 
         logger.info(
             f"[pipeline] Total scan completed in "
@@ -419,6 +423,9 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             scan.status = "failed"
             scan.error_log = str(e)
             db.commit()
+            from backend.audit import log_action
+            log_action(db, "system", "scan_failed", target_id=target_id, scan_id=scan_id,
+                       detail={"error": str(e)})
         raise
 
     finally:

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
 from datetime import datetime, timezone
@@ -17,7 +17,7 @@ class ScanCreate(BaseModel):
     target_id: int
 
 @router.post("/")
-def trigger_scan(scan: ScanCreate, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def trigger_scan(scan: ScanCreate, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     target = db.query(Target).filter(Target.id == scan.target_id).first()
     if not target:
         raise HTTPException(status_code=404, detail="Target not found")
@@ -47,7 +47,7 @@ def trigger_scan(scan: ScanCreate, db: Session = Depends(get_db), current_user: 
     db.commit()
     db.refresh(db_scan)
     log_action(db, current_user.username, "scan_triggered", target_id=target.id,
-               scan_id=db_scan.id, detail={"domain": target.domain})
+               scan_id=db_scan.id, detail={"domain": target.domain}, ip_address=request.client.host)
 
     task = run_scan.delay(
         target_id=target.id,
@@ -108,7 +108,7 @@ def scan_progress(scan_id: int, db: Session = Depends(get_db), current_user: dic
     }
 
 @router.patch("/{scan_id}/cancel")
-def cancel_scan(scan_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def cancel_scan(scan_id: int, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     scan = db.query(Scan).filter(Scan.id == scan_id).first()
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
@@ -119,7 +119,7 @@ def cancel_scan(scan_id: int, db: Session = Depends(get_db), current_user: dict 
     scan.status = "cancelled"
     db.commit()
     log_action(db, current_user.username, "scan_cancelled", target_id=scan.target_id,
-               scan_id=scan.id)
+               scan_id=scan.id, ip_address=request.client.host)
     return {"message": "Scan cancelled"}
 
 from fastapi.responses import Response
