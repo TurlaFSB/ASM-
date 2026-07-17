@@ -1,8 +1,8 @@
 ## ASM(Attack Surface Machine)
 
-A self-hosted Attack Surface Management (ASM) platform for continuous external reconnaissance, vulnerability scanning, and change detection — built for authorized security teams who need to know what's exposed, what changed, and what's actually exploitable.
+A self-hosted Attack Surface Management (ASM) platform for continuous external reconnaissance, vulnerability scanning, and change detection  built for authorized security teams who need to know what's exposed, what changed, and what's actually exploitable.
 
-Point it at a domain. It enumerates subdomains, resolves DNS, scans ports, probes HTTP services, runs vulnerability templates, and captures screenshots — then tracks every asset over time and alerts the moment something new, changed, or disappeared.
+Point it at a domain. It enumerates subdomains, resolves DNS, scans ports, probes HTTP services, runs vulnerability templates, and captures screenshots then tracks every asset over time and alerts the moment something new, changed, or disappeared.
 
 ![Stack](https://img.shields.io/badge/stack-FastAPI%20%7C%20PostgreSQL%20%7C%20Celery%20%7C%20React-9b5de5)
 ![License](https://img.shields.io/badge/license-MIT-informational)
