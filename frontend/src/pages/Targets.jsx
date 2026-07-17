@@ -210,10 +210,11 @@ export default function Targets() {
           </div>
 
           <div className="form-field">
+            <label className="field-label">Rate Limit (requests/sec)</label>
             <input
               type="number"
               className={fieldClass("rate_limit")}
-              placeholder="Rate limit (requests/sec)"
+              placeholder="e.g. 10"
               value={form.rate_limit}
               min={1}
               max={100}

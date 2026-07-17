@@ -855,6 +855,11 @@ tbody tr:hover {
   color: var(--red);
   font-weight: 500;
 }
+.field-label {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
 
 .char-count {
   font-size: 10.5px;

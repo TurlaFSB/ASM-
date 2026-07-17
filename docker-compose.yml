@@ -46,6 +46,8 @@ services:
       - "8000:8000"
     volumes:
       - screenshots_data:/app/screenshots
+    extra_hosts:
+      - "metasploitable.local:192.168.75.130"
 
   celery_worker:
     build:
@@ -63,6 +65,8 @@ services:
         condition: service_healthy
     volumes:
       - screenshots_data:/app/screenshots
+    extra_hosts:
+      - "metasploitable.local:192.168.75.130"
 
   celery_beat:
     build:

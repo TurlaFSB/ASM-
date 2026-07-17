@@ -164,7 +164,11 @@ def enumerate_subdomains(domain: str, rate_limit: int = 10) -> Dict:
     if not amass_results:
         results["module_status"]["amass"] = "empty"
 
-    all_subdomains = list(set(subfinder_results + amass_results))
+    # Always include the apex domain itself as a scan candidate, regardless
+    # of what subfinder/amass find -- otherwise private/local-only domains
+    # (or public domains with zero discoverable subdomains) never get scanned
+    # at all, since these tools only report *discovered* subdomains.
+    all_subdomains = list(set(subfinder_results + amass_results + [domain.strip().lower()]))
     results["subdomains"] = sorted(all_subdomains)
 
     logger.info(f"[SCAN] END subdomain_enumeration domain={domain} results={len(all_subdomains)}")

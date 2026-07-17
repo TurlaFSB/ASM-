@@ -27,7 +27,8 @@ RUN curl -sL https://github.com/projectdiscovery/nuclei/releases/download/v${NUC
     && unzip -o /tmp/subfinder.zip -d /usr/local/bin subfinder && rm /tmp/subfinder.zip \
     && curl -sL https://github.com/projectdiscovery/httpx/releases/download/v${HTTPX_VERSION}/httpx_${HTTPX_VERSION}_linux_amd64.zip -o /tmp/httpx.zip \
     && unzip -o /tmp/httpx.zip -d /usr/local/bin httpx && rm /tmp/httpx.zip \
-    && chmod +x /usr/local/bin/nuclei /usr/local/bin/subfinder /usr/local/bin/httpx
+    && chmod +x /usr/local/bin/nuclei /usr/local/bin/subfinder /usr/local/bin/httpx \
+    && ln -sf /usr/local/bin/httpx /usr/local/bin/httpx-toolkit
 
 RUN nuclei -update-templates -silent || true
 
