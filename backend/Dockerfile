@@ -3,7 +3,7 @@ FROM python:3.13-slim
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 libffi-dev \
+    libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-xlib-2.0-0 libffi-dev \
     shared-mime-info build-essential curl git unzip \
     nmap \
     firefox-esr xvfb \
@@ -41,8 +41,8 @@ RUN curl -sL https://github.com/owasp-amass/amass/releases/download/v${AMASS_VER
 
 # EyeWitness (FortyNorthSecurity, matches Kali's apt-packaged version)
 RUN git clone --depth 1 https://github.com/FortyNorthSecurity/EyeWitness.git /opt/EyeWitness \
-    && cd /opt/EyeWitness/Python/setup \
-    && ./setup.sh || pip install --no-cache-dir -r /opt/EyeWitness/Python/requirements.txt \
+    && cd /opt/EyeWitness/setup \
+    && ./setup.sh || pip install --no-cache-dir -r /opt/EyeWitness/setup/requirements.txt \
     && ln -s /opt/EyeWitness/Python/EyeWitness.py /usr/local/bin/eyewitness \
     && chmod +x /opt/EyeWitness/Python/EyeWitness.py
 
