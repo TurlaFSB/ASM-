@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
-import { getTargets, createTarget, deleteTarget, triggerScan } from "../api";
-import { Plus, Trash2, Play, Shield } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { getTargets, createTarget, deleteTarget, triggerScan, getTargetHistory } from "../api";
+import { Plus, Trash2, Play, Shield, History } from "lucide-react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 function extractErrorMessage(err, fallback) {
   const detail = err.response?.data?.detail;
@@ -60,6 +61,8 @@ export default function Targets() {
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
   const [submitting, setSubmitting] = useState(false);
+  const [expandedId, setExpandedId] = useState(null);
+  const [historyData, setHistoryData] = useState({});
 
   const fetchTargets = () => {
     getTargets()
@@ -144,6 +147,22 @@ export default function Targets() {
       setMessage("Scan queued successfully.");
     } catch (e) {
       setMessage(extractErrorMessage(e, "Failed to trigger scan."));
+    }
+  };
+
+  const toggleHistory = async (id) => {
+    if (expandedId === id) {
+      setExpandedId(null);
+      return;
+    }
+    setExpandedId(id);
+    if (!historyData[id]) {
+      try {
+        const res = await getTargetHistory(id);
+        setHistoryData(prev => ({ ...prev, [id]: res.data.history }));
+      } catch (e) {
+        console.error(e);
+      }
     }
   };
 
@@ -261,20 +280,75 @@ export default function Targets() {
           </thead>
           <tbody>
             {targets.map(target => (
-              <tr key={target.id}>
-                <td><Shield size={14} /> {target.domain}</td>
-                <td>{target.authorized_by}</td>
-                <td>{target.rate_limit} req/s</td>
-                <td>{target.scope_note || "—"}</td>
-                <td className="actions">
-                  <button className="btn btn-success btn-sm" onClick={() => handleScan(target.id)}>
-                    <Play size={14} /> Scan
-                  </button>
-                  <button className="btn btn-danger btn-sm" onClick={() => handleDelete(target.id)}>
-                    <Trash2 size={14} />
-                  </button>
-                </td>
-              </tr>
+              <React.Fragment key={target.id}>
+                <tr>
+                  <td><Shield size={14} /> {target.domain}</td>
+                  <td>{target.authorized_by}</td>
+                  <td>{target.rate_limit} req/s</td>
+                  <td>{target.scope_note || "—"}</td>
+                  <td className="actions">
+                    <button className="btn btn-success btn-sm" onClick={() => handleScan(target.id)}>
+                      <Play size={14} /> Scan
+                    </button>
+                    <button className="btn btn-secondary btn-sm" onClick={() => toggleHistory(target.id)}>
+                      <History size={14} /> History
+                    </button>
+                    <button className="btn btn-danger btn-sm" onClick={() => handleDelete(target.id)}>
+                      <Trash2 size={14} />
+                    </button>
+                  </td>
+                </tr>
+                {expandedId === target.id && (
+                  <tr>
+                    <td colSpan={5}>
+                      {!historyData[target.id] ? (
+                        <div className="loading">Loading history...</div>
+                      ) : historyData[target.id].length === 0 ? (
+                        <div className="loading">No completed scans yet.</div>
+                      ) : (
+                        <div style={{ padding: "1rem 0" }}>
+                          {historyData[target.id].length >= 2 && (() => {
+                            const scans = historyData[target.id];
+                            const latest = scans[scans.length - 1];
+                            const prev = scans[scans.length - 2];
+                            const parts = [];
+                            if (latest.new_assets > 0) parts.push(`+${latest.new_assets} new asset${latest.new_assets > 1 ? "s" : ""}`);
+                            if (latest.disappeared_assets > 0) parts.push(`${latest.disappeared_assets} asset${latest.disappeared_assets > 1 ? "s" : ""} disappeared`);
+                            if (latest.changed_assets > 0) parts.push(`${latest.changed_assets} changed`);
+                            const critDelta = latest.vuln_counts.critical - prev.vuln_counts.critical;
+                            const highDelta = latest.vuln_counts.high - prev.vuln_counts.high;
+                            if (critDelta > 0) parts.push(`${critDelta} new critical finding${critDelta > 1 ? "s" : ""}`);
+                            if (critDelta < 0) parts.push(`${-critDelta} critical finding${-critDelta > 1 ? "s" : ""} resolved`);
+                            if (highDelta > 0) parts.push(`${highDelta} new high finding${highDelta > 1 ? "s" : ""}`);
+                            if (highDelta < 0) parts.push(`${-highDelta} high finding${-highDelta > 1 ? "s" : ""} resolved`);
+                            return (
+                              <div className="message" style={{ marginBottom: "1rem" }}>
+                                {parts.length > 0 ? `Since last scan: ${parts.join(", ")}.` : "No change in attack surface since last scan."}
+                              </div>
+                            );
+                          })()}
+                          <div style={{ width: "100%", height: 300 }}>
+                            <ResponsiveContainer width="100%" height="100%">
+                              <LineChart data={historyData[target.id]}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="scan_date" />
+                                <YAxis />
+                                <Tooltip />
+                                <Legend />
+                                <Line type="monotone" dataKey="total_assets" name="Total Assets" stroke="#3b82f6" />
+                                <Line type="monotone" dataKey="new_assets" name="New Assets" stroke="#22c55e" />
+                                <Line type="monotone" dataKey="changed_assets" name="Changed" stroke="#eab308" />
+                                <Line type="monotone" dataKey="vuln_counts.critical" name="Critical Vulns" stroke="#ef4444" />
+                                <Line type="monotone" dataKey="vuln_counts.high" name="High Vulns" stroke="#f97316" />
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
             ))}
           </tbody>
         </table>
