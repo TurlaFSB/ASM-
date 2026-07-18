@@ -48,7 +48,7 @@ def run_eyewitness(hosts: List[str]) -> Dict:
 
         eyewitness_result = _run_with_process_group_cleanup(
             [
-                "/usr/bin/python3", "/usr/share/eyewitness/EyeWitness.py",
+                "/opt/EyeWitness/eyewitness-venv/bin/python3", "/opt/EyeWitness/Python/EyeWitness.py",
                 "--web",
                 "-f",
                 tmp_path,

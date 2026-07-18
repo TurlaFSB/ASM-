@@ -16,3 +16,14 @@ redis
 bcrypt==4.0.1
 python-multipart
 dnspython
+netaddr>=0.10.0
+psutil>=5.9.0
+rapidfuzz>=3.0.0
+pyvirtualdisplay>=3.0; sys_platform != "win32"
+argcomplete>=2.0.0
+netaddr>=0.10.0
+psutil>=5.9.0
+selenium>=4.29.0
+rapidfuzz>=3.0.0
+pyvirtualdisplay>=3.0; sys_platform != "win32"
+argcomplete>=2.0.0

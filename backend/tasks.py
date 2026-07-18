@@ -102,32 +102,86 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
 
         stage_start = time.time()
 
-        # Stage 1: Subdomain enumeration
-        self.update_state(state="PROGRESS", meta={"stage": "subdomain_enumeration"})
-        if scan:
-            scan.current_stage = "subdomain_enumeration"
-            db.commit()
-        subdomain_data = enumerate_subdomains(domain, rate_limit)
-        module_results["subfinder"] = subdomain_data["module_status"]["subfinder"]
-        module_results["amass"] = subdomain_data["module_status"]["amass"]
-        subdomains = subdomain_data["subdomains"]
+        import ipaddress
+        def _is_internal_target(d):
+            try:
+                ipaddress.ip_address(d)
+                return True
+            except ValueError:
+                pass
+            internal_suffixes = (".local", ".internal", ".lan", ".corp", ".home")
+            return d.lower().endswith(internal_suffixes)
 
-        stage_timings["subdomain"] = round(time.time()-stage_start,2)
-        logger.info(f"[pipeline] Subdomain completed in {stage_timings['subdomain']}s ({len(subdomains)} subdomains)")
+        internal_target = _is_internal_target(domain)
 
-        # Stage 2: DNS resolution
-        self.update_state(state="PROGRESS", meta={"stage": "dns_resolution"})
-        if scan:
-            scan.current_stage = "dns_resolution"
-            db.commit()
-        stage_start = time.time()
+        if internal_target:
+            # Raw IP or internal/lab hostname -- public subdomain discovery
+            # (subfinder/amass query CT logs, passive DNS, etc.) cannot find
+            # anything for a target that's never been publicly indexed.
+            # Skip straight to treating the target itself as the sole live host.
+            self.update_state(state="PROGRESS", meta={"stage": "subdomain_enumeration"})
+            if scan:
+                scan.current_stage = "subdomain_enumeration"
+                db.commit()
+            module_results["subfinder"] = "skipped (internal/IP target)"
+            module_results["amass"] = "skipped (internal/IP target)"
+            subdomains = [domain]
+            stage_timings["subdomain"] = round(time.time()-stage_start,2)
+            logger.info(f"[pipeline] Subdomain skipped for internal target {domain}")
 
-        dns_data = resolve_subdomains(subdomains)
-        module_results["dns"] = dns_data["module_status"]
-        live_hosts = dns_data["live"]
+            self.update_state(state="PROGRESS", meta={"stage": "dns_resolution"})
+            if scan:
+                scan.current_stage = "dns_resolution"
+                db.commit()
+            stage_start = time.time()
 
-        stage_timings["dns"] = round(time.time()-stage_start,2)
-        logger.info(f"[pipeline] DNS completed in {stage_timings['dns']}s ({len(live_hosts)} live hosts)")
+            try:
+                ipaddress.ip_address(domain)
+                resolved_ip = domain
+            except ValueError:
+                import socket
+                try:
+                    resolved_ip = socket.gethostbyname(domain)
+                except socket.gaierror as e:
+                    resolved_ip = None
+                    logger.warning(f"[pipeline] Could not resolve internal hostname {domain}: {e}")
+
+            if resolved_ip:
+                live_hosts = [{"subdomain": domain, "ip": resolved_ip}]
+                module_results["dns"] = "resolved directly (internal target)"
+            else:
+                live_hosts = []
+                module_results["dns"] = "resolution failed"
+
+            stage_timings["dns"] = round(time.time()-stage_start,2)
+            logger.info(f"[pipeline] DNS completed in {stage_timings['dns']}s ({len(live_hosts)} live hosts)")
+        else:
+            # Stage 1: Subdomain enumeration
+            self.update_state(state="PROGRESS", meta={"stage": "subdomain_enumeration"})
+            if scan:
+                scan.current_stage = "subdomain_enumeration"
+                db.commit()
+            subdomain_data = enumerate_subdomains(domain, rate_limit)
+            module_results["subfinder"] = subdomain_data["module_status"]["subfinder"]
+            module_results["amass"] = subdomain_data["module_status"]["amass"]
+            subdomains = subdomain_data["subdomains"]
+
+            stage_timings["subdomain"] = round(time.time()-stage_start,2)
+            logger.info(f"[pipeline] Subdomain completed in {stage_timings['subdomain']}s ({len(subdomains)} subdomains)")
+
+            # Stage 2: DNS resolution
+            self.update_state(state="PROGRESS", meta={"stage": "dns_resolution"})
+            if scan:
+                scan.current_stage = "dns_resolution"
+                db.commit()
+            stage_start = time.time()
+
+            dns_data = resolve_subdomains(subdomains)
+            module_results["dns"] = dns_data["module_status"]
+            live_hosts = dns_data["live"]
+
+            stage_timings["dns"] = round(time.time()-stage_start,2)
+            logger.info(f"[pipeline] DNS completed in {stage_timings['dns']}s ({len(live_hosts)} live hosts)")
 
         # Stage 3: Port scanning
         self.update_state(state="PROGRESS", meta={"stage": "port_scanning"})

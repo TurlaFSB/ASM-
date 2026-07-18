@@ -1,9 +1,9 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from backend.config import settings
 from backend.db import engine, Base, get_db
-from backend.models import Target, Asset, Scan
+from backend.models import Target, Asset, Scan, Vulnerability
 from backend.models.asset import Asset
 from backend.api.targets import router as targets_router
 from backend.api.scans import router as scans_router
@@ -52,3 +52,41 @@ async def health_check():
 def list_assets(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     assets = db.query(Asset).order_by(Asset.created_at.desc()).all()
     return assets
+
+
+@app.get("/targets/{target_id}/history")
+def get_target_history(target_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    target = db.query(Target).filter(Target.id == target_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Target not found")
+
+    scans = (
+        db.query(Scan)
+        .filter(Scan.target_id == target_id, Scan.status == "completed")
+        .order_by(Scan.created_at.asc())
+        .all()
+    )
+
+    history = []
+    for scan in scans:
+        vuln_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+        vulns = db.query(Vulnerability).filter(Vulnerability.scan_id == scan.id).all()
+        for v in vulns:
+            if v.severity in vuln_counts:
+                vuln_counts[v.severity] += 1
+
+        history.append({
+            "scan_id": scan.id,
+            "date": (scan.completed_at or scan.created_at).isoformat(),
+            "total_assets": scan.total_assets or 0,
+            "new_assets": scan.new_assets or 0,
+            "changed_assets": scan.changed_assets or 0,
+            "disappeared_assets": scan.disappeared_assets or 0,
+            "vuln_counts": vuln_counts,
+        })
+
+    return {
+        "target_id": target.id,
+        "domain": target.domain,
+        "history": history,
+    }

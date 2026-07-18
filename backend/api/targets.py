@@ -1,11 +1,14 @@
 import re
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from pydantic import BaseModel, field_validator
 from typing import Optional
 from datetime import datetime, timezone
 from backend.db import get_db
 from backend.models.target import Target
+from backend.models.scan import Scan
+from backend.models.vulnerability import Vulnerability
 from backend.auth import get_current_user
 from backend.audit import log_action
 
@@ -123,6 +126,45 @@ def get_target(target_id: int, db: Session = Depends(get_db), current_user: dict
     if not target:
         raise HTTPException(status_code=404, detail="Target not found")
     return target
+
+@router.get("/{target_id}/history")
+def get_target_history(target_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    target = db.query(Target).filter(Target.id == target_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Target not found")
+
+    scans = (
+        db.query(Scan)
+        .filter(Scan.target_id == target_id, Scan.status == "completed")
+        .order_by(Scan.completed_at.asc())
+        .all()
+    )
+
+    history = []
+    for scan in scans:
+        sev_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+        rows = (
+            db.query(Vulnerability.severity, func.count(Vulnerability.id))
+            .filter(Vulnerability.scan_id == scan.id)
+            .group_by(Vulnerability.severity)
+            .all()
+        )
+        for severity, count in rows:
+            key = (severity or "").lower()
+            if key in sev_counts:
+                sev_counts[key] = count
+
+        history.append({
+            "scan_id": scan.id,
+            "scan_date": scan.completed_at.isoformat() if scan.completed_at else None,
+            "total_assets": scan.total_assets or 0,
+            "new_assets": scan.new_assets or 0,
+            "changed_assets": scan.changed_assets or 0,
+            "disappeared_assets": scan.disappeared_assets or 0,
+            "vuln_counts": sev_counts,
+        })
+
+    return {"history": history}
 
 @router.delete("/{target_id}")
 def delete_target(target_id: int, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
