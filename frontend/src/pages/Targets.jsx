@@ -16,6 +16,38 @@ function extractErrorMessage(err, fallback) {
 // Mirrors backend/api/targets.py DOMAIN_REGEX exactly
 const DOMAIN_REGEX = /^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.[A-Za-z0-9-]{1,63}(?<!-))*\.[A-Za-z]{2,}$/;
 
+const formatDate = (iso) =>
+  new Date(iso).toLocaleString("en-US", {
+    month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+  });
+
+const CustomTooltip = ({ active, payload, label }) => {
+  if (!active || !payload || !payload.length) return null;
+  return (
+    <div
+      style={{
+        background: "rgba(20, 20, 24, 0.9)",
+        backdropFilter: "blur(12px)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        borderRadius: "10px",
+        padding: "10px 14px",
+        fontSize: "13px",
+        boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+      }}
+    >
+      <div style={{ color: "rgba(255,255,255,0.5)", marginBottom: "6px", fontSize: "12px" }}>
+        {formatDate(label)}
+      </div>
+      {payload.map((p) => (
+        <div key={p.dataKey} style={{ display: "flex", justifyContent: "space-between", gap: "16px", color: p.color }}>
+          <span>{p.name}</span>
+          <span style={{ fontVariantNumeric: "tabular-nums" }}>{p.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const validators = {
   domain: (v) => {
     const val = v.trim().toLowerCase();
@@ -330,16 +362,33 @@ export default function Targets() {
                           <div style={{ width: "100%", height: 300 }}>
                             <ResponsiveContainer width="100%" height="100%">
                               <LineChart data={historyData[target.id]}>
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="scan_date" />
-                                <YAxis />
-                                <Tooltip />
-                                <Legend />
-                                <Line type="monotone" dataKey="total_assets" name="Total Assets" stroke="#3b82f6" />
-                                <Line type="monotone" dataKey="new_assets" name="New Assets" stroke="#22c55e" />
-                                <Line type="monotone" dataKey="changed_assets" name="Changed" stroke="#eab308" />
-                                <Line type="monotone" dataKey="vuln_counts.critical" name="Critical Vulns" stroke="#ef4444" />
-                                <Line type="monotone" dataKey="vuln_counts.high" name="High Vulns" stroke="#f97316" />
+                                <CartesianGrid strokeDasharray="0" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                                <XAxis
+                                  dataKey="scan_date"
+                                  tickFormatter={formatDate}
+                                  stroke="rgba(255,255,255,0.35)"
+                                  fontSize={11}
+                                  tickLine={false}
+                                  axisLine={{ stroke: "rgba(255,255,255,0.08)" }}
+                                />
+                                <YAxis
+                                  stroke="rgba(255,255,255,0.35)"
+                                  fontSize={11}
+                                  tickLine={false}
+                                  axisLine={false}
+                                  width={28}
+                                />
+                                <Tooltip content={<CustomTooltip />} cursor={{ stroke: "rgba(255,255,255,0.15)" }} />
+                                <Legend
+                                  iconType="circle"
+                                  iconSize={8}
+                                  wrapperStyle={{ fontSize: "12px", color: "rgba(255,255,255,0.6)", paddingTop: "12px" }}
+                                />
+                                <Line type="monotone" dataKey="total_assets" name="Total Assets" stroke="#8b5cf6" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                                <Line type="monotone" dataKey="new_assets" name="New Assets" stroke="#34d399" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                                <Line type="monotone" dataKey="changed_assets" name="Changed" stroke="#fbbf24" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                                <Line type="monotone" dataKey="vuln_counts.critical" name="Critical Vulns" stroke="#f87171" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                                <Line type="monotone" dataKey="vuln_counts.high" name="High Vulns" stroke="#fb923c" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
                               </LineChart>
                             </ResponsiveContainer>
                           </div>
