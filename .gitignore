@@ -18,3 +18,5 @@ backend/asm.db
 *.db
 backups/
 *.dump
+*.broken
+recovered_bundle.js
