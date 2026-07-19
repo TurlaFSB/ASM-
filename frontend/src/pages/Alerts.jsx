@@ -29,6 +29,7 @@ export default function Alerts() {
     if (type === "new_asset") return "green";
     if (type === "changed_asset") return "orange";
     if (type === "disappeared_asset") return "red";
+    if (type === "exploitable_finding") return "red";
     return "blue";
   };
 
@@ -36,6 +37,7 @@ export default function Alerts() {
     if (type === "new_asset") return "New Asset";
     if (type === "changed_asset") return "Changed";
     if (type === "disappeared_asset") return "Disappeared";
+    if (type === "exploitable_finding") return "⚡ Exploitable";
     return type;
   };
 
@@ -98,6 +100,13 @@ export default function Alerts() {
                     )}
                     {alert.alert_type === "disappeared_asset" && (
                       <span>{alert.detail.reason}</span>
+                    )}
+                    {alert.alert_type === "exploitable_finding" && (
+                      <span>
+                        {alert.detail.name} {alert.detail.cve_id && `(${alert.detail.cve_id})`}
+                        {" | "}
+                        {alert.detail.reasons?.join(", ")}
+                      </span>
                     )}
                   </div>
                 )}

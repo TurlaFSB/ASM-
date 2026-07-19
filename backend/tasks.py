@@ -70,7 +70,10 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
     from backend.scanner.subdomain import enumerate_subdomains
     from backend.scanner.dns import resolve_subdomains
     from backend.scanner.portscan import scan_multiple_hosts
+    from backend.scanner.whois_lookup import run_whois_asn
     from backend.scanner.httpprobe import run_httpx
+    from backend.scanner.whatweb import run_whatweb
+    from backend.scanner.sslyze_scan import run_sslyze
     from backend.scanner.vuln import run_nuclei
     from backend.scanner.screenshot import run_eyewitness
     from backend.db import SessionLocal
@@ -183,6 +186,22 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             stage_timings["dns"] = round(time.time()-stage_start,2)
             logger.info(f"[pipeline] DNS completed in {stage_timings['dns']}s ({len(live_hosts)} live hosts)")
 
+        # Stage 2.5: WHOIS + ASN lookup
+        self.update_state(state="PROGRESS", meta={"stage": "whois_asn_lookup"})
+        if scan:
+            scan.current_stage = "whois_asn_lookup"
+            db.commit()
+        stage_start = time.time()
+        first_ip = next((h["ip"] for h in live_hosts if h.get("ip")), None)
+        whois_result = run_whois_asn(domain, resolved_ip=first_ip, is_internal=internal_target)
+        target_row = db.query(Target).filter(Target.id == target_id).first()
+        if target_row:
+            target_row.whois_data = whois_result
+            db.commit()
+        module_results["whois_asn"] = "completed" if (whois_result.get("domain_whois") or whois_result.get("asn")) else "no data"
+        stage_timings["whois_asn"] = round(time.time()-stage_start,2)
+        logger.info(f"[pipeline] WHOIS/ASN completed in {stage_timings['whois_asn']}s")
+
         # Stage 3: Port scanning
         self.update_state(state="PROGRESS", meta={"stage": "port_scanning"})
         if scan:
@@ -223,6 +242,25 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         logger.info(
             f"[pipeline] HTTPX completed in {stage_timings['httpx']}s "
             f"({len(http_data['hosts'])} live web services)"
+        )
+
+        # Stage 4.5: WhatWeb technology fingerprinting
+        self.update_state(state="PROGRESS", meta={"stage": "tech_fingerprinting"})
+        if scan:
+            scan.current_stage = "tech_fingerprinting"
+            db.commit()
+        stage_start = time.time()
+        whatweb_data = run_whatweb(host_urls)
+        module_results["whatweb"] = whatweb_data["module_status"]
+        for entry in http_data["hosts"]:
+            ww_result = whatweb_data["hosts"].get(entry.get("url", ""))
+            if ww_result:
+                merged = set(entry.get("technologies", [])) | set(ww_result.get("technologies", []))
+                entry["technologies"] = sorted(merged)
+        stage_timings["whatweb"] = round(time.time()-stage_start,2)
+        logger.info(
+            f"[pipeline] WhatWeb completed in {stage_timings['whatweb']}s "
+            f"({len(whatweb_data['hosts'])} hosts fingerprinted)"
         )
 
         # Stage 5: Vulnerability scanning
@@ -275,6 +313,37 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
 
         db.commit()
 
+        # Stage 5.5: sslyze TLS/SSL analysis
+        self.update_state(state="PROGRESS", meta={"stage": "tls_analysis"})
+        if scan:
+            scan.current_stage = "tls_analysis"
+            db.commit()
+        stage_start = time.time()
+        sslyze_data = run_sslyze(bare_hosts)
+        module_results["sslyze"] = sslyze_data["module_status"]
+        for finding in sslyze_data.get("findings", []):
+            vuln = Vulnerability(
+                target_id=target_id,
+                scan_id=scan_id,
+                template_id=finding.get("template_id", ""),
+                name=finding.get("name", ""),
+                severity=finding.get("severity", "info"),
+                description=finding.get("description", ""),
+                matched_at=finding.get("matched_at", ""),
+                vuln_type=finding.get("vuln_type", ""),
+                tags=finding.get("tags", []),
+                host=finding.get("host", ""),
+                cve_id=finding.get("cve_id"),
+                cvss_score=finding.get("cvss_score")
+            )
+            db.add(vuln)
+        db.commit()
+        stage_timings["sslyze"] = round(time.time()-stage_start,2)
+        logger.info(
+            f"[pipeline] sslyze completed in {stage_timings['sslyze']}s "
+            f"({len(sslyze_data.get('findings', []))} findings)"
+        )
+
         # Stage 6: Screenshots
         self.update_state(state="PROGRESS", meta={"stage": "screenshots"})
         if scan:
@@ -298,6 +367,17 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             db.commit()
 
         http_lookup = {h["host"]: h for h in http_data["hosts"]}
+        # httpx sometimes returns the resolved IP in "host" instead of the
+        # hostname it was given (seen on internal/lab targets) -- build an
+        # IP-keyed fallback so lookups by subdomain don't silently miss.
+        http_lookup_by_ip = {}
+        for h in http_data["hosts"]:
+            try:
+                import ipaddress as _ipaddr
+                _ipaddr.ip_address(h["host"])
+                http_lookup_by_ip[h["host"]] = h
+            except ValueError:
+                pass
         port_lookup = {h["subdomain"]: h["ports"] for h in port_data["hosts"]}
 
         new_count = 0
@@ -333,7 +413,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             subdomain = host["subdomain"]
             ip = host["ip"]
             ports = port_lookup.get(subdomain, [])
-            http_info = http_lookup.get(subdomain, {})
+            http_info = http_lookup.get(subdomain) or http_lookup_by_ip.get(ip, {})
             technologies = http_info.get("technologies", [])
             http_status = http_info.get("status_code")
             http_title = http_info.get("title", "")

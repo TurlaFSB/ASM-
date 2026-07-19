@@ -9,6 +9,7 @@ from backend.db import get_db
 from backend.models.target import Target
 from backend.models.scan import Scan
 from backend.models.vulnerability import Vulnerability
+from backend.models.asset import Asset
 from backend.auth import get_current_user
 from backend.audit import log_action
 
@@ -73,6 +74,7 @@ class TargetResponse(BaseModel):
     scope_note: Optional[str]
     rate_limit: int
     created_at: datetime
+    whois_data: Optional[dict] = None
 
     class Config:
         from_attributes = True
@@ -165,6 +167,46 @@ def get_target_history(target_id: int, db: Session = Depends(get_db), current_us
         })
 
     return {"history": history}
+
+@router.get("/{target_id}/infrastructure")
+def get_target_infrastructure(target_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    target = db.query(Target).filter(Target.id == target_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Target not found")
+
+    assets = (
+        db.query(Asset)
+        .filter(Asset.target_id == target_id, Asset.status != "disappeared")
+        .all()
+    )
+    tech_set = set()
+    for asset in assets:
+        for tech in (asset.technologies or []):
+            tech_set.add(tech)
+
+    tls_findings = (
+        db.query(Vulnerability)
+        .filter(Vulnerability.target_id == target_id, Vulnerability.vuln_type == "tls-misconfiguration")
+        .order_by(Vulnerability.severity.asc())
+        .all()
+    )
+
+    return {
+        "whois_data": target.whois_data,
+        "technologies": sorted(tech_set),
+        "tls_findings": [
+            {
+                "id": v.id,
+                "name": v.name,
+                "severity": v.severity,
+                "host": v.host,
+                "description": v.description,
+                "cve_id": v.cve_id,
+                "cvss_score": v.cvss_score,
+            }
+            for v in tls_findings
+        ],
+    }
 
 @router.delete("/{target_id}")
 def delete_target(target_id: int, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):

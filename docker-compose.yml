@@ -46,6 +46,8 @@ services:
       - "8000:8000"
     volumes:
       - screenshots_data:/app/screenshots
+      - ./backend:/app/backend
+    command: ["/app/backend/start-dev.sh"]
     extra_hosts:
       - "metasploitable.local:192.168.75.130"
 
@@ -65,6 +67,7 @@ services:
         condition: service_healthy
     volumes:
       - screenshots_data:/app/screenshots
+      - ./backend:/app/backend
     extra_hosts:
       - "metasploitable.local:192.168.75.130"
 

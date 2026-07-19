@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.postgresql import JSONB
 from backend.db import Base
 
 class Target(Base):
@@ -14,6 +15,7 @@ class Target(Base):
     authorized_by = Column(String, nullable=True)
     authorized_at = Column(DateTime(timezone=True), nullable=True)
     scope_note = Column(Text, nullable=True)
+    whois_data = Column(JSONB, nullable=True)  # {"domain_whois": {...}, "asn": {...}}
     webhook_url = Column(String, nullable=True)
     
     # Rate limiting per target

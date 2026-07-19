@@ -77,6 +77,9 @@ def build_report_context(db: Session, scan_id: int):
     if not key_findings:
         key_findings.append("No critical or high severity findings identified in this scan cycle.")
 
+    tls_findings = [v for v in vulns if v.vuln_type == "tls-misconfiguration"]
+    technologies = sorted({tech for a in assets if a.status != "disappeared" for tech in (a.technologies or [])})
+
     return {
         "target": target,
         "scan": scan,
@@ -91,6 +94,9 @@ def build_report_context(db: Session, scan_id: int):
         "disappeared_assets": disappeared_assets,
         "recommendations": recommendations,
         "generated_at": datetime.now(timezone.utc),
+        "whois_data": target.whois_data if target else None,
+        "technologies": technologies,
+        "tls_findings": tls_findings,
     }
 
 def generate_pdf_report(db: Session, scan_id: int) -> bytes:

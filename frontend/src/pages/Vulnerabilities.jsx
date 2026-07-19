@@ -57,6 +57,7 @@ export default function Vulnerabilities() {
           <thead>
             <tr>
               <th>Severity</th>
+              <th>Exploitable</th>
               <th>Name</th>
               <th>Host</th>
               <th>Port</th>
@@ -72,6 +73,15 @@ export default function Vulnerabilities() {
                   <span className={"badge badge-sev-" + vuln.severity}>
                     {vuln.severity}
                   </span>
+                </td>
+                <td>
+                  {vuln.is_exploitable_confirmed ? (
+                    <span className="badge badge-sev-critical" title={(vuln.exploitability_reasons || []).join(" · ")}>
+                      ⚡ Confirmed
+                    </span>
+                  ) : (
+                    <span style={{ color: "var(--text-tertiary)", fontSize: 12 }}>—</span>
+                  )}
                 </td>
                 <td style={{ color: "var(--text-primary)", fontWeight: 500 }}>
                   {vuln.name}

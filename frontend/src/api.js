@@ -25,6 +25,7 @@ api.interceptors.response.use(
 export const getTargets = () => api.get("/targets/");
 export const getScans = () => api.get("/scans/");
 export const getTargetHistory = (id) => api.get(`/targets/${id}/history`);
+export const getTargetInfrastructure = (id) => api.get(`/targets/${id}/infrastructure`);
 export const getAssets = () => api.get("/assets/");
 export const getAlerts = () => api.get("/alerts/");
 export const getUnreadAlerts = () => api.get("/alerts/unread");

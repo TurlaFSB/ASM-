@@ -208,7 +208,8 @@ body {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 table {
@@ -324,6 +325,8 @@ tr:hover td {
 .actions {
   display: flex;
   gap: 8px;
+  white-space: nowrap;
+  flex-wrap: nowrap;
 }
 
 /* ── Form ───────────────────────────────── */
