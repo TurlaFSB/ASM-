@@ -165,14 +165,17 @@ body {
 }
 
 .stat-card {
-  background: var(--surface);
+  background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.01)), var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 24px 20px;
   display: flex;
   align-items: center;
   gap: 16px;
-  transition: border-color 0.15s;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 20px rgba(0,0,0,0.15);
+  transition: border-color 0.15s, transform 0.15s ease;
   cursor: default;
 }
 
@@ -205,12 +208,73 @@ body {
 
 /* ── Tables ─────────────────────────────── */
 .table-container {
+  position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   overflow-x: auto;
   overflow-y: hidden;
 }
+.scroll-hint-wrap {
+  position: sticky;
+  top: 16px;
+  z-index: 20;
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+  pointer-events: none;
+}
+.scroll-hint-wrap .scroll-hint {
+  pointer-events: auto;
+}
+.scroll-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px 4px 12px;
+  border-radius: 999px;
+  background: rgba(139,92,246,0.08);
+  border: 1px solid rgba(139,92,246,0.22);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2), 0 1px 0 rgba(255,255,255,0.04) inset;
+}
+.scroll-hint span {
+  color: #c9b8fb;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  margin-right: 2px;
+}
+.scroll-hint-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.05);
+  color: #c9b8fb;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
+}
+.scroll-hint-btn:hover:not(:disabled) {
+  background: rgba(139,92,246,0.22);
+  transform: scale(1.08);
+}
+.scroll-hint-btn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+.scroll-hint-btn:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+.scroll-hint svg {
+  width: 12px;
+  height: 12px;
+}
+
 
 table {
   width: 100%;
@@ -249,20 +313,40 @@ tr:hover td {
 .badge {
   display: inline-flex;
   align-items: center;
-  padding: 3px 9px;
+  gap: 6px;
+  padding: 4px 11px 4px 9px;
   border-radius: 20px;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.01em;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset;
+}
+.badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 6px currentColor;
+  flex-shrink: 0;
 }
 
-.badge-completed { background: var(--green-dim);  color: var(--green); }
-.badge-running   { background: var(--blue-dim);   color: var(--blue); }
-.badge-pending   { background: var(--yellow-dim); color: var(--yellow); }
-.badge-failed    { background: var(--red-dim);    color: var(--red); }
-.badge-new       { background: var(--green-dim);  color: var(--green); }
-.badge-changed   { background: var(--orange-dim); color: var(--orange); }
-.badge-active    { background: var(--surface-3);  color: var(--text-secondary); }
+.badge-completed { background: var(--green-dim);  color: var(--green);  border: 1px solid rgba(48,209,88,0.18); }
+.badge-running   { background: var(--blue-dim);   color: var(--blue);   border: 1px solid rgba(10,132,255,0.18); }
+.badge-pending   { background: var(--yellow-dim); color: var(--yellow); border: 1px solid rgba(255,214,10,0.18); }
+.badge-failed    { background: var(--red-dim);    color: var(--red);    border: 1px solid rgba(255,69,58,0.18); }
+.badge-new       { background: var(--green-dim);  color: var(--green);  border: 1px solid rgba(48,209,88,0.18); }
+.badge-changed   { background: var(--orange-dim); color: var(--orange); border: 1px solid rgba(255,159,10,0.18); }
+.badge-active    { background: var(--surface-3);  color: var(--text-secondary); border: 1px solid rgba(255,255,255,0.06); }
+.badge-cancelled { background: var(--surface-3);  color: var(--text-tertiary); border: 1px solid rgba(255,255,255,0.06); }
+.badge-cancelled::before { background: var(--text-tertiary); box-shadow: none; }
+.badge-running::before { animation: badge-pulse 1.6s ease-in-out infinite; }
+@keyframes badge-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
 
 /* ── Buttons ─────────────────────────────── */
 .btn {
@@ -878,11 +962,11 @@ tbody tr:hover {
 }
 
 /* ── Risk badges (asset risk_level) ─────── */
-.badge-risk-critical { background: var(--red-dim);    color: var(--red); }
-.badge-risk-high      { background: var(--orange-dim); color: var(--orange); }
-.badge-risk-medium    { background: var(--yellow-dim); color: var(--yellow); }
-.badge-risk-low       { background: var(--green-dim);  color: var(--green); }
-.badge-risk-informational { background: var(--surface-3); color: var(--text-secondary); }
+.badge-risk-critical { background: var(--red-dim);    color: var(--red);    border: 1px solid rgba(255,69,58,0.18); }
+.badge-risk-high      { background: var(--orange-dim); color: var(--orange); border: 1px solid rgba(255,159,10,0.18); }
+.badge-risk-medium    { background: var(--yellow-dim); color: var(--yellow); border: 1px solid rgba(255,214,10,0.18); }
+.badge-risk-low       { background: var(--green-dim);  color: var(--green);  border: 1px solid rgba(48,209,88,0.18); }
+.badge-risk-informational { background: var(--surface-3); color: var(--text-secondary); border: 1px solid rgba(255,255,255,0.06); }
 
 /* ── Monospace for technical data ───────── */
 .mono {

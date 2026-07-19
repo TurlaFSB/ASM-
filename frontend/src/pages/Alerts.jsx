@@ -41,7 +41,7 @@ export default function Alerts() {
     return type;
   };
 
-  const unreadCount = alerts.filter(a => a.is_read === "unread").length;
+  const unreadCount = alerts.filter(a => !a.is_read).length;
 
   if (loading) return <div className="loading">Loading...</div>;
 
@@ -67,7 +67,7 @@ export default function Alerts() {
         {alerts.map(alert => (
           <div
             key={alert.id}
-            className={`alert-card ${alert.is_read === "unread" ? "unread" : ""}`}
+            className={`alert-card ${!alert.is_read ? "unread" : ""}`}
             onClick={() => handleMarkRead(alert.id)}
           >
             <div className="alert-left">

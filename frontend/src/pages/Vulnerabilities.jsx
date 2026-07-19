@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AlertTriangle } from "lucide-react";
+import ScrollHint from "../components/ScrollHint";
 import { getVulnerabilities, getVulnSummary } from "../api";
 
 export default function Vulnerabilities() {
@@ -7,6 +8,7 @@ export default function Vulnerabilities() {
   const [summary, setSummary] = useState({});
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
+  const tableContainerRef = useRef(null);
 
   useEffect(() => {
     Promise.all([getVulnerabilities(), getVulnSummary()])
@@ -52,7 +54,9 @@ export default function Vulnerabilities() {
         ))}
       </div>
 
-      <div className="table-container" style={{ marginTop: 20 }}>
+      <ScrollHint containerRef={tableContainerRef} />
+
+      <div className="table-container" ref={tableContainerRef} style={{ marginTop: 20 }}>
         <table>
           <thead>
             <tr>

@@ -21,7 +21,7 @@ class Alert(Base):
     detail = Column(JSON, nullable=True)
     
     # Read status
-    is_read = Column(String, default="unread")
+    is_read = Column(Boolean, default=False)
     webhook_sent = Column(Boolean, default=False)
 
     # Timestamps

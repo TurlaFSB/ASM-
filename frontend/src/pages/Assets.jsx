@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { getAssets } from "../api";
+import ScrollHint from "../components/ScrollHint";
 import { Database, Search } from "lucide-react";
 
 export default function Assets() {
@@ -7,6 +8,7 @@ export default function Assets() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [showDisappeared, setShowDisappeared] = useState(false);
+  const tableContainerRef = useRef(null);
 
   useEffect(() => {
     getAssets()
@@ -58,7 +60,9 @@ export default function Assets() {
         </button>
       </div>
 
-      <div className="table-container">
+      <ScrollHint containerRef={tableContainerRef} />
+
+      <div className="table-container" ref={tableContainerRef}>
         <table>
           <thead>
             <tr>

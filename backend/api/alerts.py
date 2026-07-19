@@ -25,19 +25,19 @@ def list_alerts(
 
 @router.get("/unread")
 def unread_alerts(limit: int = 100, offset: int = 0, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
-    alerts = db.query(Alert).filter(Alert.is_read == "unread").order_by(Alert.created_at.desc()).limit(limit).offset(offset).all()
+    alerts = db.query(Alert).filter(Alert.is_read == False).order_by(Alert.created_at.desc()).limit(limit).offset(offset).all()
     return alerts
 
 @router.patch("/{alert_id}/read")
 def mark_read(alert_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     alert = db.query(Alert).filter(Alert.id == alert_id).first()
     if alert:
-        alert.is_read = "read"
+        alert.is_read = True
         db.commit()
     return {"status": "ok"}
 
 @router.patch("/mark-all-read")
 def mark_all_read(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
-    db.query(Alert).filter(Alert.is_read == "unread").update({"is_read": "read"})
+    db.query(Alert).filter(Alert.is_read == False).update({"is_read": True})
     db.commit()
     return {"status": "ok"}
