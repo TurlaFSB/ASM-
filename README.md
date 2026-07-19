@@ -13,7 +13,7 @@ Continuous external recon, vulnerability scanning, TLS auditing, and change dete
 
 ---
 
-Point ASM at a domain. It enumerates subdomains, resolves DNS, pulls WHOIS/ASN ownership data, scans ports, probes HTTP services, fingerprints the technology stack, runs vulnerability templates, audits TLS/SSL configuration, and captures screenshots. Every run is diffed against the last one, so you're never re-reading a static report — you're watching your attack surface change over time.
+Point ASM at a domain. It enumerates subdomains, resolves DNS, pulls WHOIS/ASN ownership data, scans ports, probes HTTP services, fingerprints the technology stack, runs vulnerability templates, audits TLS/SSL configuration, and captures screenshots. Every run is diffed against the last one, so you're never re-reading a static report  you're watching your attack surface change over time.
 
 Most ASM tooling is either an expensive SaaS subscription or a pile of scripts held together with cron. ASM is neither: it's one self-hosted platform that runs the full recon-to-report pipeline, keeps point-in-time history of every scan, and scores risk against **CISA's Known Exploited Vulnerabilities (KEV) catalog** — so a Critical finding means something is being actively exploited in the wild, not just that it scored high on paper.
 
@@ -289,3 +289,13 @@ Built for authorized security assessments only. Scan assets you own or have expl
 ## License
 
 MIT
+<img width="1919" height="844" alt="image" src="https://github.com/user-attachments/assets/00e9a39f-ea7c-407f-9c53-bbac324f65b6" />
+<img width="1919" height="868" alt="image" src="https://github.com/user-attachments/assets/1bccaf6a-05a7-4225-b38b-28fd8d17cc8e" />
+<img width="1916" height="868" alt="image" src="https://github.com/user-attachments/assets/35fb8c84-c2b8-4d0f-8e8c-f3a1e562d80e" />
+<img width="1913" height="862" alt="image" src="https://github.com/user-attachments/assets/aab178d2-eee9-4441-9b82-f876c45ae3a0" />
+<img width="1911" height="871" alt="image" src="https://github.com/user-attachments/assets/421fd757-9b82-4ad3-a9bc-2c03633a1ca7" />
+
+Here is the Sample Industry Grade Report that you can get for every scan :
+[asm_report_scan_91.pdf](https://github.com/user-attachments/files/30161571/asm_report_scan_91.pdf)
+
+
