@@ -289,3 +289,13 @@ Built for authorized security assessments only. Scan assets you own or have expl
 ## License
 
 MIT
+<img width="1919" height="844" alt="image" src="https://github.com/user-attachments/assets/00e9a39f-ea7c-407f-9c53-bbac324f65b6" />
+<img width="1919" height="868" alt="image" src="https://github.com/user-attachments/assets/1bccaf6a-05a7-4225-b38b-28fd8d17cc8e" />
+<img width="1916" height="868" alt="image" src="https://github.com/user-attachments/assets/35fb8c84-c2b8-4d0f-8e8c-f3a1e562d80e" />
+<img width="1913" height="862" alt="image" src="https://github.com/user-attachments/assets/aab178d2-eee9-4441-9b82-f876c45ae3a0" />
+<img width="1911" height="871" alt="image" src="https://github.com/user-attachments/assets/421fd757-9b82-4ad3-a9bc-2c03633a1ca7" />
+
+Here is the Sample Industry Grade Report that you can get for every scan :
+[asm_report_scan_91.pdf](https://github.com/user-attachments/files/30161571/asm_report_scan_91.pdf)
+
+
