@@ -13,7 +13,7 @@ Continuous external recon, vulnerability scanning, TLS auditing, and change dete
 
 ---
 
-Point ASM at a domain. It enumerates subdomains, resolves DNS, pulls WHOIS/ASN ownership data, scans ports, probes HTTP services, fingerprints the technology stack, runs vulnerability templates, audits TLS/SSL configuration, and captures screenshots. Every run is diffed against the last one, so you're never re-reading a static report — you're watching your attack surface change over time.
+Point ASM at a domain. It enumerates subdomains, resolves DNS, pulls WHOIS/ASN ownership data, scans ports, probes HTTP services, fingerprints the technology stack, runs vulnerability templates, audits TLS/SSL configuration, and captures screenshots. Every run is diffed against the last one, so you're never re-reading a static report  you're watching your attack surface change over time.
 
 Most ASM tooling is either an expensive SaaS subscription or a pile of scripts held together with cron. ASM is neither: it's one self-hosted platform that runs the full recon-to-report pipeline, keeps point-in-time history of every scan, and scores risk against **CISA's Known Exploited Vulnerabilities (KEV) catalog** — so a Critical finding means something is being actively exploited in the wild, not just that it scored high on paper.
 
