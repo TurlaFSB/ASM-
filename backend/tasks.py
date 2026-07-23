@@ -1,6 +1,7 @@
 from celery import Celery
 import logging
 from backend.config import settings
+import redis
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,7 @@ celery_app.conf.update(
 )
 
 @celery_app.task(bind=True, name="run_scan")
-def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: int = None):
+def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: int = None, wordlist: str = "small", enable_dirbuster: bool = True):
     """
     Full ASM pipeline task.
     Runs all scanner modules sequentially.
@@ -73,6 +74,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
     from backend.scanner.whois_lookup import run_whois_asn
     from backend.scanner.httpprobe import run_httpx
     from backend.scanner.whatweb import run_whatweb
+    from backend.scanner.dirbuster import run_dirbuster
     from backend.scanner.sslyze_scan import run_sslyze
     from backend.scanner.vuln import run_nuclei
     from backend.scanner.screenshot import run_eyewitness
@@ -82,11 +84,20 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
     from backend.models.alert import Alert
     from backend.models.vulnerability import Vulnerability
     from backend.models.scan_asset import ScanAsset
+    from backend.models.discovered_path import DiscoveredPath
     from backend.models.target import Target
     import hashlib
     import time
     import json
     from datetime import datetime, timezone
+
+    redis_client = redis.Redis.from_url(settings.redis_url)
+    lock_key = f"scan_lock:{target_id}"
+    lock = redis_client.lock(lock_key, timeout=1800)
+    have_lock = lock.acquire(blocking=False)
+    if not have_lock:
+        logger.warning(f"[pipeline] Scan already running for target_id={target_id}, retrying in 30s")
+        raise self.retry(countdown=30, max_retries=20)
 
     db = SessionLocal()
     module_results = {}
@@ -263,6 +274,26 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             f"({len(whatweb_data['hosts'])} hosts fingerprinted)"
         )
 
+
+        # Stage 4.7: Directory/content discovery
+        self.update_state(state="PROGRESS", meta={"stage": "dir_discovery"})
+        if scan:
+            scan.current_stage = "dir_discovery"
+            db.commit()
+        stage_start = time.time()
+        if enable_dirbuster:
+            dirbuster_data = run_dirbuster(host_urls, rate_limit, wordlist, scan_id=scan_id)
+            module_results["dirbuster"] = dirbuster_data["module_status"]
+            stage_timings["dirbuster"] = round(time.time()-stage_start,2)
+            total_paths_found = sum(len(h.get("paths", [])) for h in dirbuster_data["hosts"].values())
+            logger.info(
+                f"[pipeline] Directory discovery completed in {stage_timings['dirbuster']}s "
+                f"({total_paths_found} paths found across {len(dirbuster_data['hosts'])} hosts)"
+            )
+        else:
+            dirbuster_data = {"hosts": {}, "module_status": "skipped"}
+            module_results["dirbuster"] = "skipped"
+            logger.info("[pipeline] Directory discovery skipped (disabled by user)")
         # Stage 5: Vulnerability scanning
         self.update_state(state="PROGRESS", meta={"stage": "vuln_scanning"})
         if scan:
@@ -493,6 +524,34 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
 
         db.commit()
 
+        # Persist discovered paths from the dirbuster stage, linked to the
+        # correct asset by subdomain -- look up fresh from the DB now that
+        # all assets (new and existing) have real ids after the commit above.
+        if dirbuster_data["hosts"]:
+            asset_lookup = {
+                a.subdomain: a.id
+                for a in db.query(Asset).filter(Asset.target_id == target_id).all()
+            }
+            paths_saved = 0
+            for url, host_result in dirbuster_data["hosts"].items():
+                subdomain = url.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0]
+                asset_id = asset_lookup.get(subdomain)
+                if not asset_id:
+                    continue
+                for p in host_result.get("paths", []):
+                    db.add(DiscoveredPath(
+                        asset_id=asset_id,
+                        scan_id=scan_id,
+                        path=p.get("path") or "/",
+                        status_code=p.get("status_code"),
+                        content_length=p.get("content_length"),
+                        redirect_location=p.get("redirect_location"),
+                    ))
+                    paths_saved += 1
+            if paths_saved:
+                db.commit()
+            logger.info(f"[pipeline] Saved {paths_saved} discovered paths to DB")
+
         # Deliver webhook notifications for all alerts generated this run
         if created_alerts:
             send_webhook_alerts(db, target_id, created_alerts)
@@ -564,6 +623,11 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
 
     finally:
         db.close()
+        if have_lock:
+            try:
+                lock.release()
+            except Exception:
+                pass
 
 @celery_app.task(name="check_scheduled_scans")
 def check_scheduled_scans():
