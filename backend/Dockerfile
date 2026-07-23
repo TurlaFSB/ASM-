@@ -40,6 +40,23 @@ RUN curl -sL https://github.com/owasp-amass/amass/releases/download/v${AMASS_VER
     && chmod +x /usr/local/bin/amass \
     && rm -rf /tmp/amass.zip /tmp/amass_Linux_amd64
 
+# feroxbuster (directory/content discovery, prebuilt binary release)
+ARG FEROXBUSTER_VERSION=2.11.0
+RUN curl -sL https://github.com/epi052/feroxbuster/releases/download/v${FEROXBUSTER_VERSION}/x86_64-linux-feroxbuster.zip -o /tmp/ferox.zip \
+    && unzip -o /tmp/ferox.zip -d /usr/local/bin feroxbuster && rm /tmp/ferox.zip \
+    && chmod +x /usr/local/bin/feroxbuster
+
+# SecLists wordlists for feroxbuster -- small (fast default) and medium (deeper, opt-in)
+RUN mkdir -p /opt/wordlists \
+    && curl -sL https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/raft-small-directories.txt \
+       -o /opt/wordlists/raft-small-directories.txt \
+    && curl -sL https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/raft-medium-directories.txt \
+       -o /opt/wordlists/raft-medium-directories.txt \
+    && curl -sL https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt \
+       -o /opt/wordlists/common.txt \
+    && curl -sL https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/quickhits.txt \
+       -o /opt/wordlists/quickhits.txt
+
 # EyeWitness (FortyNorthSecurity, matches Kali's apt-packaged version)
 RUN git clone --depth 1 https://github.com/FortyNorthSecurity/EyeWitness.git /opt/EyeWitness \
     && cd /opt/EyeWitness/setup \

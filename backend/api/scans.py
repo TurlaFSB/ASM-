@@ -15,6 +15,8 @@ router = APIRouter(prefix="/scans", tags=["scans"])
 
 class ScanCreate(BaseModel):
     target_id: int
+    wordlist: str = "small"  # directory discovery wordlist: "small" (fast default) or "medium" (deeper, slower)
+    run_dirbuster: bool = True  # toggle directory/content discovery stage on/off for this scan
 
 @router.post("/")
 def trigger_scan(scan: ScanCreate, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
@@ -53,7 +55,9 @@ def trigger_scan(scan: ScanCreate, request: Request, db: Session = Depends(get_d
         target_id=target.id,
         domain=target.domain,
         rate_limit=target.rate_limit,
-        scan_id=db_scan.id
+        scan_id=db_scan.id,
+        wordlist=scan.wordlist,
+        enable_dirbuster=scan.run_dirbuster
     )
 
     db_scan.celery_task_id = task.id

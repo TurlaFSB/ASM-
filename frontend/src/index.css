@@ -214,6 +214,40 @@ body {
   border-radius: var(--radius-lg);
   overflow-x: auto;
   overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.3s ease;
+  -webkit-overflow-scrolling: touch;
+}
+.table-container:hover {
+  scrollbar-color: rgba(255,255,255,0.15) transparent;
+}
+.table-container::-webkit-scrollbar {
+  height: 6px;
+}
+.table-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+.table-container::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 10px;
+  transition: background 0.25s ease;
+}
+.table-container:hover::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.15);
+}
+.table-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.28) !important;
+}
+.table-container table {
+  background:
+    linear-gradient(var(--surface), var(--surface)) left,
+    linear-gradient(var(--surface), var(--surface)) right,
+    linear-gradient(to right, rgba(0,0,0,0.4), rgba(0,0,0,0)) left,
+    linear-gradient(to left, rgba(0,0,0,0.4), rgba(0,0,0,0)) right;
+  background-repeat: no-repeat;
+  background-size: 28px 100%, 28px 100%, 28px 100%, 28px 100%;
+  background-attachment: local, local, scroll, scroll;
 }
 .scroll-hint-wrap {
   position: sticky;
@@ -1005,66 +1039,157 @@ input:focus-visible {
   outline-offset: 2px;
 }
 
-/* ── Table overflow + column control ────── */
-.table-container {
-  overflow-x: auto;
-}
-
-table {
-  min-width: 100%;
-}
-
-td, th {
-  white-space: nowrap;
-}
-
-td.wrap {
-  white-space: normal;
-}
-
-/* ── Apple-style horizontal scroll for tables ────── */
-.table-container {
-  overflow-x: auto;
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-  transition: scrollbar-color 0.3s ease;
-  -webkit-overflow-scrolling: touch;
-}
-
-.table-container:hover {
-  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
-}
-
-.table-container::-webkit-scrollbar {
-  height: 6px;
-}
-
-.table-container::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.table-container::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: 10px;
-  transition: background 0.25s ease;
-}
-
-.table-container:hover::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
-}
-
-.table-container::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.28) !important;
-}
-
-/* Soft edge fades instead of a visible cutoff — the real Apple cue */
-.table-container {
-  background:
-    linear-gradient(var(--surface), var(--surface)) left,
-    linear-gradient(var(--surface), var(--surface)) right,
-    linear-gradient(to right, rgba(0,0,0,0.35), rgba(0,0,0,0)) left,
-    linear-gradient(to left, rgba(0,0,0,0.35), rgba(0,0,0,0)) right;
+/* ── Wordlist select (Targets page scan trigger) ── */
+.wordlist-select {
+  appearance: none;
+  -webkit-appearance: none;
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 7px 28px 7px 12px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.09);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: rgba(255,255,255,0.82);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23a78bfa' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-size: 24px 100%, 24px 100%, 24px 100%, 24px 100%;
-  background-attachment: local, local, scroll, scroll;
+  background-position: right 10px center;
+}
+.wordlist-select:hover {
+  background-color: rgba(139,92,246,0.08);
+  border-color: rgba(139,92,246,0.25);
+}
+.wordlist-select:focus {
+  outline: none;
+  border-color: rgba(139,92,246,0.4);
+}
+.wordlist-select option {
+  background: #16161a;
+  color: rgba(255,255,255,0.85);
+}
+
+/* ── Wordlist picker (custom dropdown, replaces native select) ── */
+.wordlist-picker {
+  position: relative;
+  display: inline-block;
+}
+.wordlist-picker-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 7px 10px 7px 13px;
+  border-radius: 9px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+  border: 1px solid rgba(255,255,255,0.09);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: rgba(255,255,255,0.85);
+  cursor: pointer;
+  font-family: inherit;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.wordlist-picker-trigger:hover {
+  background: rgba(139,92,246,0.10);
+  border-color: rgba(139,92,246,0.28);
+}
+.wordlist-picker-chevron {
+  color: #a78bfa;
+  transition: transform 0.18s ease;
+}
+.wordlist-picker-chevron.open {
+  transform: rotate(180deg);
+}
+.wordlist-picker-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 9999;
+  min-width: 190px;
+  max-height: 240px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 6px;
+  border-radius: 12px;
+  background: rgba(15,15,18,0.97);
+  border: 1px solid rgba(255,255,255,0.16);
+  backdrop-filter: saturate(140%) blur(6px);
+  -webkit-backdrop-filter: saturate(140%) blur(6px);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.45), 0 1px 0 rgba(255,255,255,0.05) inset;
+  animation: wordlist-menu-in 0.14s ease;
+  isolation: isolate;
+}
+.wordlist-picker-menu::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
+  pointer-events: none;
+}
+.wordlist-picker-menu::-webkit-scrollbar {
+  width: 6px;
+}
+.wordlist-picker-menu::-webkit-scrollbar-track {
+  background: transparent;
+}
+.wordlist-picker-menu::-webkit-scrollbar-thumb {
+  background: rgba(167,139,250,0.35);
+  border-radius: 3px;
+}
+.wordlist-picker-menu::-webkit-scrollbar-thumb:hover {
+  background: rgba(167,139,250,0.55);
+}
+@keyframes wordlist-menu-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.wordlist-picker-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: background 0.12s ease;
+}
+.wordlist-picker-item {
+  background: rgba(255,255,255,0.02);
+}
+.wordlist-picker-item:hover {
+  background: rgba(139,92,246,0.14);
+}
+.wordlist-picker-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.wordlist-picker-item-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.92);
+}
+.wordlist-picker-item-hint {
+  font-size: 10.5px;
+  color: rgba(255,255,255,0.4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wordlist-picker-check {
+  color: #a78bfa;
+  flex-shrink: 0;
 }

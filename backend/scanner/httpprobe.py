@@ -35,6 +35,16 @@ def run_httpx(hosts: List[str], rate_limit: int = 10) -> Dict:
             input_text="\n".join(hosts),
         )
 
+        if not httpx_result.stdout.strip() and httpx_result.returncode == 0:
+            logger.warning("[httpx] empty output on first attempt, retrying once")
+            httpx_result = _run_with_process_group_cleanup(
+                ["httpx-toolkit", "-silent", "-json", "-title", "-status-code",
+                 "-tech-detect", "-follow-redirects", "-rate-limit", str(rate_limit),
+                 "-timeout", "10"],
+                timeout=120,
+                input_text="\n".join(hosts),
+            )
+
         for line in httpx_result.stdout.strip().split("\n"):
             if not line:
                 continue
@@ -54,6 +64,8 @@ def run_httpx(hosts: List[str], rate_limit: int = 10) -> Dict:
 
         duration = time.time() - start
         logger.info(f"[httpx] hosts_in={len(hosts)} status=ok results={len(result['hosts'])} duration={duration:.2f}s")
+        if len(result["hosts"]) == 0:
+            logger.error(f"[httpx] DEBUG hosts={hosts!r} returncode={httpx_result.returncode} stderr={httpx_result.stderr[:1000]!r} stdout={httpx_result.stdout[:500]!r}")
 
     except subprocess.TimeoutExpired:
         duration = time.time() - start

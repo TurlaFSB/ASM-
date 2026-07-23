@@ -1,7 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { getTargets, createTarget, deleteTarget, triggerScan, getTargetHistory, getTargetInfrastructure } from "../api";
 import { Plus, Trash2, Play, Shield, History, Globe } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import ScrollHint from "../components/ScrollHint";
+import WordlistPicker from "../components/WordlistPicker";
+import ToggleSwitch from "../components/ToggleSwitch";
 
 function extractErrorMessage(err, fallback) {
   const detail = err.response?.data?.detail;
@@ -94,7 +97,10 @@ export default function Targets() {
   const [touched, setTouched] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
+  const tableContainerRef = useRef(null);
   const [historyData, setHistoryData] = useState({});
+  const [wordlistChoice, setWordlistChoice] = useState({});
+  const [dirbusterEnabled, setDirbusterEnabled] = useState({});
   const [infraExpandedId, setInfraExpandedId] = useState(null);
   const [infraData, setInfraData] = useState({});
 
@@ -177,7 +183,7 @@ export default function Targets() {
 
   const handleScan = async (id) => {
     try {
-      await triggerScan({ target_id: id });
+      await triggerScan({ target_id: id, wordlist: wordlistChoice[id] || "small", run_dirbuster: dirbusterEnabled[id] ?? true });
       setMessage("Scan queued successfully.");
     } catch (e) {
       setMessage(extractErrorMessage(e, "Failed to trigger scan."));
@@ -316,7 +322,8 @@ export default function Targets() {
         </div>
       )}
 
-      <div className="table-container">
+      <ScrollHint containerRef={tableContainerRef} />
+      <div className="table-container" ref={tableContainerRef}>
         <table>
           <thead>
             <tr>
@@ -336,6 +343,19 @@ export default function Targets() {
                   <td>{target.rate_limit} req/s</td>
                   <td>{target.scope_note || "—"}</td>
                   <td className="actions">
+                    <div style={{ marginRight: "6px" }}>
+                      <WordlistPicker
+                        value={wordlistChoice[target.id] || "small"}
+                        onChange={(val) => setWordlistChoice(prev => ({ ...prev, [target.id]: val }))}
+                      />
+                    </div>
+                    <div style={{ marginRight: "6px" }}>
+                      <ToggleSwitch
+                        checked={dirbusterEnabled[target.id] ?? true}
+                        onChange={(val) => setDirbusterEnabled(prev => ({ ...prev, [target.id]: val }))}
+                        label="Dir Scan"
+                      />
+                    </div>
                     <button className="btn btn-success btn-sm" onClick={() => handleScan(target.id)}>
                       <Play size={14} /> Scan
                     </button>

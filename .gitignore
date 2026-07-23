@@ -20,3 +20,7 @@ backups/
 *.dump
 *.broken
 recovered_bundle.js
+*.bak
+*.pcap
+scan_output/
+apply_lock_fix.py

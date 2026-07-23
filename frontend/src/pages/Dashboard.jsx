@@ -74,7 +74,7 @@ export default function Dashboard() {
 
       {topRiskAssets.length > 0 && (
         <div className="recent-scans" style={{ marginBottom: 32 }}>
-          <h2>Highest Risk Assets</h2>
+          <h2>Top Risk-Scored Assets</h2>
           <table>
             <thead>
               <tr>

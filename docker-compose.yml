@@ -47,6 +47,7 @@ services:
     volumes:
       - screenshots_data:/app/screenshots
       - ./backend:/app/backend
+      - ./scan_output:/app/scan_output
     command: ["/app/backend/start-dev.sh"]
     extra_hosts:
       - "metasploitable.local:192.168.75.130"
@@ -57,7 +58,7 @@ services:
       dockerfile: backend/Dockerfile
     container_name: asm_celery_worker
     restart: unless-stopped
-    command: celery -A backend.tasks worker --loglevel=info
+    command: celery -A backend.tasks worker --loglevel=info --concurrency=1
     env_file:
       - .env.docker
     depends_on:
@@ -68,6 +69,7 @@ services:
     volumes:
       - screenshots_data:/app/screenshots
       - ./backend:/app/backend
+      - ./scan_output:/app/scan_output
     extra_hosts:
       - "metasploitable.local:192.168.75.130"
 
