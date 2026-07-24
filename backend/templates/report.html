@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page {
+    size: A4;
+    margin: 2.2cm 1.8cm;
+    @bottom-center {
+      content: "CONFIDENTIAL — Attack Surface Assessment — Page " counter(page) " of " counter(pages);
+      font-size: 8px;
+      color: #9ca3af;
+      font-family: 'Inter', 'DejaVu Sans', Arial, sans-serif;
+    }
+  }
+  @page cover {
+    margin: 0;
+    @bottom-center { content: none; }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Inter', 'DejaVu Sans', Arial, sans-serif;
+    font-size: 10.5px;
+    color: #1f2430;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- COVER PAGE ---------- */
+  .cover {
+    page: cover;
+    page-break-after: always;
+    height: 29.2cm;
+    background: linear-gradient(160deg, #0b0f1a 0%, #131a2b 60%, #1c2540 100%);
+    color: #ffffff;
+    padding: 3cm 2.2cm;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .cover .cover-body { flex: 1; display: flex; flex-direction: column; }
+  .cover .scope-block { margin-top: 50px; }
+  .cover .scope-block .label {
+    font-size: 9px; color: #94a3b8; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 10px;
+  }
+  .cover .scope-block p { font-size: 10.5px; color: #cbd5e1; line-height: 1.8; max-width: 85%; }
+  .cover .stat-row { display: flex; gap: 14px; margin-top: 40px; }
+  .cover .stat-chip {
+    flex: 1; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1);
+    border-top: 2px solid rgba(255,255,255,0.25);
+    border-radius: 4px; padding: 14px 16px; text-align: center;
+  }
+  .cover .stat-chip.critical { border-top-color: #f87171; }
+  .cover .stat-chip.high { border-top-color: #fb923c; }
+  .cover .stat-chip.medium { border-top-color: #fbbf24; }
+  .cover .stat-chip.low { border-top-color: #4ade80; }
+  .cover .stat-chip .n { font-size: 22px; font-weight: 700; }
+  .cover .stat-chip .l { font-size: 8px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.6px; margin-top: 3px; }
+  .cover .stat-chip.critical .n { color: #f87171; }
+  .cover .stat-chip.high .n { color: #fb923c; }
+  .cover .stat-chip.medium .n { color: #fbbf24; }
+  .cover .stat-chip.low .n { color: #4ade80; }
+  .cover .tag {
+    display: inline-block;
+    background: transparent;
+    border: 1px solid #dc2626;
+    color: #f87171;
+    font-size: 8.5px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    padding: 4px 11px;
+    border-radius: 3px;
+  }
+  .cover h1 {
+    font-size: 34px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    margin: 0 0 10px 0;
+    line-height: 1.2;
+  }
+  .cover .subtitle {
+    font-size: 14px;
+    color: #94a3b8;
+    margin-bottom: 60px;
+  }
+  .cover .domain-box {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 6px;
+    padding: 20px 24px;
+    margin-bottom: 30px;
+  }
+  .cover .domain-box .label {
+    font-size: 9px;
+    color: #94a3b8;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .cover .domain-box .value {
+    font-size: 20px;
+    font-weight: bold;
+    font-family: 'DejaVu Sans Mono', monospace;
+  }
+  .cover .meta-row {
+    display: flex;
+    gap: 40px;
+    margin-top: 20px;
+  }
+  .cover .meta-item .label {
+    font-size: 9px;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .cover .meta-item .value {
+    font-size: 13px;
+    font-weight: 600;
+    margin-top: 4px;
+  }
+  .cover .risk-strip {
+    margin-top: 40px;
+    padding: 16px 20px;
+    border-radius: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .cover .risk-strip.critical { background: #7f1d1d; }
+  .cover .risk-strip.high { background: #7c2d12; }
+  .cover .risk-strip.medium { background: #713f12; }
+  .cover .risk-strip.low { background: #14532d; }
+  .cover .risk-strip.informational { background: #1e293b; }
+  .cover .risk-strip .label { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: rgba(255,255,255,0.7); }
+  .cover .risk-strip .rating { font-size: 20px; font-weight: bold; }
+
+  /* ---------- SECTION HEADERS ---------- */
+  h2.section {
+    font-size: 17px;
+    font-weight: bold;
+    color: #0b0f1a;
+    margin: 0 0 4px 0;
+    padding-bottom: 8px;
+    border-bottom: 2.5px solid #0b0f1a;
+    page-break-before: always;
+  }
+  h2.section .section-num {
+    color: #dc2626;
+    margin-right: 6px;
+  }
+  h3 {
+    font-size: 12.5px;
+    font-weight: bold;
+    margin: 22px 0 8px 0;
+    color: #1f2430;
+  }
+  p.section-intro { color: #4b5563; font-size: 10px; margin-bottom: 16px; }
+
+  /* ---------- TABLES ---------- */
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 9.5px; word-wrap: break-word; }
+  thead th {
+    background: #0b0f1a;
+    color: #fff;
+    text-align: left;
+    padding: 7px 9px;
+    font-weight: 600;
+    font-size: 9px;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+  }
+  tbody td { padding: 7px 9px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+  tbody tr:nth-child(even) { background: #f8f9fb; }
+
+  /* ---------- BADGES ---------- */
+  .badge {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 3px;
+    color: #fff;
+    font-weight: bold;
+    font-size: 8.5px;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+  }
+  .badge.critical { background: #b91c1c; }
+  .badge.high { background: #ea580c; }
+  .badge.medium { background: #ca8a04; }
+  .badge.low { background: #16a34a; }
+  .badge.informational { background: #475569; }
+
+  /* ---------- SUMMARY BOXES ---------- */
+  .summary-grid { display: flex; gap: 12px; margin: 16px 0 20px 0; }
+  .summary-box {
+    flex: 1;
+    border: 1px solid #e5e7eb;
+    border-top: 3px solid #0b0f1a;
+    padding: 14px 10px;
+    text-align: center;
+    border-radius: 3px;
+  }
+  .summary-box.critical { border-top-color: #b91c1c; }
+  .summary-box.high { border-top-color: #ea580c; }
+  .summary-box.medium { border-top-color: #ca8a04; }
+  .summary-box.low { border-top-color: #16a34a; }
+  .summary-box .num { font-size: 26px; font-weight: bold; color: #0b0f1a; }
+  .summary-box .lbl { font-size: 8.5px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+
+  .finding-list { margin: 0; padding-left: 18px; }
+  .finding-list li { margin-bottom: 7px; color: #1f2430; }
+
+  .vuln-card {
+    border: 1px solid #e5e7eb;
+    border-left: 4px solid #94a3b8;
+    border-radius: 3px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    page-break-inside: avoid;
+  }
+  .vuln-card.critical { border-left-color: #b91c1c; }
+  .vuln-card.high { border-left-color: #ea580c; }
+  .vuln-card.medium { border-left-color: #ca8a04; }
+  .vuln-card.low { border-left-color: #16a34a; }
+  .vuln-card .vuln-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .vuln-card .vuln-name { font-size: 11.5px; font-weight: bold; color: #0b0f1a; }
+  .vuln-card .vuln-meta { font-size: 9px; color: #6b7280; margin-top: 3px; }
+  .vuln-card .vuln-meta strong { color: #1f2430; }
+  .vuln-card .vuln-desc { font-size: 9.5px; color: #374151; margin-top: 6px; line-height: 1.5; }
+  .tag-chip {
+    display: inline-block;
+    background: #eef2ff;
+    color: #3730a3;
+    font-size: 8px;
+    padding: 1px 7px;
+    border-radius: 10px;
+    margin-right: 4px;
+  }
+
+  a { color: #1d4ed8; text-decoration: none; }
+
+  /* ---------- WATERMARK ---------- */
+  .page-watermark {
+    position: fixed;
+    top: 45%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-32deg);
+    font-size: 52px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    color: rgba(11, 15, 26, 0.035);
+    z-index: -1;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  .empty-state { color: #9ca3af; font-style: italic; font-size: 9.5px; padding: 10px 0; }
+  .callout {
+    background: #fef2f2;
+    border-left: 4px solid #b91c1c;
+    padding: 12px 14px;
+    font-size: 10px;
+    color: #7f1d1d;
+    margin-bottom: 14px;
+    border-radius: 2px;
+  }
+  .callout strong { display: block; margin-bottom: 3px; }
+</style>
+</head>
+<body>
+
+<div class="page-watermark">PRANAV — TurlaFSB</div>
+
+<!-- ================= COVER PAGE ================= -->
+<div class="cover">
+  <div class="cover-body">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:40px;">
+      <div class="tag">CONFIDENTIAL</div>
+      <div style="text-align:right;">
+        <div style="font-size:11px; font-weight:700; letter-spacing:1px; color:#e2e8f0;">PRANAV <span style="color:#64748b; font-weight:400;">(TurlaFSB)</span></div>
+        <div style="font-size:7.5px; color:#64748b; letter-spacing:1.5px; text-transform:uppercase; margin-top:2px;">Offensive Security &amp; Detection Engineering</div>
+      </div>
+    </div>
+    <h1>Attack Surface<br>Assessment Report</h1>
+    <div class="subtitle">Automated Attack Surface Management &amp; Vulnerability Assessment</div>
+
+    <div class="domain-box">
+      <div class="label">Target Domain</div>
+      <div class="value">{{ target.domain }}</div>
+    </div>
+
+    <div class="meta-row">
+      <div class="meta-item">
+        <div class="label">Scan Date</div>
+        <div class="value">{{ scan.started_at.strftime('%d %B %Y') if scan.started_at else 'N/A' }}</div>
+      </div>
+      <div class="meta-item">
+        <div class="label">Duration</div>
+        <div class="value">{{ duration or 'N/A' }}</div>
+      </div>
+      <div class="meta-item">
+        <div class="label">Assets Analyzed</div>
+        <div class="value">{{ assets|length }}</div>
+      </div>
+      <div class="meta-item">
+        <div class="label">Report Generated</div>
+        <div class="value">{{ generated_at.strftime('%d %B %Y') }}</div>
+      </div>
+    </div>
+
+    <div class="scope-block">
+      <div class="label">Assessment Scope</div>
+      <p>This assessment covers external attack surface enumeration, service fingerprinting, and vulnerability
+      detection across all discovered assets for <strong>{{ target.domain }}</strong>. Findings are classified
+      by severity in accordance with industry-standard CVSS scoring, and prioritized remediation guidance is
+      provided in Section 05 of this report.</p>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-chip critical"><div class="n">{{ severity_counts.critical }}</div><div class="l">Critical</div></div>
+      <div class="stat-chip high"><div class="n">{{ severity_counts.high }}</div><div class="l">High</div></div>
+      <div class="stat-chip medium"><div class="n">{{ severity_counts.medium }}</div><div class="l">Medium</div></div>
+      <div class="stat-chip low"><div class="n">{{ severity_counts.low }}</div><div class="l">Low</div></div>
+    </div>
+  </div>
+
+  <div class="risk-strip {{ risk_rating.lower() }}">
+    <div>
+      <div class="label">Overall Risk Rating</div>
+      <div class="rating">{{ risk_rating }}</div>
+    </div>
+    <div style="text-align:right;">
+      <div class="label">Prepared By</div>
+      <div class="value" style="font-size:12px;">ASM Platform — Automated Assessment</div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= EXECUTIVE SUMMARY ================= -->
+<h2 class="section"><span class="section-num">01</span>Executive Summary</h2>
+<p class="section-intro">
+  This report presents the findings of an automated attack surface assessment conducted against
+  <strong>{{ target.domain }}</strong> on {{ scan.started_at.strftime('%d %B %Y') if scan.started_at else 'N/A' }}.
+  The assessment enumerated internet-facing assets, identified running services and technologies,
+  and evaluated each asset against a database of known vulnerabilities and misconfigurations.
+</p>
+
+<div class="summary-grid">
+  <div class="summary-box"><div class="num">{{ assets|length }}</div><div class="lbl">Total Assets</div></div>
+  <div class="summary-box critical"><div class="num">{{ severity_counts.critical }}</div><div class="lbl">Critical</div></div>
+  <div class="summary-box high"><div class="num">{{ severity_counts.high }}</div><div class="lbl">High</div></div>
+  <div class="summary-box medium"><div class="num">{{ severity_counts.medium }}</div><div class="lbl">Medium</div></div>
+  <div class="summary-box low"><div class="num">{{ severity_counts.low }}</div><div class="lbl">Low</div></div>
+</div>
+
+<h3>Key Findings</h3>
+<ul class="finding-list">
+  {% for f in key_findings %}<li>{{ f }}</li>{% endfor %}
+</ul>
+
+<!-- ================= ASSET INVENTORY ================= -->
+<h2 class="section"><span class="section-num">02</span>Asset Inventory</h2>
+<p class="section-intro">The following assets were discovered and enumerated during subdomain enumeration, DNS resolution, and HTTP probing.</p>
+
+{% if assets %}
+<table style="table-layout: fixed;">
+<colgroup>
+  <col style="width: 15%;">
+  <col style="width: 11%;">
+  <col style="width: 7%;">
+  <col style="width: 15%;">
+  <col style="width: 17%;">
+  <col style="width: 35%;">
+</colgroup>
+<thead><tr><th>Subdomain</th><th>IP Address</th><th>HTTP Status</th><th>Page Title</th><th>Technologies</th><th>Open Ports</th></tr></thead>
+<tbody>
+{% for a in assets %}
+<tr>
+  <td style="font-family:monospace;">{{ a.subdomain }}</td>
+  <td style="font-family:monospace;">{{ a.ip or '—' }}</td>
+  <td>{{ a.http_status or '—' }}</td>
+  <td>{{ a.http_title or '—' }}</td>
+  <td>{{ a.technologies|join(', ') if a.technologies else '—' }}</td>
+  <td style="word-wrap: break-word; overflow-wrap: break-word; vertical-align: top;">
+    {% if a.open_ports %}
+    {% for p in a.open_ports %}
+      <div style="font-size:8px; line-height:1.5; {% if not loop.last %}border-bottom:1px solid #eef0f3; padding-bottom:3px; margin-bottom:3px;{% endif %}">
+        <span style="font-family:monospace; font-weight:600; color:#0b0f1a;">{{ p.port }}/{{ p.protocol }}</span>
+        <span style="color:#6b7280;"> — {{ p.service or 'unknown' }}</span>
+        {% if p.product %}<br><span style="color:#374151;">{{ p.product }}{% if p.version %} {{ p.version }}{% endif %}</span>{% endif %}
+      </div>
+    {% endfor %}
+    {% else %}<span style="color:#9ca3af;">—</span>{% endif %}
+  </td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+{% else %}
+<div class="empty-state">No assets discovered in this scan cycle.</div>
+{% endif %}
+
+<!-- ================= INFRASTRUCTURE ================= -->
+<h2 class="section"><span class="section-num">03</span>Infrastructure</h2>
+<p class="section-intro">WHOIS/ASN registration data, fingerprinted technology stack, and TLS/SSL configuration findings for the target's infrastructure.</p>
+
+<h3 style="font-size:11px; font-weight:600; color:#0b0f1a; margin:14px 0 8px;">WHOIS &amp; ASN</h3>
+{% if whois_data %}
+<table style="table-layout: fixed;">
+<colgroup>
+  <col style="width: 25%;">
+  <col style="width: 25%;">
+  <col style="width: 25%;">
+  <col style="width: 25%;">
+</colgroup>
+<thead><tr><th>Registrar</th><th>Registration Window</th><th>Name Servers</th><th>ASN</th></tr></thead>
+<tbody>
+<tr>
+  <td>{{ whois_data.domain_whois.registrar if whois_data.domain_whois else '—' }}</td>
+  <td style="font-family:monospace; font-size:8px;">
+    {% if whois_data.domain_whois %}
+      {{ whois_data.domain_whois.creation_date[:10] if whois_data.domain_whois.creation_date else '—' }} &rarr; {{ whois_data.domain_whois.expiration_date[:10] if whois_data.domain_whois.expiration_date else '—' }}
+    {% else %}—{% endif %}
+  </td>
+  <td style="font-family:monospace; font-size:8px;">{{ whois_data.domain_whois.name_servers|join(', ') if whois_data.domain_whois and whois_data.domain_whois.name_servers else '—' }}</td>
+  <td>{{ whois_data.asn.asn_description if whois_data.asn else '—' }}</td>
+</tr>
+</tbody>
+</table>
+{% else %}
+<div class="empty-state">No WHOIS data available.</div>
+{% endif %}
+
+<h3 style="font-size:11px; font-weight:600; color:#0b0f1a; margin:16px 0 8px;">Technology Stack</h3>
+{% if technologies %}
+<p style="font-size:9px; line-height:1.8;">
+  {% for t in technologies %}<span class="tag-chip">{{ t }}</span>{% endfor %}
+</p>
+{% else %}
+<div class="empty-state">No technologies detected.</div>
+{% endif %}
+
+<h3 style="font-size:11px; font-weight:600; color:#0b0f1a; margin:16px 0 8px;">TLS &amp; SSL Findings</h3>
+{% if tls_findings %}
+<table style="table-layout: fixed;">
+<colgroup>
+  <col style="width: 20%;">
+  <col style="width: 40%;">
+  <col style="width: 25%;">
+  <col style="width: 15%;">
+</colgroup>
+<thead><tr><th>Host</th><th>Finding</th><th>Description</th><th>Severity</th></tr></thead>
+<tbody>
+{% for f in tls_findings %}
+<tr>
+  <td style="font-family:monospace;">{{ f.host }}</td>
+  <td>{{ f.name }}</td>
+  <td style="font-size:8px; color:#6b7280;">{{ f.description or '—' }}</td>
+  <td><span class="badge {{ f.severity.lower() }}">{{ f.severity }}</span></td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+{% else %}
+<div class="empty-state">No TLS misconfigurations found.</div>
+{% endif %}
+
+<!-- ================= VULNERABILITY FINDINGS ================= -->
+<h2 class="section"><span class="section-num">04</span>Vulnerability Findings</h2>
+<p class="section-intro">Findings below are ordered by severity. Each finding includes the affected host, matched detection template, and CVE reference where applicable.</p>
+
+{% if vulnerabilities %}
+  {% for v in vulnerabilities %}
+  <div class="vuln-card {{ v.severity.lower() }}">
+    <div class="vuln-header">
+      <div class="vuln-name">{{ v.name }}</div>
+      <span class="badge {{ v.severity.lower() }}">{{ v.severity }}</span>
+    </div>
+    <div class="vuln-meta">
+      <strong>Host:</strong> {{ v.host }}
+      &nbsp;&nbsp;|&nbsp;&nbsp;
+      <strong>Template ID:</strong> {{ v.template_id or '—' }}
+      &nbsp;&nbsp;|&nbsp;&nbsp;
+      <strong>CVE:</strong>
+      {% if v.cve_id %}<a href="https://nvd.nist.gov/vuln/detail/{{ v.cve_id }}">{{ v.cve_id }}</a>{% else %}—{% endif %}
+    </div>
+    {% if v.description %}
+    <div class="vuln-desc">{{ v.description }}</div>
+    {% endif %}
+    {% if v.tags %}
+    <div style="margin-top:8px;">
+      {% for t in v.tags %}<span class="tag-chip">{{ t }}</span>{% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+{% else %}
+<div class="empty-state">No vulnerabilities identified in this scan cycle.</div>
+{% endif %}
+
+<!-- ================= CHANGE DETECTION ================= -->
+<h2 class="section"><span class="section-num">05</span>Change Detection</h2>
+<p class="section-intro">Comparison against the previous scan cycle for this target, identifying new, modified, and disappeared assets.</p>
+
+<h3>New Assets ({{ new_assets|length }})</h3>
+{% if new_assets %}
+<table>
+<thead><tr><th>Subdomain</th><th>IP Address</th><th>Detected</th></tr></thead>
+<tbody>
+{% for a in new_assets %}<tr><td style="font-family:monospace;">{{ a.asset_subdomain }}</td><td style="font-family:monospace;">{{ a.asset_ip or '—' }}</td><td>{{ a.created_at.strftime('%d %b %Y, %H:%M') }}</td></tr>{% endfor %}
+</tbody>
+</table>
+{% else %}<div class="empty-state">No new assets since previous scan.</div>{% endif %}
+
+<h3>Changed Assets ({{ changed_assets|length }})</h3>
+{% if changed_assets %}
+<table>
+<thead><tr><th>Subdomain</th><th>Change Detail</th></tr></thead>
+<tbody>
+{% for a in changed_assets %}<tr><td style="font-family:monospace;">{{ a.asset_subdomain }}</td><td>{{ a.detail }}</td></tr>{% endfor %}
+</tbody>
+</table>
+{% else %}<div class="empty-state">No changed assets since previous scan.</div>{% endif %}
+
+<h3>Disappeared Assets ({{ disappeared_assets|length }})</h3>
+{% if disappeared_assets %}
+<table>
+<thead><tr><th>Subdomain</th><th>Last Known IP</th></tr></thead>
+<tbody>
+{% for a in disappeared_assets %}<tr><td style="font-family:monospace;">{{ a.asset_subdomain }}</td><td style="font-family:monospace;">{{ a.asset_ip or '—' }}</td></tr>{% endfor %}
+</tbody>
+</table>
+{% else %}<div class="empty-state">No assets have disappeared since previous scan.</div>{% endif %}
+
+<!-- ================= RECOMMENDATIONS ================= -->
+<h2 class="section"><span class="section-num">06</span>Recommendations</h2>
+
+{% if severity_counts.critical > 0 %}
+<div class="callout">
+  <strong>Critical findings require immediate remediation.</strong>
+  The vulnerabilities listed below pose an immediate risk to the organization and should be patched or mitigated within 24–48 hours.
+</div>
+{% endif %}
+
+{% if recommendations %}
+<table>
+<thead><tr><th>CVE</th><th>Vulnerability</th><th>Severity</th><th>Remediation Guidance</th></tr></thead>
+<tbody>
+{% for r in recommendations %}
+<tr>
+  <td><a href="https://nvd.nist.gov/vuln/detail/{{ r.cve_id }}">{{ r.cve_id }}</a></td>
+  <td>{{ r.name }}</td>
+  <td><span class="badge {{ r.severity.lower() }}">{{ r.severity }}</span></td>
+  <td>{{ r.guidance }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+{% else %}
+<div class="empty-state">No CVE-referenced findings requiring patch guidance in this scan cycle.</div>
+{% endif %}
+
+</body>
+</html>
