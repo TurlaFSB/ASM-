@@ -20,6 +20,7 @@ class Target(Base):
     
     # Rate limiting per target
     rate_limit = Column(Integer, default=10)
+    dirbuster_enabled = Column(Boolean, default=True)  # persisted per-target toggle for the directory discovery pipeline stage
     
     # Metadata
     created_at = Column(DateTime(timezone=True), server_default=func.now())

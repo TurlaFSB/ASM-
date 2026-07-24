@@ -75,6 +75,7 @@ class TargetResponse(BaseModel):
     rate_limit: int
     created_at: datetime
     whois_data: Optional[dict] = None
+    dirbuster_enabled: bool = True
 
     class Config:
         from_attributes = True
@@ -207,6 +208,22 @@ def get_target_infrastructure(target_id: int, db: Session = Depends(get_db), cur
             for v in tls_findings
         ],
     }
+class TargetDirbusterUpdate(BaseModel):
+    dirbuster_enabled: bool
+
+
+@router.patch("/{target_id}/dirbuster-toggle", response_model=TargetResponse)
+def update_dirbuster_toggle(target_id: int, payload: TargetDirbusterUpdate, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    target = db.query(Target).filter(Target.id == target_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Target not found")
+    target.dirbuster_enabled = payload.dirbuster_enabled
+    db.commit()
+    db.refresh(target)
+    log_action(db, current_user.username, "dirbuster_toggle_updated", target_id=target.id,
+               detail={"dirbuster_enabled": payload.dirbuster_enabled}, ip_address=request.client.host)
+    return target
+
 
 @router.delete("/{target_id}")
 def delete_target(target_id: int, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):

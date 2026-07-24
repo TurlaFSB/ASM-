@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { getTargets, createTarget, deleteTarget, triggerScan, getTargetHistory, getTargetInfrastructure } from "../api";
+import { getTargets, createTarget, deleteTarget, triggerScan, getTargetHistory, getTargetInfrastructure, updateDirbusterToggle } from "../api";
 import { Plus, Trash2, Play, Shield, History, Globe } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import ScrollHint from "../components/ScrollHint";
@@ -183,7 +183,8 @@ export default function Targets() {
 
   const handleScan = async (id) => {
     try {
-      await triggerScan({ target_id: id, wordlist: wordlistChoice[id] || "small", run_dirbuster: dirbusterEnabled[id] ?? true });
+      const t = targets.find(x => x.id === id);
+      await triggerScan({ target_id: id, wordlist: wordlistChoice[id] || "small", run_dirbuster: dirbusterEnabled[id] ?? t?.dirbuster_enabled ?? true });
       setMessage("Scan queued successfully.");
     } catch (e) {
       setMessage(extractErrorMessage(e, "Failed to trigger scan."));
@@ -351,8 +352,8 @@ export default function Targets() {
                     </div>
                     <div style={{ marginRight: "6px" }}>
                       <ToggleSwitch
-                        checked={dirbusterEnabled[target.id] ?? true}
-                        onChange={(val) => setDirbusterEnabled(prev => ({ ...prev, [target.id]: val }))}
+                        checked={dirbusterEnabled[target.id] ?? target.dirbuster_enabled ?? true}
+                        onChange={(val) => { setDirbusterEnabled(prev => ({ ...prev, [target.id]: val })); updateDirbusterToggle(target.id, val).catch(console.error); }}
                         label="Dir Scan"
                       />
                     </div>

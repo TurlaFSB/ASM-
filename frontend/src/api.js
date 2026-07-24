@@ -35,6 +35,7 @@ export const getVulnerabilities = () => api.get("/vulnerabilities/");
 export const getVulnSummary = () => api.get("/vulnerabilities/summary");
 export const createTarget = (data) => api.post("/targets/", data);
 export const deleteTarget = (id) => api.delete(`/targets/${id}`);
+export const updateDirbusterToggle = (id, enabled) => api.patch(`/targets/${id}/dirbuster-toggle`, { dirbuster_enabled: enabled });
 export const triggerScan = (data) => api.post("/scans/", data);
 export const cancelScan = (id) => api.patch(`/scans/${id}/cancel`);
 export const getScanProgress = (id) => api.get(`/scans/${id}/progress`);
