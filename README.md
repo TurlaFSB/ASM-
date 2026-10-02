@@ -1,11 +1,14 @@
 <div align="center">
 
 # ASM
+
 ### Self-Hosted Attack Surface Management
 
-Continuous external recon, vulnerability scanning, TLS auditing, and change detection — for teams who need to know what's exposed, what changed, and what's actually exploitable.
+Continuous external reconnaissance, vulnerability scanning, TLS auditing and **historical change detection** in a single self-hosted platform.
 
+![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![Stack](https://img.shields.io/badge/stack-FastAPI%20%7C%20PostgreSQL%20%7C%20Celery%20%7C%20React-9b5de5)
+![Deploy](https://img.shields.io/badge/deploy-Docker%20Compose-2496ed)
 ![License](https://img.shields.io/badge/license-MIT-informational)
 ![Status](https://img.shields.io/badge/status-active%20development-brightgreen)
 
@@ -13,18 +16,21 @@ Continuous external recon, vulnerability scanning, TLS auditing, and change dete
 
 ---
 
-Point ASM at a domain. It enumerates subdomains, resolves DNS, pulls WHOIS/ASN ownership data, scans ports, probes HTTP services, fingerprints the technology stack, runs vulnerability templates, audits TLS/SSL configuration, and captures screenshots. Every run is diffed against the last one, so you're never re-reading a static report  you're watching your attack surface change over time.
+## Overview
 
-Most ASM tooling is either an expensive SaaS subscription or a pile of scripts held together with cron. ASM is neither: it's one self-hosted platform that runs the full recon-to-report pipeline, keeps point-in-time history of every scan, and scores risk against **CISA's Known Exploited Vulnerabilities (KEV) catalog** — so a Critical finding means something is being actively exploited in the wild, not just that it scored high on paper.
+ASM takes an authorized domain or host and runs a full recon-to-report pipeline: subdomain enumeration, DNS and WHOIS/ASN enrichment, port scanning, HTTP probing, technology fingerprinting, directory discovery, template-based vulnerability scanning, CVE matching against detected service versions, TLS auditing and screenshots.
 
-## Who it's for
+Every scan is stored as a point-in-time **snapshot** and compared with the previous comparable scan. The result is a structured, severity-rated list of what changed on your attack surface: a port opened, a service appeared, a sensitive path became reachable, a new CVE applies. Risk is scored against **CISA's Known Exploited Vulnerabilities (KEV) catalog**, so a Critical rating means active exploitation in the wild, not just a high CVSS score.
 
-| | |
+### Who it is for
+
+| Audience | Value |
 |---|---|
-| **VAPT / pentest teams** | A repeatable recon baseline before manual testing begins — subdomains, ports, tech stack, and TLS state captured and diffable across every engagement. |
-| **Red teams** | Full target profiles in one place — WHOIS/ASN ownership, live tech stack, exposed service inventory — instead of stitching together five tool outputs by hand. |
-| **Students & self-learners** | A real, working ASM pipeline to study and extend — a multi-service system with a scan queue, a database, and a report generator, not a toy script. |
-| **Freelance consultants / small teams** | Client-ready PDF reports without a SaaS subscription, plus scan history and change alerts for ongoing retainer-style monitoring. |
+| **VAPT / pentest teams** | A repeatable recon baseline before manual testing, diffable across every engagement. |
+| **Red teams** | Full target profiles in one place: ownership, live tech stack, exposed service inventory. |
+| **Security engineers** | Continuous monitoring of an owned perimeter with change alerts and webhooks. |
+| **Consultants / small teams** | Client-ready PDF reports and scan history without a SaaS subscription. |
+| **Students / researchers** | A real multi-service system (queue, database, scanners, report engine) to study and extend. |
 
 ---
 
@@ -32,15 +38,21 @@ Most ASM tooling is either an expensive SaaS subscription or a pile of scripts h
 
 - [Architecture](#architecture)
 - [Features](#features)
+- [Scan profiles](#scan-profiles)
+- [Change detection](#change-detection)
 - [Security posture](#security-posture)
-- [Installation](#installation)
-- [Usage guide](#usage-guide)
-- [Scanning private / lab-only targets](#scanning-private--lab-only-targets)
-- [Backup & restore](#backup--restore)
+- [Quick start](#quick-start)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [API](#api)
+- [Scanning private and lab targets](#scanning-private-and-lab-targets)
+- [Development](#development)
+- [Backup and restore](#backup-and-restore)
 - [Troubleshooting](#troubleshooting)
 - [Roadmap](#roadmap)
 - [Known limitations](#known-limitations)
-- [Scope & responsible use](#scope--responsible-use)
+- [Scope and responsible use](#scope-and-responsible-use)
+- [License](#license)
 
 ---
 
@@ -59,70 +71,115 @@ Most ASM tooling is either an expensive SaaS subscription or a pile of scripts h
                      └──────┬───────┘      └─────────────┘
                             │
                             ▼
-        ┌───────────────────────────────────────────┐
-        │           Scanner Pipeline (Sequential)     │
-        │                                              │
-        │  Subfinder → Amass → DNS → WHOIS/ASN        │
-        │  → Nmap → httpx → WhatWeb → Nuclei          │
-        │  → sslyze → EyeWitness                       │
-        └───────────────────────────────────────────┘
+   ┌────────────────────────────────────────────────────────────┐
+   │                      Scan pipeline                         │
+   │                                                            │
+   │  Subfinder, Amass → DNS → WHOIS/ASN → Nmap → httpx         │
+   │     → WhatWeb · Directory discovery · Nuclei (parallel)    │
+   │     → CVE match · sslyze · EyeWitness                      │
+   │     → Snapshot + diff → Risk scoring                       │
+   └────────────────────────────────────────────────────────────┘
 ```
 
-Every scan runs as a single Celery task, updating scan state at each stage so the frontend can show live progress. Results are diffed against the previous scan's asset state on save — that diff is what drives alerts and webhook delivery.
+Each scan runs as one Celery task and reports progress per stage to the UI. Database schema is managed by **Alembic**; a one-shot `migrate` service applies migrations before the API and workers start.
+
+| Service | Role |
+|---|---|
+| `postgres` | Primary datastore |
+| `redis` | Celery broker and result backend |
+| `migrate` | One-shot `alembic upgrade head` |
+| `backend` | FastAPI application (JWT auth, REST API) |
+| `celery_worker` | Executes scans |
+| `celery_beat` | Triggers scheduled scans |
+| `frontend` | React single-page app served by nginx |
 
 ---
 
 ## Features
 
 ### Reconnaissance
-- Subdomain enumeration via **Subfinder + Amass**, with the apex domain always included as a candidate even when both tools return nothing — covers private, lab-only targets that public sources can't see
-- **WHOIS & ASN lookup** — registrar, creation/expiration dates, name servers, and network ownership (ASN, CIDR block, organization) for every target
-- DNS resolution, **Nmap** port scanning, **httpx** HTTP probing with redirect following
-- **WhatWeb** technology fingerprinting — identifies CMSes, frameworks, web servers, and JS libraries across every live asset, merged with httpx's own tech detection and deduplicated
-- **EyeWitness** screenshot capture on every scan
+- Subdomain enumeration (Subfinder, Amass); the apex target is always included, so private and lab hosts work
+- WHOIS and ASN lookup: registrar, dates, name servers, network ownership
+- DNS resolution, Nmap service/version detection, httpx probing with redirect following
+- WhatWeb technology fingerprinting merged with httpx detection and de-duplicated
+- Directory and content discovery with feroxbuster and a curated wordlist, rate-limited per target
+- EyeWitness screenshots of every live web service
 
-### Vulnerability & TLS analysis
-- **Nuclei** template-based vulnerability scanning
-- **sslyze**-powered TLS/SSL auditing on every scan — deprecated protocol support (SSLv2/3, TLS 1.0/1.1), weak cipher suites (RC4, DES, 3DES, NULL, EXPORT, MD5), expired certificates, SHA-1 chain signatures, and Heartbleed exposure, per host
-- TLS findings feed into the same severity pipeline as Nuclei results — one findings table, one report, no separate workflow
+### Vulnerability and TLS analysis
+- Nuclei template scanning for web services, plus network-level templates against discovered ports
+- **CVE matching** of detected service versions against the NVD (CPE-based, vulnerable-component only). These findings are labelled *inferred* and grouped per component, separate from *confirmed* template matches
+- sslyze TLS audit: deprecated protocols, weak ciphers, expired certificates, SHA-1 chains, Heartbleed
+- KEV and exploitability enrichment on every matched CVE
 
-### Change detection & alerting
-- Content-hash based diffing (ports, technologies, HTTP status/title) — flags assets as **new**, **changed**, or **disappeared** on every scan
-- Point-in-time scan/asset snapshotting, so historical reports stay accurate even as an asset's current state changes
-- Webhook alert delivery per target, with delivery status tracked and failure isolation — a webhook outage never breaks the scan pipeline
-- Alert list filterable by target and alert type, paginated
+### Change detection
+- Versioned snapshots of assets, ports, services, technologies, HTTP metadata, discovered paths and findings
+- Structured, severity-rated change events with a coverage-aware trust model (see [Change detection](#change-detection))
+- Legacy new/changed/disappeared asset alerts with per-target webhook delivery
 
-### Infrastructure visibility
-- A combined **Infrastructure** view per target — WHOIS/ASN ownership, fingerprinted tech stack, and TLS findings in one expandable card in the UI, and as a dedicated section in every generated PDF
-
-### Risk & reporting
-- Per-asset risk scoring: CVSS-driven baseline, boosted for high-risk open ports (databases, RDP, WinRM, Telnet, FTP) and admin-surface keywords, force-escalated to Critical if any matched CVE is in **CISA's KEV catalog**
-- Client-ready **PDF reports** — executive summary, asset inventory, infrastructure section, vulnerability findings with CVE links, change detection, and severity-tiered remediation SLAs (24-48h Critical, 7 days High, and so on)
+### Risk and reporting
+- Per-asset risk scoring: CVSS baseline, boosted for high-risk ports and admin surfaces, force-escalated to Critical when a matched CVE is in KEV
+- Client-ready **PDF reports**: executive summary with top actions, asset inventory, infrastructure, confirmed findings, inferred findings grouped per service, change detection, and remediation with SLA tiers
 - CSV export for assets and vulnerabilities
 
 ### Operations
-- **Scan profiles** — Quick (~2-3 min triage), Standard (default) and Deep (all ports, large wordlist) selectable per scan, with a per-target default used by scheduled scans. Each scan records its profile, and narrower profiles never "close" ports or technologies a deeper scan found earlier
-- Scheduled recurring scans via **Celery Beat** — cron expressions or hourly/daily/weekly presets, full create/update/toggle/delete
-- **JWT auth** on every route, admin bootstrapped via a setup script — no hardcoded credentials anywhere in the codebase
-- Audit log covering target creation/deletion and scan trigger/cancel/completion/failure, with IP attribution
-- **Docker Compose** deployment — one command, six services, healthchecked dependencies
+- Three scan profiles (Quick, Standard, Deep), with a per-target default for scheduled scans
+- Recurring scans via Celery Beat (cron expressions or presets)
+- JWT authentication on every route; admin created via script, no default credentials
+- Audit log of target, scan and authentication actions, with source IP
+- Docker Compose deployment with healthchecked dependencies
+
+---
+
+## Scan profiles
+
+| Profile | Ports | Directory discovery | Nuclei (web) | Typical duration |
+|---|---|---|---|---|
+| **Quick** | Top 100 | none | high, critical | ~2 min |
+| **Standard** (default) | Top 1000 | curated core list | medium and above | ~6-10 min |
+| **Deep** | All 65535 | core list plus extensions and `common.txt` | medium and above, long budget | ~20-30 min |
+
+Durations are measured on a small lab host and vary with target size. Services on ports outside a profile's range are not seen by that profile; use Deep for full-range coverage.
+
+---
+
+## Change detection
+
+Each completed scan is stored as a snapshot. A new scan is compared only with the previous snapshot **of the same profile**, and only for the sections both scans actually covered.
+
+| Rule | Behaviour |
+|---|---|
+| **Coverage gating** | A section is compared only if the stage ran cleanly in both scans. A timed-out or skipped stage never produces false "closed" or "removed" events. |
+| **Additions vs removals** | Additions need a full baseline. Removals need both scans to be full. A partial directory scan is additive-only. |
+| **Removal debounce** | The first missing item is held as *pending*. If it is missing again on the next comparable scan it is *confirmed*; if it returns, it is dismissed silently. |
+| **Version comparison** | Versions are compared only when both scans report one. |
+| **Confidence** | Events are marked *confirmed* or *inferred* (for example version-matched CVEs). |
+
+Event categories: `asset`, `port`, `technology`, `http`, `path`, `finding`. Severity is assigned per rule, for example a newly opened risky port or a newly reachable sensitive path is **high**.
+
+Recompute the events of the newest scan of a profile (for example after upgrading the engine):
+
+```bash
+docker compose exec backend python -m backend.scripts.rediff <scan_id>
+```
 
 ---
 
 ## Security posture
 
-This is a tool that performs active scanning, so its own security matters.
+ASM performs active scanning, so its own security matters.
 
-- **Authorization gate enforced at the API layer, not just the UI.** A target cannot be created without `authorized: true`, and a scan cannot be triggered against an unauthorized or deactivated target — checked again at trigger time, not just at creation.
-- **No hardcoded credentials.** The admin account is created interactively via `backend/scripts/create_admin.py`, which hides password input and hashes it with bcrypt before it touches the database.
-- **JWT auth on every route**, with active-status re-checked on every request — deactivating a user takes effect immediately, not just for future logins.
-- **Domain input validation** — regex-enforced hostname format, length caps, and a bounded rate-limit field (1-100 req/s) so a misconfigured scan can't become unintentional DoS traffic.
-- **Audit trail** for all destructive/sensitive actions, including source IP.
-- **Secrets are gitignored** (`.env`, `.env.docker`) and never committed; `SECRET_KEY` has no default — the app refuses to start without one explicitly set.
+- **Authorization gate enforced at the API.** A target cannot be created without `authorized: true`, and a scan cannot start against an unauthorized or deactivated target. This is re-checked at trigger time.
+- **No hardcoded credentials.** The admin account is created interactively; passwords are hashed with bcrypt.
+- **JWT on every route**, with account status re-checked on each request.
+- **Input validation.** Hostname format and length are enforced, and the per-target rate limit is bounded (1-100 req/s).
+- **Private address protection.** Scanning private and reserved ranges is refused unless explicitly enabled (`ASM_ALLOW_PRIVATE_TARGETS`).
+- **Audit trail** for sensitive actions, including source IP.
+- **Secrets stay out of git.** `.env` and `.env.docker` are ignored, and `SECRET_KEY` has no default: the app refuses to start without one.
+- **Report rendering is sandboxed.** Templates are autoescaped and the PDF renderer blocks outbound fetches.
 
 ---
 
-## Installation
+## Quick start
 
 ### Requirements
 
@@ -130,10 +187,10 @@ This is a tool that performs active scanning, so its own security matters.
 |---|---|
 | Docker | Engine 24+ and Compose v2 |
 | RAM | 4 GB+ available to Docker |
-| Disk | 15-20 GB+ free — scan artifacts (screenshots, PDFs) accumulate with use; running low causes Redis write failures and silent scan crashes with no obvious UI error |
+| Disk | 15-20 GB+ free. Scan artifacts accumulate, and a full disk makes Redis fail writes and scans crash |
 | Ports | `3000`, `8000`, `5432`, `6379` free on the host |
 
-### 1. Clone the repository
+### 1. Clone
 
 ```bash
 git clone https://github.com/TurlaFSB/ASM-.git
@@ -147,81 +204,95 @@ cp .env.docker.example .env.docker
 echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)" > .env
 ```
 
-Open `.env.docker` and set:
+Edit `.env.docker`:
 
 ```env
 DATABASE_URL=postgresql+psycopg://asm_user:<same password as .env>@postgres:5432/asm_db
-SECRET_KEY=<generate with: openssl rand -hex 32>
+SECRET_KEY=<output of: openssl rand -hex 32>
 ```
 
-`.env` and `.env.docker` are gitignored — never commit real secrets.
-
-### 3. Build and start the stack
+### 3. Start the stack
 
 ```bash
 docker compose up -d --build
 docker compose ps
 ```
 
-Database schema is managed by **Alembic**. A one-shot `migrate` service runs `alembic upgrade head` before the backend and workers start (it exits when done, so it is not listed as `Up`). Existing databases created before migrations existed are upgraded in place. To run it by hand: `docker compose run --rm migrate`.
+`postgres` and `redis` should report `healthy`. The `migrate` service exits after applying migrations, so it is not listed as `Up`. To run it manually: `docker compose run --rm migrate`.
 
-Confirm all six services are `Up`, with `postgres` and `redis` showing `(healthy)`:
-
-```
-NAME                 STATUS
-asm_backend          Up
-asm_celery_beat      Up
-asm_celery_worker    Up
-asm_frontend         Up
-asm_postgres         Up (healthy)
-asm_redis            Up (healthy)
-```
-
-### 4. Create your admin account
+### 4. Create the admin account
 
 ```bash
 docker exec -it asm_backend python3 -m backend.scripts.create_admin
 ```
 
-Follow the interactive prompt — username, password (hidden input), confirmation.
+### 5. Sign in
 
-### 5. Log in
-
-```
-http://<host-ip>:3000
-```
-
-Use `localhost` if Docker runs directly on your machine, or the host's LAN/VM IP if accessing from another device.
+Open `http://<host>:3000` (use `localhost` when Docker runs on your machine).
 
 ---
 
-## Usage guide
+## Configuration
 
-| Step | What to do |
+Set these in `.env.docker`. Only the first two are required.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `DATABASE_URL` | none | SQLAlchemy connection string |
+| `SECRET_KEY` | none | JWT signing key (required) |
+| `ASM_ALLOW_PRIVATE_TARGETS` | `false` | Permit scanning private/reserved addresses (lab use) |
+| `NVD_API_KEY` | unset | NVD API key for higher CVE lookup rate limits |
+| `CVE_MIN_CVSS` | `7.0` | Minimum CVSS for version-matched CVE findings |
+| `ASM_RATE_MULTIPLIER` | `1` | Scales per-target request rates for all tools |
+| `ASM_PARALLEL_STAGES` | `true` | Run independent web stages in parallel |
+| `DIRBUSTER_MAX_SECONDS` | `900` | Upper bound for directory discovery per scan |
+| `NUCLEI_TIMEOUT` | `1800` | Upper bound for a nuclei run, in seconds |
+| `NUCLEI_CONCURRENCY` | `15` | Nuclei template concurrency |
+
+---
+
+## Usage
+
+| Step | Action |
 |---|---|
-| **1. Targets** | Click *Add Target* — domain, who authorized it, rate limit (req/s). Check the authorization confirmation box; the request is rejected server-side without it. |
-| **2. Scans** | Click *Scan* next to a target. Watch live progress in the Scans table; cancel anytime. |
-| **3. Assets** | Populated as each scan completes — open ports, detected technologies, HTTP metadata, risk score. |
-| **4. Infrastructure** | Expand this on any target for WHOIS/ASN data, the fingerprinted tech stack, and TLS/SSL findings in one view. |
-| **5. Vulnerabilities** | Nuclei findings and TLS/SSL misconfigurations, with severity, CVE, and CVSS score where available. |
-| **6. Alerts** | Every new/changed/disappeared asset generates an alert; mark read individually or in bulk. |
-| **7. Schedules** | Set up recurring scans (cron or preset interval) so targets get re-checked automatically. |
-| **8. Reports** | Download a PDF or CSV export from a completed scan. The PDF includes a dedicated Infrastructure section. |
+| **Targets** | *Add Target* with domain, authorizer and rate limit. The authorization box is mandatory and enforced server-side. |
+| **Scans** | Pick a profile and click *Scan*. Watch per-stage progress; cancel at any time. |
+| **Assets** | Open ports, technologies, HTTP metadata, discovered paths and risk score. |
+| **Infrastructure** | Per-target WHOIS/ASN data, tech stack and TLS findings. |
+| **Vulnerabilities** | Template findings and TLS issues with severity, CVE and CVSS. |
+| **Alerts** | New, changed and disappeared asset alerts; mark read individually or in bulk. |
+| **Schedules** | Recurring scans by cron expression or preset interval. |
+| **Reports** | Download the PDF or CSV export from any completed scan. |
 
 ---
 
-## Scanning private / lab-only targets
+## API
 
-Subfinder and Amass query public DNS and certificate transparency logs — they cannot discover a private, lab-only hostname like a local Metasploitable VM. The pipeline always includes the apex domain as a scan candidate regardless of what these tools find, but the scanning container still needs to be able to **resolve** that hostname.
+Interactive documentation is served by FastAPI at `http://<host>:8000/docs`. All routes except login require a bearer token.
 
-If your lab target only resolves via your host's `/etc/hosts`, add a matching entry to the `backend` and `celery_worker` services in `docker-compose.yml`:
+| Area | Endpoints |
+|---|---|
+| Auth | `/auth/*` |
+| Targets and scans | `/targets/*`, `/scans/*` (including `/scans/profiles`) |
+| Assets and vulnerabilities | `/assets/*`, `/vulnerabilities/*` |
+| Alerts and schedules | `/alerts/*`, `/schedules/*` |
+| Changes | `GET /changes/`, `GET /changes/scans/{scan_id}` |
+| Audit | `/audit/*` |
+
+`GET /changes/` supports filters: `target_id`, `scan_id`, `severity` (comma-separated), `category`, `confidence`, `status` and pagination.
+
+---
+
+## Scanning private and lab targets
+
+Public enumeration sources cannot see private hostnames. The pipeline always scans the apex target, but the scanner container must be able to resolve it. For IP targets, set `ASM_ALLOW_PRIVATE_TARGETS=true`. For names that only resolve through your host, add an entry to the `backend` and `celery_worker` services:
 
 ```yaml
     extra_hosts:
       - "your-lab-host.local:192.168.x.x"
 ```
 
-Then recreate the containers — a plain rebuild isn't enough, since `extra_hosts` is applied at container-creation time:
+`extra_hosts` is applied at container creation, so recreate the containers:
 
 ```bash
 docker compose up -d --force-recreate backend celery_worker
@@ -229,12 +300,30 @@ docker compose up -d --force-recreate backend celery_worker
 
 ---
 
-## Backup & restore
-
-`docker compose down -v` deletes all data permanently. Back up before doing anything destructive:
+## Development
 
 ```bash
-docker exec -it asm_postgres pg_dump -U asm_user -F c -d asm_db -f /tmp/backup.dump
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt -r backend/requirements-dev.txt
+pytest
+```
+
+The test suite runs against in-memory SQLite and mocked scanners; no Docker, Redis or network access is required.
+
+| Change | How to apply |
+|---|---|
+| Backend code (`backend/`) | The API reloads automatically. Run `docker compose restart celery_worker` for worker changes, and never mid-scan. |
+| Frontend code | `docker compose build frontend && docker compose up -d frontend` |
+| Database models | Add an Alembic revision in `backend/migrations/versions/`; the `migrate` service applies it on start. |
+
+---
+
+## Backup and restore
+
+`docker compose down -v` permanently deletes all data. Back up first:
+
+```bash
+docker exec asm_postgres pg_dump -U asm_user -F c -d asm_db -f /tmp/backup.dump
 docker cp asm_postgres:/tmp/backup.dump ./backups/asm_db_$(date +%Y%m%d).dump
 ```
 
@@ -242,7 +331,7 @@ Restore:
 
 ```bash
 docker cp ./backups/asm_db_YYYYMMDD.dump asm_postgres:/tmp/restore.dump
-docker exec -it asm_postgres pg_restore -U asm_user -d asm_db --clean --if-exists -v /tmp/restore.dump
+docker exec asm_postgres pg_restore -U asm_user -d asm_db --clean --if-exists -v /tmp/restore.dump
 ```
 
 ---
@@ -251,46 +340,57 @@ docker exec -it asm_postgres pg_restore -U asm_user -d asm_db --clean --if-exist
 
 | Problem | Cause | Fix |
 |---|---|---|
-| Port 5432 / 6379 already in use | Native Postgres/Redis running on host | `sudo systemctl stop postgresql redis-server && sudo systemctl disable postgresql redis-server` |
-| `asm_postgres` restart-looping, mount error | Postgres 18 image needs `/var/lib/postgresql`, not `/var/lib/postgresql/data` | Already fixed in this repo's `docker-compose.yml` — don't revert the volume path |
-| CORS error in browser console | Frontend origin not in backend's allow-list | Add your host IP to `allow_origins` in `backend/main.py` |
-| 401 on login with correct credentials | `users` table empty (usually after `down -v`) | Recreate admin: `docker exec -it asm_backend python3 -m backend.scripts.create_admin` |
-| Scan stuck on `pending` forever | A second Celery worker (native, outside Docker) grabbed the task | `ps aux \| grep celery` on the host — kill any non-Docker worker; only the Docker `celery_worker` service should run |
-| Scan crashes with `redis.exceptions.ResponseError: MISCONF` | Host disk is full — Redis can't write its snapshot | `df -h`, free space with `docker image prune -a` / `docker builder prune`, restart affected containers |
-| Task fails with `ModuleNotFoundError` | A scanner dependency isn't in `requirements.txt` | Add the missing package, `docker compose up -d --build backend celery_worker` |
-| Task fails with a scanner tool "not found" | Binary name mismatch between scanner code and the installed tool | `docker exec -it asm_celery_worker which <tool-name>` — fix the Dockerfile install step to match |
-| Frontend changes don't appear after editing source | Frontend is a multi-stage Docker build serving a static bundle via nginx — not a live dev server | `docker compose build frontend && docker compose up -d frontend`, then hard-refresh the browser |
-| `celery_worker` doesn't pick up backend code changes | No auto-reload on `celery_worker`, unlike the backend's `--reload` uvicorn process | `docker compose restart celery_worker` after editing `backend/tasks.py` or any scanner module |
+| Port 5432 / 6379 already in use | Native Postgres or Redis on the host | Stop and disable the host services |
+| `asm_postgres` restart-looping with a mount error | Postgres 18 expects `/var/lib/postgresql` | Keep the volume path used in `docker-compose.yml` |
+| CORS error in the browser | Frontend origin not allowed by the backend | Add the host to `allow_origins` in `backend/main.py` |
+| 401 with correct credentials | `users` table is empty (usually after `down -v`) | Re-run `create_admin` |
+| Scan stuck on `pending` | A non-Docker Celery worker consumed the task | Stop any host-level `celery` process |
+| `redis.exceptions.ResponseError: MISCONF` | Disk full, Redis cannot persist | Free space (`docker image prune -a`, `docker builder prune`) and restart |
+| Scanner tool "not found" | Binary missing from the image | `docker exec asm_celery_worker which <tool>`; fix the Dockerfile |
+| Worker ignores code changes | No auto-reload on the worker | `docker compose restart celery_worker` |
+| Frontend changes not visible | Static bundle served by nginx | Rebuild the `frontend` image and hard-refresh |
+| Services on unusual ports are missing | Quick/Standard scan only the top 100/1000 ports | Run a Deep scan |
 
 ---
 
 ## Roadmap
 
-Planned additions to the scanner pipeline, in build order:
-
-| # | Module | What it adds |
-|---|---|---|
-| 10 | **Directory / content discovery** (ffuf / gobuster / feroxbuster) | Hidden path and endpoint enumeration per host. Needs wordlist management and a rate-limit hookup into the existing `Target.rate_limit` field, feeding into the same Celery progress tracking every other stage already uses. |
-| 11 | **Screenshot diff on rescan** | Pixel/perceptual-hash comparison against stored EyeWitness screenshots from the previous scan, to flag visually significant page changes. Needs a tuned "meaningful change" threshold so routine content (ads, timestamps, carousels) doesn't trigger false positives. |
+| Area | Status |
+|---|---|
+| Historical diff engine, change events API | Done |
+| Changes page in the UI; alerts and webhooks driven by change events | Planned |
+| Per-port path tracking (paths keyed by host and port) | Planned |
+| AI-assisted triage: severity, summary and recommended action per change, with guardrails | Planned |
+| Leak and breach collectors (HIBP, GitHub code search, paste sites) | Planned |
+| Dark-web mention monitoring via licensed intelligence APIs | Planned |
+| Screenshot perceptual-hash diffing | Planned |
+| Report delivery: scheduled PDF, Slack/email notifications for high and critical changes | Planned |
+| CI pipeline, container hardening (non-root, pinned dependencies) | Planned |
 
 ---
 
 ## Known limitations
 
-- **No self-service registration** — admin account creation is script-only, by design, for a single-operator deployment.
-- **TLS/SSL findings are not deduplicated on rescan** — each scan cycle re-inserts findings rather than upserting, so recurring TLS issues accumulate as duplicate rows over repeated scans.
-- **Nuclei stage is time-boxed** — each profile has a nuclei time budget; on timeout the findings collected so far are kept and the module is reported as `partial`.
-- **Screenshot diffing is not yet implemented** — see [Roadmap](#roadmap).
+- **Single operator model.** There is no self-service registration or multi-user management; the admin account is script-created.
+- **Discovered paths are stored per host, not per port.** The same path on two ports of one host is merged. Tracked on the roadmap.
+- **CVE matching is version-based.** It depends on the version a service reports. Services without a banner version produce no matches, and matches are marked *inferred* until verified.
+- **Profile blind spots.** Quick and Standard do not see services outside the top 100/1000 ports.
+- **Time-boxed stages.** Nuclei and directory discovery stop at their time budget; collected results are kept and the stage is reported as `partial`.
+- **TLS findings are not de-duplicated across scans**; recurring issues add rows on every scan.
+- **Legacy alerts** are derived from asset state and are not yet unified with change events.
 
 ---
 
-## Scope & responsible use
+## Scope and responsible use
 
-Built for authorized security assessments only. Scan assets you own or have explicit written permission to test. The authorization gate in this platform is a technical safeguard, not a substitute for actual legal authorization.
+ASM is built for authorized security assessments only. Scan assets you own or have explicit written permission to test. The authorization gate is a technical safeguard, not a substitute for legal authorization.
 
 ## License
 
 MIT
+
+---
+
 Medium Writeup for more detailed understanding :https://medium.com/@PranavVerma/asm-a-self-hosted-attack-surface-management-platform-and-a-postmortem-on-the-bug-that-took-four-452444338968
 
 <img width="1919" height="844" alt="image" src="https://github.com/user-attachments/assets/00e9a39f-ea7c-407f-9c53-bbac324f65b6" />
