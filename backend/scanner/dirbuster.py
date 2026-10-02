@@ -161,6 +161,8 @@ def _ferox_cmd(url: str, path: str, ext: str, rate_limit: int, per_request_timeo
         "--rate-limit", str(rate_limit),
         "--timeout", str(per_request_timeout),
         "--depth", "1",          # no recursion -- keeps scan time bounded per host
+        "--scan-dir-listings",   # without this feroxbuster sees an auto-index ("Index of /") page,
+                                 # prints "Directory listing" and SKIPS the wordlist entirely
     ]
 
 
