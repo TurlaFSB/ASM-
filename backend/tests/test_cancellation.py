@@ -69,3 +69,48 @@ def test_guard_renews_lock_while_alive():
     g = c.ScanGuard(FakeRedis(), 1, lock=lock, poll=0.02, renew=0.05)
     g.start(); time.sleep(0.3); g.stop(); g.join(timeout=2)
     assert lock.extended >= 2
+
+
+# --- lock renewal from the guard thread (real Redis; fakes hid the thread-local token bug) ---------
+import shutil
+import socket
+import subprocess
+import time
+
+import pytest
+
+
+@pytest.fixture()
+def real_redis(tmp_path):
+    exe = shutil.which("redis-server")
+    if not exe:
+        pytest.skip("redis-server not installed")
+    redis = pytest.importorskip("redis")
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    proc = subprocess.Popen([exe, "--port", str(port), "--save", "", "--dir", str(tmp_path)],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    client = redis.Redis(port=port, decode_responses=True)
+    for _ in range(50):
+        try:
+            client.ping()
+            break
+        except Exception:  # noqa: BLE001
+            time.sleep(0.1)
+    yield client
+    proc.terminate()
+    proc.wait(timeout=5)
+
+
+def test_guard_thread_can_renew_real_lock(real_redis):
+    from cancellation import ScanGuard, lock_key
+    lock = real_redis.lock(lock_key(1), timeout=20, thread_local=False)
+    assert lock.acquire(blocking=False)
+    guard = ScanGuard(real_redis, 1, lock=lock, poll=0.05, renew=0.1)
+    guard.start()
+    time.sleep(0.5)
+    guard.stop()
+    guard.join(timeout=2)
+    assert real_redis.ttl(lock_key(1)) > 100        # extended to LOCK_TTL by the guard thread
+    lock.release()

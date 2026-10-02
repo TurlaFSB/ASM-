@@ -29,7 +29,7 @@ class FakeRedis:
     def delete(self, *keys):
         for k in keys:
             self.store.pop(k, None); FakeLock.held.discard(k)      # a redis lock IS a key
-    def lock(self, key, timeout=None): return FakeLock(key)
+    def lock(self, key, timeout=None, thread_local=True): return FakeLock(key)
 
 
 class FakeLock:

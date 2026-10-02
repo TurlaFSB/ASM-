@@ -123,7 +123,11 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         finally:
             _db.close()
 
-    lock = redis_client.lock(cx.lock_key(target_id), timeout=cx.LOCK_TTL)
+    # thread_local=False: the ScanGuard thread renews this lock, and redis-py
+    # keeps the lock token in thread-local storage by default.
+    lock = redis_client.lock(
+        cx.lock_key(target_id), timeout=cx.LOCK_TTL, thread_local=False
+    )
     have_lock = lock.acquire(blocking=False)
     if not have_lock:
         # A lock whose owner scan is no longer active is stale (worker killed, restarted, OOM).
