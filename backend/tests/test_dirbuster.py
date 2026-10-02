@@ -19,3 +19,16 @@ def test_ferox_cmd_scans_directory_listings():
     from backend.scanner.dirbuster import _ferox_cmd
     cmd = _ferox_cmd("http://h", "/w.txt", "php", 10, 8)
     assert "--scan-dir-listings" in cmd and "--insecure" in cmd and "--rate-limit" in cmd
+
+
+def test_ferox_rate_is_clamped_to_where_the_limiter_works():
+    from backend.scanner.dirbuster import effective_ferox_rate, FEROX_MIN_RATE
+    assert effective_ferox_rate(10) == FEROX_MIN_RATE and effective_ferox_rate(0) == FEROX_MIN_RATE
+    assert effective_ferox_rate(50) == 50
+
+
+def test_to_paths_drops_404_and_base():
+    from backend.scanner.dirbuster import _to_paths
+    e = [{"url": "http://h/", "status": 200}, {"url": "http://h/icons", "status": 404},
+         {"url": "http://h/phpmyadmin", "status": 301}]
+    assert [p["path"] for p in _to_paths(e, "http://h")] == ["/phpmyadmin"]

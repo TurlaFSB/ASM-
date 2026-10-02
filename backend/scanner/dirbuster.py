@@ -43,6 +43,17 @@ WORDLISTS = {
 }
 DEFAULT_WORDLIST = "core"
 
+# feroxbuster 2.11.0's limiter collapses below ~15 req/s: measured against a local server,
+# --rate-limit 5/10/11 all delivered ~1 request/s (after a 50-request burst), while 15 gave ~20/s
+# and 50 gave ~49/s. A requested "10/s" would therefore take 10x longer than planned and hit the
+# time budget with most of the wordlist unsent. Clamp to a rate where the limiter is honest.
+FEROX_MIN_RATE = 20
+
+
+def effective_ferox_rate(rate_limit: int) -> int:
+    return max(FEROX_MIN_RATE, int(rate_limit or 0))
+
+
 # A wildcard-ish or listing-heavy host can answer thousands of paths; keep the DB and report sane.
 MAX_PATHS_PER_HOST = 500
 
@@ -174,6 +185,8 @@ def _to_paths(entries: List[Dict], base_url: str) -> List[Dict]:
         path = _extract_path(entry_url, base_url) if entry_url else "/"
         if path in ("/", ""):
             continue                      # the scanned base URL is not a discovery
+        if e.get("status") == 404:
+            continue                      # links extracted from a listing that don't resolve
         key = (path, e.get("status"))
         if key in seen:
             continue
@@ -274,6 +287,7 @@ def run_dirbuster(
             logger.warning(f"[dirbuster] could not create output dir {output_dir}: {e}")
             output_dir = None
 
+    rate_limit = effective_ferox_rate(rate_limit)
     cap = DIRBUSTER_MAX_SECONDS if max_seconds is None else max_seconds
     total_requests = sum(_pass_requests(w, e) for _, e, w in passes)
     budget = compute_budget(total_requests, rate_limit, len(passes), cap=cap)
