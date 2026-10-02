@@ -10,7 +10,7 @@ from sqlalchemy.pool import StaticPool
 
 from backend.auth import get_current_user
 from backend.db import Base, get_db
-from backend.diffing.service import record_scan_changes
+from backend.diffing.service import record_scan_changes, rebuild_scan_changes
 from backend.main import app
 from backend.models import Target
 from backend.models.asset import Asset
@@ -218,3 +218,23 @@ def test_genuinely_new_finding_has_no_reappeared_label(db):
     s, _ = run_scan(db, [80], findings=[("smb-x", "high")])
     ev = db.query(ChangeEvent).filter_by(scan_id=s.id, change_type="added").one()
     assert "reappeared" not in ev.summary
+
+
+def test_rebuild_reproduces_a_scan_that_dismissed_a_flap(db):
+    run_scan(db, [80, 8181])
+    run_scan(db, [80])                                   # 8181 missing once: pending
+    s3, live = run_scan(db, [80, 8181])                  # back: pending dismissed, nothing reported
+    assert live["events"] == 0 and live["dismissed"] == 1
+    again = rebuild_scan_changes(db, s3)
+    assert again["events"] == 0 and again["dismissed"] == 1          # same as the live run, no phantom 'added'
+    assert db.query(ChangeEvent).filter_by(status="dismissed").count() == 1
+    assert db.query(ChangeEvent).filter_by(status="pending").count() == 0
+
+
+def test_rebuild_reproduces_a_scan_that_confirmed_a_removal(db):
+    run_scan(db, [80, 8181]); run_scan(db, [80])
+    s3, live = run_scan(db, [80])
+    assert live["events"] == 1
+    again = rebuild_scan_changes(db, s3)
+    assert again["events"] == 1 and again["pending"] == 0
+    assert db.query(ChangeEvent).filter_by(status="superseded").count() == 1

@@ -33,4 +33,7 @@ class ChangeEvent(Base):
     after = Column(JSON, nullable=True)
     fingerprint = Column(String, nullable=False, index=True)
 
+    # scan that settled a pending removal (confirmed it -> superseded, or saw it return -> dismissed)
+    resolved_by_scan_id = Column(Integer, ForeignKey("scans.id"), nullable=True, index=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())

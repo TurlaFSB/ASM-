@@ -126,6 +126,7 @@ def record_scan_changes(db: Session, scan: Scan, module_results: Optional[Dict] 
         old = pending_by_fp.get(e["fingerprint"])
         if old is not None and e["change_type"] == "removed":
             old.status = "superseded"              # replaced by the confirmed removal above
+            old.resolved_by_scan_id = scan.id
     for e in result["pending"]:
         if e["fingerprint"] not in pending_by_fp:  # carried-over ones already have a row
             _add(e, "pending")
@@ -133,6 +134,7 @@ def record_scan_changes(db: Session, scan: Scan, module_results: Optional[Dict] 
         row = pending_by_fp.get(fp)
         if row is not None:
             row.status = "dismissed"
+            row.resolved_by_scan_id = scan.id
 
     db.add(ScanSnapshot(scan_id=scan.id, target_id=scan.target_id, profile=snap["profile"],
                         schema_version=SCHEMA_VERSION, content_hash=snapshot_hash(snap), data=snap))
@@ -150,8 +152,10 @@ def rebuild_scan_changes(db: Session, scan: Scan) -> Dict:
     """Recompute one scan's snapshot and change events from its stored data (maintenance tool).
 
     Only safe for the NEWEST scan of its profile: later scans' events were derived from this scan's
-    snapshot and are not recomputed. Limitation: pending removals that this scan had dismissed as flaps
-    are not restored (rebuild is for diagnosing a just-finished scan, not for history surgery)."""
+    snapshot and are not recomputed. Pending removals this scan confirmed or dismissed are put back to
+    pending first (via resolved_by_scan_id), so the recomputation matches what the live run did.
+    Rows settled before that column existed cannot be traced: confirmed ones are matched by
+    fingerprint, dismissed ones are not restored."""
     newer = (db.query(ScanSnapshot).filter(ScanSnapshot.target_id == scan.target_id,
                                             ScanSnapshot.profile == scan.profile,
                                             ScanSnapshot.scan_id > scan.id).first())
@@ -159,6 +163,9 @@ def rebuild_scan_changes(db: Session, scan: Scan) -> Dict:
         raise ValueError(f"scan {scan.id} is not the newest {scan.profile} scan (scan {newer.scan_id} came after)")
     # Undo this scan's side effects on older pending removals before recomputing
     mine = db.query(ChangeEvent).filter(ChangeEvent.scan_id == scan.id).all()
+    for r in db.query(ChangeEvent).filter(ChangeEvent.resolved_by_scan_id == scan.id).all():
+        r.status = "pending"
+        r.resolved_by_scan_id = None
     for e in mine:
         if e.status == "confirmed" and e.change_type == "removed":
             old = (db.query(ChangeEvent).filter(ChangeEvent.fingerprint == e.fingerprint,
