@@ -10,6 +10,9 @@ class Scan(Base):
     celery_task_id = Column(String, nullable=True, index=True)
     target_id = Column(Integer, ForeignKey("targets.id"), nullable=False)
 
+    # Depth the scan was run with (quick/standard/deep); lets later diffs compare like with like
+    profile = Column(String, nullable=False, default="standard", server_default="standard")
+
     # Scan lifecycle
     status = Column(String, default="pending")     # pending, running, completed, failed
     current_stage = Column(String, nullable=True)   # e.g. "subdomain_enumeration", "vuln_scanning"

@@ -44,20 +44,22 @@ RUN curl -sL https://github.com/owasp-amass/amass/releases/download/v${AMASS_VER
 
 # feroxbuster (directory/content discovery, prebuilt binary release)
 ARG FEROXBUSTER_VERSION=2.11.0
-RUN curl -sL https://github.com/epi052/feroxbuster/releases/download/v${FEROXBUSTER_VERSION}/x86_64-linux-feroxbuster.zip -o /tmp/ferox.zip \
+RUN curl -fsSL https://github.com/epi052/feroxbuster/releases/download/v${FEROXBUSTER_VERSION}/x86_64-linux-feroxbuster.zip -o /tmp/ferox.zip \
     && unzip -o /tmp/ferox.zip -d /usr/local/bin feroxbuster && rm /tmp/ferox.zip \
     && chmod +x /usr/local/bin/feroxbuster
 
-# SecLists wordlists for feroxbuster -- small (fast default) and medium (deeper, opt-in)
+# SecLists wordlists for feroxbuster ("small" = quickhits, "medium" = common.txt). The curated
+# "core" list ships in the repo (backend/wordlists/asm-core.txt).
 RUN mkdir -p /opt/wordlists \
-    && curl -sL https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/raft-small-directories.txt \
-       -o /opt/wordlists/raft-small-directories.txt \
-    && curl -sL https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/raft-medium-directories.txt \
-       -o /opt/wordlists/raft-medium-directories.txt \
-    && curl -sL https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt \
+    && curl -fsSL https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt \
        -o /opt/wordlists/common.txt \
-    && curl -sL https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/quickhits.txt \
+    && curl -fsSL https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/quickhits.txt \
        -o /opt/wordlists/quickhits.txt
+# Fail the build if a download silently produced an error page / empty list (a 404 body would
+# otherwise be used as a "wordlist" and every scan would find nothing)
+RUN test "$(wc -l < /opt/wordlists/quickhits.txt)" -gt 1000 \
+    && test "$(wc -l < /opt/wordlists/common.txt)" -gt 1000 \
+    && feroxbuster --version
 
 # EyeWitness (FortyNorthSecurity, matches Kali's apt-packaged version)
 RUN git clone --depth 1 https://github.com/FortyNorthSecurity/EyeWitness.git /opt/EyeWitness \

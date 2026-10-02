@@ -27,6 +27,7 @@ export const getScans = () => api.get("/scans/");
 export const getTargetHistory = (id) => api.get(`/targets/${id}/history`);
 export const getTargetInfrastructure = (id) => api.get(`/targets/${id}/infrastructure`);
 export const getAssets = () => api.get("/assets/");
+export const getAssetPaths = (id) => api.get(`/assets/${id}/paths`);
 export const getAlerts = () => api.get("/alerts/");
 export const getUnreadAlerts = () => api.get("/alerts/unread");
 export const markAlertRead = (id) => api.patch(`/alerts/${id}/read`);
@@ -37,6 +38,8 @@ export const createTarget = (data) => api.post("/targets/", data);
 export const deleteTarget = (id) => api.delete(`/targets/${id}`);
 export const updateDirbusterToggle = (id, enabled) => api.patch(`/targets/${id}/dirbuster-toggle`, { dirbuster_enabled: enabled });
 export const triggerScan = (data) => api.post("/scans/", data);
+export const getScanProfiles = () => api.get("/scans/profiles");
+export const updateTargetProfile = (id, profile) => api.patch(`/targets/${id}/profile`, { default_profile: profile });
 export const cancelScan = (id) => api.patch(`/scans/${id}/cancel`);
 export const getScanProgress = (id) => api.get(`/scans/${id}/progress`);
 

@@ -20,6 +20,7 @@ class Target(Base):
     
     # Rate limiting per target
     rate_limit = Column(Integer, default=10)
+    default_profile = Column(String, nullable=False, default="standard", server_default="standard")  # used by manual and scheduled scans unless overridden
     dirbuster_enabled = Column(Boolean, default=True)  # persisted per-target toggle for the directory discovery pipeline stage
     
     # Metadata

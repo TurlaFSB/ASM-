@@ -66,6 +66,7 @@ class TargetResponse(BaseModel):
     created_at: datetime
     whois_data: Optional[dict] = None
     dirbuster_enabled: bool = True
+    default_profile: str = "standard"
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -197,6 +198,33 @@ def get_target_infrastructure(target_id: int, db: Session = Depends(get_db), cur
             for v in tls_findings
         ],
     }
+class TargetProfileUpdate(BaseModel):
+    default_profile: str
+
+    @field_validator("default_profile")
+    @classmethod
+    def _valid(cls, v):
+        from backend.scan_profiles import PROFILES
+        v = (v or "").lower()
+        if v not in PROFILES:
+            raise ValueError(f"must be one of: {', '.join(PROFILES)}")
+        return v
+
+
+@router.patch("/{target_id}/profile", response_model=TargetResponse)
+def update_default_profile(target_id: int, payload: TargetProfileUpdate, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    target = db.query(Target).filter(Target.id == target_id, Target.is_active == True).first()  # noqa: E712
+    if not target:
+        raise HTTPException(status_code=404, detail="Target not found")
+    old = target.default_profile
+    target.default_profile = payload.default_profile
+    db.commit()
+    db.refresh(target)
+    log_action(db, current_user.username, "target_profile_updated", target_id=target.id,
+               detail={"old": old, "new": payload.default_profile}, ip_address=request.client.host)
+    return target
+
+
 class TargetDirbusterUpdate(BaseModel):
     dirbuster_enabled: bool
 

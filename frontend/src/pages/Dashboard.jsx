@@ -1,19 +1,23 @@
 import { useState, useEffect } from "react";
-import api, { getTargets, getScans, getAssets } from "../api";
+import { getTargets, getScans, getAssets, getVulnSummary } from "../api";
+import { ProfileBadge } from "../components/ProfilePicker";
 import { Shield, Activity, AlertTriangle, CheckCircle, Flame } from "lucide-react";
 
 export default function Dashboard() {
   const [targets, setTargets] = useState([]);
   const [scans, setScans] = useState([]);
   const [assets, setAssets] = useState([]);
+  const [vulnSummary, setVulnSummary] = useState({});
   const [loading, setLoading] = useState(true);
+  const [now] = useState(() => Date.now());  // relative times are computed against page-load time
 
   useEffect(() => {
-    Promise.all([getTargets(), getScans(), getAssets()])
-      .then(([t, s, a]) => {
+    Promise.all([getTargets(), getScans(), getAssets(), getVulnSummary().catch(() => ({ data: {} }))])
+      .then(([t, s, a, v]) => {
         setTargets(t.data);
         setScans(s.data);
         setAssets(a.data);
+        setVulnSummary(v.data || {});
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -23,8 +27,9 @@ export default function Dashboard() {
   targets.forEach(t => { targetMap[t.id] = t.domain; });
 
   const completedScans = scans.filter(s => s.status === "completed").length;
-  const runningScans = scans.filter(s => s.status === "running").length;
-  const totalAssets = scans.reduce((acc, s) => acc + (s.total_assets || 0), 0);
+  // Live inventory: summing total_assets across scans double-counted every re-scan
+  const totalAssets = assets.filter(a => a.status !== "disappeared").length;
+  const critHighVulns = (vulnSummary.critical || 0) + (vulnSummary.high || 0);
 
   const highRiskCount = assets.filter(a =>
     a.risk_level === "Critical" || a.risk_level === "High"
@@ -53,7 +58,7 @@ export default function Dashboard() {
           <Activity size={24} />
           <div>
             <h3>{totalAssets}</h3>
-            <p>Total Assets</p>
+            <p>Live Assets</p>
           </div>
         </div>
         <div className="stat-card">
@@ -61,6 +66,13 @@ export default function Dashboard() {
           <div>
             <h3>{completedScans}</h3>
             <p>Completed Scans</p>
+          </div>
+        </div>
+        <div className="stat-card">
+          <AlertTriangle size={24} style={{ color: critHighVulns > 0 ? "var(--red)" : undefined }} />
+          <div>
+            <h3 style={{ color: critHighVulns > 0 ? "var(--red)" : undefined }}>{critHighVulns}</h3>
+            <p>Critical/High Vulns</p>
           </div>
         </div>
         <div className="stat-card">
@@ -109,6 +121,7 @@ export default function Dashboard() {
             <tr>
               <th>Domain</th>
               <th>Status</th>
+              <th>Profile</th>
               <th>Assets</th>
               <th>New</th>
               <th>Changed</th>
@@ -126,7 +139,7 @@ export default function Dashboard() {
                 : duration < 60 ? `${duration}s`
                 : `${Math.floor(duration / 60)}m ${duration % 60}s`;
               const started = scan.started_at ? new Date(scan.started_at) : null;
-              const minsAgo = started ? Math.round((Date.now() - started) / 60000) : null;
+              const minsAgo = started ? Math.round((now - started) / 60000) : null;
               const relTime = minsAgo == null ? "—"
                 : minsAgo < 1 ? "just now"
                 : minsAgo < 60 ? `${minsAgo}m ago`
@@ -142,6 +155,7 @@ export default function Dashboard() {
                       {scan.status}
                     </span>
                   </td>
+                  <td><ProfileBadge name={scan.profile} /></td>
                   <td>{scan.total_assets || 0}</td>
                   <td>{scan.new_assets || 0}</td>
                   <td>{scan.changed_assets || 0}</td>

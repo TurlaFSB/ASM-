@@ -3,9 +3,9 @@ import json
 import logging
 import tempfile
 import os
+import re
 import time
 from typing import List, Dict
-from backend.scanner.subdomain import _run_with_process_group_cleanup
 
 
 logger = logging.getLogger(__name__)
@@ -105,6 +105,15 @@ def network_tags_from_services(port_hosts: List[Dict]) -> List[str]:
     return sorted(tags)
 
 
+_EXECUTING_RE = re.compile(r"Executing (\d+) templates? on ")
+
+
+def templates_executed(stderr: str) -> int:
+    """Total template runs nuclei reports ('Executing 148 templates on http://...'). Zero means
+    nothing was actually tested, which is what 'empty' is meant to flag."""
+    return sum(int(n) for n in _EXECUTING_RE.findall(stderr or ""))
+
+
 def keep_finding(f: Dict) -> bool:
     if (f.get("severity") or "").lower() != "info":
         return True
@@ -114,7 +123,7 @@ def keep_finding(f: Dict) -> bool:
     return bool({str(t).lower() for t in tags} & INFO_KEEP_TAGS)
 
 
-def build_nuclei_cmd(targets_path: str, out_path: str, rate_limit: int, tags=None):
+def build_nuclei_cmd(targets_path: str, rate_limit: int, tags=None, severity: str = None):
     cmd = [
         "nuclei", "-nc",              # NOT -silent: warnings (e.g. host skipped) must reach stderr
         "-l", targets_path,
@@ -125,16 +134,52 @@ def build_nuclei_cmd(targets_path: str, out_path: str, rate_limit: int, tags=Non
         "-ni",                        # no interactsh/OAST
         "-duc",                       # no update check at scan time
         "-timeout", "10",
-        "-severity", NUCLEI_SEVERITY,
+        "-severity", severity or NUCLEI_SEVERITY,
     ]
     if tags:                      # explicit service tags (network-service pass)
         cmd += ["-tags", ",".join(tags)]
     else:
         cmd += ["-as"] if NUCLEI_AUTOSCAN else ["-tags", ",".join(DEFAULT_SCAN_PROFILE)]
-    cmd += ["-jsonl-export", out_path]
+    # Stream one JSON result per line to STDOUT (the caller redirects it to a file). The old
+    # -jsonl-export wrote its file only when nuclei exited cleanly, so a timeout lost every
+    # finding found so far; streamed lines survive a kill.
+    cmd += ["-jsonl"]
     return cmd
 
 
+
+
+def _run_streaming(cmd: List[str], out_path: str, err_path: str, timeout: int):
+    """Run cmd in its own process group with stdout/stderr going straight to files.
+    Returns (returncode, timed_out). On timeout the whole group is terminated (SIGTERM, then
+    SIGKILL) but everything already written stays on disk for salvage."""
+    import signal
+    with open(out_path, "wb") as out, open(err_path, "wb") as err:
+        proc = subprocess.Popen(cmd, stdout=out, stderr=err, stdin=subprocess.DEVNULL, preexec_fn=os.setsid)
+        try:
+            return proc.wait(timeout=timeout), False
+        except subprocess.TimeoutExpired:
+            pgid = os.getpgid(proc.pid)
+            logger.warning(f"[nuclei] time budget of {timeout}s reached -- terminating process group {pgid}")
+            for sig, grace in ((signal.SIGTERM, 8), (signal.SIGKILL, 5)):
+                try:
+                    os.killpg(pgid, sig)
+                except ProcessLookupError:
+                    break
+                try:
+                    proc.wait(timeout=grace)
+                    break
+                except subprocess.TimeoutExpired:
+                    continue
+            return proc.returncode, True
+
+
+def _read_text(path: str, limit: int = 200_000) -> str:
+    try:
+        with open(path, "r", errors="replace") as f:
+            return f.read(limit)
+    except OSError:
+        return ""
 
 
 def _read_findings(path: str) -> List[Dict]:
@@ -148,10 +193,11 @@ def _read_findings(path: str) -> List[Dict]:
             line = line.strip()
             if not line:
                 continue
+            if not line.startswith("{"):
+                continue                      # banner/log noise or a line cut off by a kill
             try:
                 data = json.loads(line)
             except json.JSONDecodeError:
-                logger.warning("[nuclei] Skipping malformed JSON line.")
                 continue
             if not isinstance(data, dict):
                 continue
@@ -224,12 +270,14 @@ def check_template_freshness(max_age_days: int = 7) -> str:
     return "fresh"
 
 
-def run_nuclei(hosts: List[str], rate_limit: int = 50, tags=None) -> Dict:
+def run_nuclei(hosts: List[str], rate_limit: int = 50, tags=None,
+               severity: str = None, timeout: int = None) -> Dict:
     """
     Run Nuclei against a list of confirmed HTTP endpoints.
     Returns structured vulnerability data.
     """
 
+    timeout = timeout or NUCLEI_TIMEOUT
     result = {
         "findings": [],
         "module_status": "ok",
@@ -259,88 +307,60 @@ def run_nuclei(hosts: List[str], rate_limit: int = 50, tags=None) -> Dict:
         return result
     logger.info(f"[nuclei] templates installed: {n_templates}")
 
-    tmp_path = None
-    targets_path = None
+    tmp_path = err_path = targets_path = None
     start = time.time()
 
     try:
-        with tempfile.NamedTemporaryFile(
-            suffix=".jsonl",
-            delete=False,
-        ) as tmp:
+        with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as tmp:
             tmp_path = tmp.name
-
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            suffix=".txt",
-            delete=False,
-        ) as tmp:
+        with tempfile.NamedTemporaryFile(suffix=".err", delete=False) as tmp:
+            err_path = tmp.name
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tmp:
             targets_path = tmp.name
             tmp.write("\n".join(hosts))
-            tmp.flush()
-            os.fsync(tmp.fileno())
 
-        import shutil
-        _mem_snapshot = shutil.os.popen("free -h").read().strip()
-        logger.info(f"[nuclei] pre-run memory:\n{_mem_snapshot}")
-        logger.info(
-            f"[nuclei] scanning {len(hosts)} hosts using {targets_path}"
-        )
+        logger.info(f"[nuclei] scanning {len(hosts)} hosts, severity={severity or NUCLEI_SEVERITY}, "
+                    f"budget={timeout}s")
+        returncode, timed_out = _run_streaming(
+            build_nuclei_cmd(targets_path, rate_limit, tags, severity), tmp_path, err_path, timeout)
+        stderr_txt = _read_text(err_path)
 
-        nuclei_result = _run_with_process_group_cleanup(
-            build_nuclei_cmd(targets_path, tmp_path, rate_limit, tags),
-            timeout=NUCLEI_TIMEOUT,
-        )
+        # Findings are streamed to disk, so they are available even after a timeout/kill
+        result["findings"] = [f for f in _read_findings(tmp_path) if keep_finding(f)]
+        _summarize(result)
+        duration = time.time() - start
 
-        if nuclei_result.returncode != 0:
-            duration = time.time() - start
+        if timed_out:
+            logger.error(f"[nuclei] hosts_in={len(hosts)} status=timeout after {timeout}s "
+                         f"(kept {result['total']} findings) duration={duration:.2f}s")
+            result["module_status"] = (
+                f"partial (timeout, {result['total']} findings kept)" if result["total"] else "timeout")
+            return result
 
-            logger.error(
-                f"[nuclei] "
-                f"returncode={nuclei_result.returncode} "
-                f"duration={duration:.2f}s"
-            )
-
-            if nuclei_result.stderr:
-                logger.error(nuclei_result.stderr.strip())
-
+        if returncode != 0:
+            logger.error(f"[nuclei] returncode={returncode} duration={duration:.2f}s; "
+                         f"stderr tail: {stderr_txt.strip()[-600:]!r}")
             result["module_status"] = "failed"
             return result
 
-        result["findings"] = [f for f in _read_findings(tmp_path) if keep_finding(f)]
-        _summarize(result)
-        stderr_txt = nuclei_result.stderr or ""
         skipped_hosts = "unresponsive" in stderr_txt
         if skipped_hosts:
             logger.warning("[nuclei] host(s) skipped as unresponsive -- results are INCOMPLETE")
             result["module_status"] = "partial (host skipped as unresponsive; lower the scan rate)"
 
         if result["total"] == 0 and not skipped_hosts:
-            result["module_status"] = "empty"
-            tail = (nuclei_result.stderr or "").strip()[-600:]
-            logger.warning(f"[nuclei] 0 findings with {n_templates} templates; stderr tail: {tail!r}")
+            executed = templates_executed(stderr_txt)
+            if executed > 0:
+                # Templates really ran and matched nothing: a clean result, not a suspicious one
+                logger.info(f"[nuclei] clean: {executed} template executions, no findings at "
+                            f"severity {severity or NUCLEI_SEVERITY}")
+            else:
+                result["module_status"] = "empty"
+                logger.warning(f"[nuclei] 0 findings and no templates executed ({n_templates} installed); "
+                               f"stderr tail: {stderr_txt.strip()[-600:]!r}")
 
-        duration = time.time() - start
-
-        logger.info(
-            f"[nuclei] "
-            f"hosts_in={len(hosts)} "
-            f"status={result['module_status']} "
-            f"findings={result['total']} "
-            f"duration={duration:.2f}s"
-        )
-
-    except subprocess.TimeoutExpired:
-        duration = time.time() - start
-        result["findings"] = [f for f in _read_findings(tmp_path) if keep_finding(f)]  # keep what was found before the cap
-        _summarize(result)
-        logger.error(
-            f"[nuclei] hosts_in={len(hosts)} status=timeout after {NUCLEI_TIMEOUT}s "
-            f"(salvaged {result['total']} findings) duration={duration:.2f}s"
-        )
-        result["module_status"] = (
-            f"partial (timeout, {result['total']} findings kept)" if result["total"] else "timeout"
-        )
+        logger.info(f"[nuclei] hosts_in={len(hosts)} status={result['module_status']} "
+                    f"findings={result['total']} duration={duration:.2f}s")
 
     except FileNotFoundError:
         logger.error("[nuclei] tool_not_found")
@@ -363,7 +383,8 @@ def run_nuclei(hosts: List[str], rate_limit: int = 50, tags=None) -> Dict:
         if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)
 
-        if targets_path and os.path.exists(targets_path):
-            os.unlink(targets_path)
+        for leftover in (err_path, targets_path):
+            if leftover and os.path.exists(leftover):
+                os.unlink(leftover)
 
     return result

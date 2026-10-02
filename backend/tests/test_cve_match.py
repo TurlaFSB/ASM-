@@ -119,3 +119,9 @@ def test_fallback_candidate_used_when_exact_returns_nothing():
           "version": "8.1.7.v20120910", "cpe": ["cpe:/a:eclipse:jetty:8.1.7.v20120910"]}]}]
     r = run_cve_match(h, session=s, sleep=lambda x: None)
     assert len(s.calls) == 2 and len(r["findings"]) == 1
+
+
+def test_nvd_query_restricts_to_vulnerable_component():
+    from backend.scanner.cve_match import NVD_PARAMS
+    p = NVD_PARAMS("cpe:2.3:a:ruby-lang:ruby:2.3.7:*:*:*:*:*:*:*")
+    assert "isVulnerable" in p and p["cpeName"].startswith("cpe:2.3:a:ruby-lang")

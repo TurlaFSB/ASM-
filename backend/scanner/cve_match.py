@@ -23,6 +23,13 @@ NVD_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 CACHE_TTL_SECONDS = 24 * 3600
 
 
+def NVD_PARAMS(cpe23: str) -> Dict[str, str]:
+    """isVulnerable restricts hits to CVEs where THIS cpe is the vulnerable component. Without it NVD
+    also returns CVEs where the cpe only appears as a non-vulnerable platform in an AND
+    configuration (e.g. every Ruby *gem* CVE "running on" Ruby came back as a WEBrick finding)."""
+    return {"cpeName": cpe23, "noRejected": "", "isVulnerable": ""}
+
+
 def cpe22_to_23(cpe: str) -> Optional[str]:
     """nmap emits CPE 2.2 URIs (cpe:/a:vendor:product:version); NVD wants 2.3 names.
     Returns None when there is no version (a version-less CPE would match every CVE)."""
@@ -96,7 +103,7 @@ def parse_nvd(payload: Dict) -> List[Dict]:
 
 def _lookup(cpe23: str, session, cache, api_key: Optional[str], sleep: Callable, last_call: List[float]):
     """Return (cve_list, from_cache). Raises on HTTP failure."""
-    ckey = f"nvd:{cpe23}"
+    ckey = f"nvd2:{cpe23}"   # v2: isVulnerable filter, so old cached results are not reused
     if cache is not None:
         try:
             hit = cache.get(ckey)
@@ -110,7 +117,7 @@ def _lookup(cpe23: str, session, cache, api_key: Optional[str], sleep: Callable,
     if wait > 0:
         sleep(wait)
     headers = {"apiKey": api_key} if api_key else {}
-    resp = session.get(NVD_URL, params={"cpeName": cpe23, "noRejected": ""}, headers=headers, timeout=30)
+    resp = session.get(NVD_URL, params=NVD_PARAMS(cpe23), headers=headers, timeout=30)
     last_call[0] = time.time()
     resp.raise_for_status()
     cves = parse_nvd(resp.json())

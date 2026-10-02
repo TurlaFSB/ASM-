@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
-import { getTargets, createTarget, deleteTarget, triggerScan, getTargetHistory, getTargetInfrastructure, updateDirbusterToggle } from "../api";
+import { getTargets, createTarget, deleteTarget, triggerScan, getTargetHistory, getTargetInfrastructure, updateDirbusterToggle, getScanProfiles, updateTargetProfile } from "../api";
 import { Plus, Trash2, Play, Shield, History, Globe } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import ScrollHint from "../components/ScrollHint";
-import WordlistPicker from "../components/WordlistPicker";
+import ProfilePicker from "../components/ProfilePicker";
 import ToggleSwitch from "../components/ToggleSwitch";
 
 function extractErrorMessage(err, fallback) {
@@ -100,7 +100,8 @@ export default function Targets() {
   const [expandedId, setExpandedId] = useState(null);
   const tableContainerRef = useRef(null);
   const [historyData, setHistoryData] = useState({});
-  const [wordlistChoice, setWordlistChoice] = useState({});
+  const [profileChoice, setProfileChoice] = useState({});
+  const [profiles, setProfiles] = useState([]);
   const [dirbusterEnabled, setDirbusterEnabled] = useState({});
   const [infraExpandedId, setInfraExpandedId] = useState(null);
   const [infraData, setInfraData] = useState({});
@@ -112,7 +113,10 @@ export default function Targets() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchTargets(); }, []);
+  useEffect(() => {
+    fetchTargets();
+    getScanProfiles().then(r => setProfiles(r.data.profiles || [])).catch(() => {});
+  }, []);
 
   const validateField = (field, value) => validators[field] ? validators[field](value) : null;
 
@@ -177,7 +181,7 @@ export default function Targets() {
     try {
       await deleteTarget(id);
       fetchTargets();
-    } catch (e) {
+    } catch {
       setMessage("Failed to delete target.");
     }
   };
@@ -185,8 +189,9 @@ export default function Targets() {
   const handleScan = async (id) => {
     try {
       const t = targets.find(x => x.id === id);
-      await triggerScan({ target_id: id, wordlist: wordlistChoice[id] || "small", run_dirbuster: dirbusterEnabled[id] ?? t?.dirbuster_enabled ?? true });
-      setMessage("Scan queued successfully.");
+      const profile = profileChoice[id] ?? t?.default_profile ?? "standard";
+      await triggerScan({ target_id: id, profile, run_dirbuster: dirbusterEnabled[id] ?? t?.dirbuster_enabled ?? true });
+      setMessage(`${profile.charAt(0).toUpperCase() + profile.slice(1)} scan queued successfully.`);
     } catch (e) {
       setMessage(extractErrorMessage(e, "Failed to trigger scan."));
     }
@@ -346,9 +351,13 @@ export default function Targets() {
                   <td>{target.scope_note || "—"}</td>
                   <td className="actions">
                     <div style={{ marginRight: "6px" }}>
-                      <WordlistPicker
-                        value={wordlistChoice[target.id] || "small"}
-                        onChange={(val) => setWordlistChoice(prev => ({ ...prev, [target.id]: val }))}
+                      <ProfilePicker
+                        profiles={profiles}
+                        value={profileChoice[target.id] ?? target.default_profile ?? "standard"}
+                        onChange={(val) => {
+                          setProfileChoice(prev => ({ ...prev, [target.id]: val }));
+                          updateTargetProfile(target.id, val).catch(() => setMessage("Could not save default profile."));
+                        }}
                       />
                     </div>
                     <div style={{ marginRight: "6px" }}>

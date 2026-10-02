@@ -101,6 +101,7 @@ Every scan runs as a single Celery task, updating scan state at each stage so th
 - CSV export for assets and vulnerabilities
 
 ### Operations
+- **Scan profiles** — Quick (~2-3 min triage), Standard (default) and Deep (all ports, large wordlist) selectable per scan, with a per-target default used by scheduled scans. Each scan records its profile, and narrower profiles never "close" ports or technologies a deeper scan found earlier
 - Scheduled recurring scans via **Celery Beat** — cron expressions or hourly/daily/weekly presets, full create/update/toggle/delete
 - **JWT auth** on every route, admin bootstrapped via a setup script — no hardcoded credentials anywhere in the codebase
 - Audit log covering target creation/deletion and scan trigger/cancel/completion/failure, with IP attribution
@@ -161,6 +162,8 @@ SECRET_KEY=<generate with: openssl rand -hex 32>
 docker compose up -d --build
 docker compose ps
 ```
+
+Database schema is managed by **Alembic**. A one-shot `migrate` service runs `alembic upgrade head` before the backend and workers start (it exits when done, so it is not listed as `Up`). Existing databases created before migrations existed are upgraded in place. To run it by hand: `docker compose run --rm migrate`.
 
 Confirm all six services are `Up`, with `postgres` and `redis` showing `(healthy)`:
 
@@ -274,11 +277,10 @@ Planned additions to the scanner pipeline, in build order:
 
 ## Known limitations
 
-- **No Alembic migrations yet** — schema changes are applied via direct SQL or `Base.metadata.create_all()` on startup. Fine for single-instance lab use; not suitable for a team environment without setting this up properly first.
 - **No self-service registration** — admin account creation is script-only, by design, for a single-operator deployment.
 - **TLS/SSL findings are not deduplicated on rescan** — each scan cycle re-inserts findings rather than upserting, so recurring TLS issues accumulate as duplicate rows over repeated scans.
-- **Nuclei stage can time out on larger targets** — the vulnerability scanning stage has a hard timeout and reports zero findings if it doesn't complete in time, rather than returning partial results.
-- **Directory/content discovery and screenshot diffing are not yet implemented** — see [Roadmap](#roadmap).
+- **Nuclei stage is time-boxed** — each profile has a nuclei time budget; on timeout the findings collected so far are kept and the module is reported as `partial`.
+- **Screenshot diffing is not yet implemented** — see [Roadmap](#roadmap).
 
 ---
 

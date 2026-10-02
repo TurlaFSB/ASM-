@@ -69,7 +69,8 @@ celery_app.conf.update(
 )
 
 @celery_app.task(bind=True, name="run_scan")
-def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: int = None, wordlist: str = "small", enable_dirbuster: bool = True):
+def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: int = None,
+             wordlist: str = None, enable_dirbuster: bool = True, profile: str = None):
     """
     Full ASM pipeline task.
     Runs all scanner modules sequentially.
@@ -97,6 +98,12 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
     import time
     import json
     from datetime import datetime, timezone
+
+    from backend.scan_profiles import get_profile
+    prof = get_profile(profile)
+    wordlist = wordlist or prof.wordlist
+    enable_dirbuster = bool(enable_dirbuster and prof.run_dirbuster)
+    logger.info(f"[pipeline] scan_id={scan_id} target={domain} profile={prof.name}")
 
     redis_client = redis.Redis.from_url(settings.redis_url)
     lock_key = f"scan_lock:{target_id}"
@@ -223,7 +230,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             db.commit()
         stage_start = time.time()
 
-        port_data = scan_multiple_hosts(live_hosts, rate_limit)
+        port_data = scan_multiple_hosts(live_hosts, rate_limit, prof.nmap_ports, prof.nmap_host_timeout)
         module_results["portscan"] = port_data["module_status"]
 
         stage_timings["portscan"] = round(time.time()-stage_start,2)
@@ -275,7 +282,8 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         # nuclei and feroxbuster run at the same time against the same hosts: split the budget
         # so combined load stays within the configured ceiling (overloading a host makes
         # nuclei abandon it as 'unresponsive').
-        heavy_rate = max(1, effective_rate(rate_limit) // (3 if enable_dirbuster else 2))
+        n_heavy = int(enable_dirbuster) + int(prof.run_nuclei) + int(prof.run_nuclei_network)
+        heavy_rate = max(1, effective_rate(rate_limit) // max(1, n_heavy))
         self.update_state(state="PROGRESS", meta={"stage": "web_analysis"})
         if scan:
             scan.current_stage = "web_analysis"
@@ -293,16 +301,23 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         tls_targets = tls_targets_from_urls(confirmed_urls)
         stage_results, stage_dts = run_stages_parallel(
             jobs={
-                "whatweb": lambda: run_whatweb(host_urls),
-                "dirbuster": (lambda: run_dirbuster(host_urls, heavy_rate, wordlist, scan_id=scan_id))
+                "whatweb": (lambda: run_whatweb(host_urls)) if prof.run_whatweb else None,
+                "dirbuster": (lambda: run_dirbuster(host_urls, heavy_rate, wordlist, scan_id=scan_id,
+                                                    max_seconds=prof.dirbuster_cap))
                              if enable_dirbuster else None,
-                "nuclei": lambda: run_nuclei(host_urls, heavy_rate),
-                "sslyze": lambda: run_sslyze(tls_targets),
-                "screenshot": lambda: run_eyewitness(host_urls),
-                "cve_match": lambda: run_cve_match(port_data["hosts"], cache=_cve_cache()),
+                "nuclei": (lambda: run_nuclei(host_urls, heavy_rate, severity=prof.nuclei_severity,
+                                              timeout=prof.nuclei_timeout))
+                          if prof.run_nuclei else None,
+                "sslyze": (lambda: run_sslyze(tls_targets)) if prof.run_sslyze else None,
+                "screenshot": (lambda: run_eyewitness(host_urls)) if prof.run_screenshots else None,
+                "cve_match": (lambda: run_cve_match(port_data["hosts"], cache=_cve_cache()))
+                             if prof.run_cve_match else None,
                 "nuclei_network": (lambda: run_nuclei(
-                    sorted({h["subdomain"] for h in port_data["hosts"]}), heavy_rate, tags=net_tags))
-                    if net_tags else None,
+                    sorted({h["subdomain"] for h in port_data["hosts"]}), heavy_rate, tags=net_tags,
+                    # tag-targeted and fast (~40s): keep every severity so low/info exposures
+                    # (anonymous FTP, open IRC, SMB signing) are not lost to the web severity filter
+                    timeout=prof.nuclei_timeout))
+                    if (net_tags and prof.run_nuclei_network) else None,
             },
             defaults={
                 "whatweb": {"hosts": {}}, "dirbuster": {"hosts": {}},
@@ -315,7 +330,9 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         stage_timings.update(stage_dts)
         stage_timings["web_analysis_wall"] = round(time.time() - stage_start, 2)
 
-        whatweb_data = stage_results["whatweb"]
+        skipped = f"skipped (profile: {prof.name})"
+        module_results["profile"] = prof.name
+        whatweb_data = stage_results.get("whatweb") or {"hosts": {}, "module_status": skipped}
         module_results["whatweb"] = whatweb_data["module_status"]
         for entry in http_data["hosts"]:
             ww_result = whatweb_data["hosts"].get(entry.get("url", ""))
@@ -328,25 +345,26 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             module_results["dirbuster"] = dirbuster_data["module_status"]
         else:
             dirbuster_data = {"hosts": {}, "module_status": "skipped"}
-            module_results["dirbuster"] = "skipped"
+            module_results["dirbuster"] = skipped if not prof.run_dirbuster else "skipped"
 
-        vuln_data = stage_results["nuclei"]
+        vuln_data = stage_results.get("nuclei") or {"findings": [], "module_status": skipped}
         module_results["vuln"] = vuln_data["module_status"]
         net_data = stage_results.get("nuclei_network")
         if net_data is not None:
             module_results["nuclei_network"] = net_data["module_status"]
             vuln_data["findings"] = list(vuln_data.get("findings", [])) + net_data.get("findings", [])
         else:
-            module_results["nuclei_network"] = "skipped (no recognised network services)"
-        cve_data = stage_results["cve_match"]
+            module_results["nuclei_network"] = (
+                skipped if not prof.run_nuclei_network else "skipped (no recognised network services)")
+        cve_data = stage_results.get("cve_match") or {"findings": [], "module_status": skipped}
         module_results["cve_match"] = cve_data["module_status"]
         # version-matched CVEs flow through the same save/score/KEV path as nuclei findings
         vuln_data.setdefault("findings", [])
         vuln_data["findings"] = list(vuln_data["findings"]) + cve_data.get("findings", [])
         module_results["nuclei_templates"] = vuln_data.get("template_count")
-        sslyze_data = stage_results["sslyze"]
+        sslyze_data = stage_results.get("sslyze") or {"findings": [], "module_status": skipped}
         module_results["sslyze"] = sslyze_data["module_status"]
-        screenshot_data = stage_results["screenshot"]
+        screenshot_data = stage_results.get("screenshot") or {"screenshots": [], "module_status": skipped}
         module_results["screenshot"] = screenshot_data["module_status"]
         logger.info(
             f"[pipeline] web analysis done in {stage_timings['web_analysis_wall']}s wall "
@@ -462,6 +480,17 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                 ports = (prev.open_ports or []) if prev else []
             http_info = http_merged.get(subdomain) or http_merged.get(ip) or {}
             technologies = http_info.get("technologies", [])
+            # A narrower profile only ADDS to what we know; it never removes ports/techs a
+            # wider earlier scan found (that would raise false 'changed asset' alerts).
+            if prof.nmap_ports == "100" or not prof.run_whatweb:
+                from backend.pipeline_utils import merge_known_ports, merge_known_technologies
+                prev_a = db.query(Asset).filter(Asset.target_id == target_id,
+                                                Asset.subdomain == subdomain).first()
+                if prev_a:
+                    if prof.nmap_ports == "100" and subdomain in port_lookup:
+                        ports = merge_known_ports(prev_a.open_ports, ports)
+                    if not prof.run_whatweb:
+                        technologies = merge_known_technologies(prev_a.technologies, technologies)
             http_status = http_info.get("status_code")
             http_title = http_info.get("title", "")
 
@@ -696,9 +725,11 @@ def check_scheduled_scans():
                 sched.next_run_at = itr.get_next(datetime)
                 continue
 
+            from backend.scan_profiles import get_profile
             db_scan = Scan(
                 target_id=target.id,
                 status="pending",
+                profile=get_profile(target.default_profile).name,
                 created_at=now
             )
             db.add(db_scan)
@@ -709,7 +740,9 @@ def check_scheduled_scans():
                 target_id=target.id,
                 domain=target.domain,
                 rate_limit=target.rate_limit,
-                scan_id=db_scan.id
+                scan_id=db_scan.id,
+                enable_dirbuster=bool(target.dirbuster_enabled),
+                profile=db_scan.profile,
             )
             db_scan.celery_task_id = task.id
             db.commit()
