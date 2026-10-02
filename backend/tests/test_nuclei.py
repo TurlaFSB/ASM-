@@ -47,11 +47,11 @@ def test_run_nuclei_refuses_when_no_templates(monkeypatch):
 def test_build_cmd_not_silent_and_autoscan(monkeypatch):
     import backend.scanner.vuln as v
     monkeypatch.setattr(v, "NUCLEI_AUTOSCAN", True)
-    cmd = v.build_nuclei_cmd("t.txt", "o.jsonl", 50)
+    cmd = v.build_nuclei_cmd("t.txt", 50)
     assert "-silent" not in cmd and "-as" in cmd and "-tags" not in cmd
     assert cmd[cmd.index("-mhe") + 1] == "100" and cmd[cmd.index("-rate-limit") + 1] == "50"
     monkeypatch.setattr(v, "NUCLEI_AUTOSCAN", False)
-    cmd = v.build_nuclei_cmd("t.txt", "o.jsonl", 50)
+    cmd = v.build_nuclei_cmd("t.txt", 50)
     assert "-as" not in cmd and "-tags" in cmd
 
 
@@ -71,7 +71,7 @@ def test_network_tags_from_services_and_cmd():
         {"port": 445, "service": "netbios-ssn"}, {"port": 80, "service": "http"}]}]
     assert v.network_tags_from_services(hosts) == ["ftp", "irc", "samba", "smb", "unrealircd"]
     assert v.network_tags_from_services([{"subdomain": "h", "ports": [{"port": 80, "service": "http"}]}]) == []
-    cmd = v.build_nuclei_cmd("t", "o", 5, tags=["ftp", "irc"])
+    cmd = v.build_nuclei_cmd("t", 5, tags=["ftp", "irc"])
     assert cmd[cmd.index("-tags") + 1] == "ftp,irc" and "-as" not in cmd
 
 
@@ -83,3 +83,41 @@ def test_templates_executed_parses_nuclei_stderr():
     assert v.templates_executed("[INF] Executing 1 template on http://h") == 1
     assert v.templates_executed("") == 0 and v.templates_executed(None) == 0
     assert v.templates_executed("[INF] Executing Automatic scan on 2 target[s]") == 0
+
+
+# ---- streaming runner: findings must survive a timeout kill ----
+
+def _py(code):
+    import sys
+    return [sys.executable, "-u", "-c", code]
+
+
+def test_streaming_salvages_findings_on_timeout(tmp_path):
+    import time
+    import backend.scanner.vuln as v
+    out, err = str(tmp_path / "o.jsonl"), str(tmp_path / "o.err")
+    code = ("import time,json;"
+            "print(json.dumps({'template-id':'t1','host':'h','info':{'name':'n','severity':'high'}}));"
+            "print('{\"template-id\": \"cut-of');"        # truncated line, as a kill can leave behind
+            "time.sleep(60)")
+    t = time.time()
+    rc, timed_out = v._run_streaming(_py(code), out, err, timeout=2)
+    assert timed_out and time.time() - t < 12            # budget respected, kill is prompt
+    found = v._read_findings(out)
+    assert [f["template_id"] for f in found] == ["t1"]   # complete line kept, truncated one skipped
+
+
+def test_streaming_clean_exit_and_failure(tmp_path):
+    import backend.scanner.vuln as v
+    out, err = str(tmp_path / "o"), str(tmp_path / "e")
+    rc, timed_out = v._run_streaming(_py("print('{\"template-id\":\"a\",\"info\":{}}')"), out, err, 10)
+    assert (rc, timed_out) == (0, False) and len(v._read_findings(out)) == 1
+    rc, timed_out = v._run_streaming(_py("import sys;sys.stderr.write('boom');sys.exit(3)"), out, err, 10)
+    assert (rc, timed_out) == (3, False) and "boom" in v._read_text(err)
+
+
+def test_read_findings_ignores_noise_lines(tmp_path):
+    import backend.scanner.vuln as v
+    p = tmp_path / "o"
+    p.write_text('[INF] banner\n\n{"template-id":"x","info":{"severity":"low"}}\nnot json\n')
+    assert [f["template_id"] for f in v._read_findings(str(p))] == ["x"]

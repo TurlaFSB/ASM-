@@ -79,9 +79,9 @@ def test_nmap_host_timeout_from_profile():
 
 
 def test_nuclei_severity_override_and_default():
-    cmd = build_nuclei_cmd("t", "o", 5, severity="high,critical")
+    cmd = build_nuclei_cmd("t", 5, severity="high,critical")
     assert cmd[cmd.index("-severity") + 1] == "high,critical"
-    cmd = build_nuclei_cmd("t", "o", 5)
+    cmd = build_nuclei_cmd("t", 5)
     assert "critical" in cmd[cmd.index("-severity") + 1] and "info" in cmd[cmd.index("-severity") + 1]
 
 
