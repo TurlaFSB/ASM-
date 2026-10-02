@@ -4,6 +4,16 @@ import { getAssets, getAssetPaths } from "../api";
 import ScrollHint from "../components/ScrollHint";
 import { Database, Search, ChevronRight, ChevronDown, FolderSearch } from "lucide-react";
 
+// whatweb emits both "Jetty" and "Jetty:8.1.7"; keep the versioned form, drop bare duplicates and noise.
+const TECH_NOISE = new Set(["cookies", "httponly", "httpserver", "index-of", "x-frame-options", "x-xss-protection"]);
+function cleanTech(list) {
+  const items = (list || []).filter(t => t && !TECH_NOISE.has(t.toLowerCase()));
+  const versioned = new Set(items.filter(t => t.includes(":")).map(t => t.split(":")[0].toLowerCase()));
+  const out = items.filter(t => t.includes(":") || !versioned.has(t.toLowerCase()));
+  return [...new Set(out.map(t => t.replace(/^Apache HTTP Server:/, "Apache:")))]
+    .filter((t, i, a) => !(t === "Apache" && a.some(x => x.startsWith("Apache:"))));
+}
+
 function PathsPanel({ data }) {
   if (!data) return <div className="loading">Loading discovered paths...</div>;
   if (data === "error") return <div className="empty">Could not load discovered paths.</div>;
@@ -135,7 +145,7 @@ export default function Assets() {
                 <td className="mono">{asset.ip || "—"}</td>
                 <td>{asset.http_status || "—"}</td>
                 <td className="wrap">{asset.http_title || "—"}</td>
-                <td className="wrap">{asset.technologies?.join(", ") || "—"}</td>
+                <td className="wrap">{cleanTech(asset.technologies).join(", ") || "—"}</td>
                 <td>
                   {asset.open_ports?.length > 0
                     ? asset.open_ports.map(p => (

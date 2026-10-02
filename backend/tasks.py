@@ -314,7 +314,9 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                              if prof.run_cve_match else None,
                 "nuclei_network": (lambda: run_nuclei(
                     sorted({h["subdomain"] for h in port_data["hosts"]}), heavy_rate, tags=net_tags,
-                    severity=prof.nuclei_severity, timeout=prof.nuclei_timeout))
+                    # tag-targeted and fast (~40s): keep every severity so low/info exposures
+                    # (anonymous FTP, open IRC, SMB signing) are not lost to the web severity filter
+                    timeout=prof.nuclei_timeout))
                     if (net_tags and prof.run_nuclei_network) else None,
             },
             defaults={
