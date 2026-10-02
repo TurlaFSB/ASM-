@@ -73,3 +73,12 @@ def test_network_tags_from_services_and_cmd():
     assert v.network_tags_from_services([{"subdomain": "h", "ports": [{"port": 80, "service": "http"}]}]) == []
     cmd = v.build_nuclei_cmd("t", "o", 5, tags=["ftp", "irc"])
     assert cmd[cmd.index("-tags") + 1] == "ftp,irc" and "-as" not in cmd
+
+
+def test_templates_executed_parses_nuclei_stderr():
+    err = ("[INF] Executing 148 templates on http://192.168.16.128:80\n"
+           "[INF] Executing 13 templates on http://192.168.16.128:8080\n[INF] Targets loaded: 2")
+    assert v.templates_executed(err) == 161
+    assert v.templates_executed("[INF] Executing 1 template on http://h") == 1
+    assert v.templates_executed("") == 0 and v.templates_executed(None) == 0
+    assert v.templates_executed("[INF] Executing Automatic scan on 2 target[s]") == 0

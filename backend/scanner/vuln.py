@@ -3,6 +3,7 @@ import json
 import logging
 import tempfile
 import os
+import re
 import time
 from typing import List, Dict
 from backend.scanner.subdomain import _run_with_process_group_cleanup
@@ -103,6 +104,15 @@ def network_tags_from_services(port_hosts: List[Dict]) -> List[str]:
             if svc in SERVICE_TAGS:
                 tags.update(SERVICE_TAGS[svc])
     return sorted(tags)
+
+
+_EXECUTING_RE = re.compile(r"Executing (\d+) templates? on ")
+
+
+def templates_executed(stderr: str) -> int:
+    """Total template runs nuclei reports ('Executing 148 templates on http://...'). Zero means
+    nothing was actually tested, which is what 'empty' is meant to flag."""
+    return sum(int(n) for n in _EXECUTING_RE.findall(stderr or ""))
 
 
 def keep_finding(f: Dict) -> bool:
@@ -319,9 +329,16 @@ def run_nuclei(hosts: List[str], rate_limit: int = 50, tags=None,
             result["module_status"] = "partial (host skipped as unresponsive; lower the scan rate)"
 
         if result["total"] == 0 and not skipped_hosts:
-            result["module_status"] = "empty"
-            tail = (nuclei_result.stderr or "").strip()[-600:]
-            logger.warning(f"[nuclei] 0 findings with {n_templates} templates; stderr tail: {tail!r}")
+            executed = templates_executed(stderr_txt)
+            if executed > 0:
+                # Templates really ran and matched nothing: a clean result, not a suspicious one
+                logger.info(f"[nuclei] clean: {executed} template executions, no findings at "
+                            f"severity {severity or NUCLEI_SEVERITY}")
+            else:
+                result["module_status"] = "empty"
+                tail = stderr_txt.strip()[-600:]
+                logger.warning(f"[nuclei] 0 findings and no templates executed ({n_templates} installed); "
+                               f"stderr tail: {tail!r}")
 
         duration = time.time() - start
 
