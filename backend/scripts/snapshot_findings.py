@@ -35,7 +35,8 @@ def main(argv) -> int:
             d = snap.data
             cov = d.get("coverage", {})
             print(f"scan {sid}: schema={snap.schema_version} profile={snap.profile} "
-                  f"findings_network={cov.get('findings_network')} total_findings={len(d.get('findings', {}))}")
+                  f"findings_network={cov.get('findings_network')} total_findings={len(d.get('findings', {}))} "
+                  f"degraded={d.get('degraded') or []}")
             for key, f in sorted(d.get("findings", {}).items()):
                 if host is None or host in (f.get("host") or ""):
                     print(f"    {f.get('source'):8} {f.get('severity'):8} {f.get('name')}  [{key}]")
