@@ -107,7 +107,17 @@ def record_scan_changes(db: Session, scan: Scan, module_results: Optional[Dict] 
         db.query(ChangeEvent).filter(ChangeEvent.target_id == scan.target_id,
                                      ChangeEvent.profile == snap["profile"],
                                      ChangeEvent.status == "pending").all())
-    pending_by_fp = {r.fingerprint: r for r in existing_pending}
+    if baseline is not None:
+        # A pending removal is always settled by the very next scan. Rows that predate the baseline
+        # scan are orphans (left behind by older tooling or interrupted runs): close them so they
+        # cannot be revived into every later comparison.
+        for row in [r for r in existing_pending if r.scan_id < baseline.scan_id]:
+            row.status = "superseded"
+            row.resolved_by_scan_id = scan.id
+        existing_pending = [r for r in existing_pending if r.scan_id >= baseline.scan_id]
+    pending_by_fp: Dict[str, List[ChangeEvent]] = {}
+    for r in existing_pending:
+        pending_by_fp.setdefault(r.fingerprint, []).append(r)
 
     result = diff_snapshots(_healed_baseline_data(db, baseline) if baseline else None, snap,
                             [_row_to_dict(r) for r in existing_pending])
@@ -120,7 +130,7 @@ def record_scan_changes(db: Session, scan: Scan, module_results: Optional[Dict] 
         for row in existing_pending:
             row.status = "superseded"
             row.resolved_by_scan_id = scan.id
-        existing_pending, pending_by_fp = [], {}
+        pending_by_fp = {}
 
     def _add(e: Dict, status: str):
         db.add(ChangeEvent(
@@ -132,16 +142,15 @@ def record_scan_changes(db: Session, scan: Scan, module_results: Optional[Dict] 
 
     for e in result["events"]:
         _add(e, "confirmed")
-        old = pending_by_fp.get(e["fingerprint"])
-        if old is not None and e["change_type"] == "removed":
-            old.status = "superseded"              # replaced by the confirmed removal above
-            old.resolved_by_scan_id = scan.id
+        if e["change_type"] == "removed":
+            for old in pending_by_fp.get(e["fingerprint"], []):
+                old.status = "superseded"          # replaced by the confirmed removal above
+                old.resolved_by_scan_id = scan.id
     for e in result["pending"]:
         if e["fingerprint"] not in pending_by_fp:  # carried-over ones already have a row
             _add(e, "pending")
     for fp in result["dismissed"]:
-        row = pending_by_fp.get(fp)
-        if row is not None:
+        for row in pending_by_fp.get(fp, []):
             row.status = "dismissed"
             row.resolved_by_scan_id = scan.id
 

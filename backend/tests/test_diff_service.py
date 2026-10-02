@@ -238,3 +238,38 @@ def test_rebuild_reproduces_a_scan_that_confirmed_a_removal(db):
     again = rebuild_scan_changes(db, s3)
     assert again["events"] == 1 and again["pending"] == 0
     assert db.query(ChangeEvent).filter_by(status="superseded").count() == 1
+
+
+def _stale_pending_copy(db, scan_id, row):
+    """A pending row for the same finding as `row`, attributed to an older scan (legacy debris)."""
+    db.add(ChangeEvent(target_id=row.target_id, scan_id=scan_id, profile=row.profile, category=row.category,
+                       change_type=row.change_type, section=row.section, asset=row.asset, subject=row.subject,
+                       severity=row.severity, confidence=row.confidence, status="pending", summary=row.summary,
+                       before=row.before, fingerprint=row.fingerprint))
+    db.commit()
+
+
+def test_orphan_pending_rows_are_closed_and_cannot_be_revived(db):
+    s1, _ = run_scan(db, [80], findings=[("smb-x", "high")])
+    s2, _ = run_scan(db, [80])                                   # finding missing: pending
+    pend = db.query(ChangeEvent).filter_by(scan_id=s2.id, status="pending").one()
+    s3, _ = run_scan(db, [80])                                   # still missing: confirmed
+    s4, _ = run_scan(db, [80])                                   # nothing more to say
+    assert db.query(ChangeEvent).filter_by(scan_id=s4.id).count() == 0
+    # old tooling leaves a pending copy attributed to scan 1 (older than scan 3's baseline scan 2...)
+    _stale_pending_copy(db, s1.id, pend)
+    s5, summ = run_scan(db, [80])
+    assert summ["events"] == 0 and summ["pending"] == 0
+    stale = db.query(ChangeEvent).filter(ChangeEvent.scan_id == s1.id, ChangeEvent.status != "confirmed").all()
+    assert [r.status for r in stale] == ["superseded"] and stale[0].resolved_by_scan_id == s5.id
+
+
+def test_every_pending_row_with_the_same_fingerprint_is_settled(db):
+    run_scan(db, [80], findings=[("smb-x", "high")])
+    s2, _ = run_scan(db, [80])
+    pend = db.query(ChangeEvent).filter_by(scan_id=s2.id, status="pending").one()
+    _stale_pending_copy(db, s2.id, pend)                         # duplicate in the same chain
+    s3, summ = run_scan(db, [80])
+    assert summ["events"] == 1
+    assert db.query(ChangeEvent).filter_by(status="pending").count() == 0
+    assert db.query(ChangeEvent).filter_by(fingerprint=pend.fingerprint, status="superseded").count() == 2
