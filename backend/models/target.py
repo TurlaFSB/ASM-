@@ -17,6 +17,9 @@ class Target(Base):
     scope_note = Column(Text, nullable=True)
     whois_data = Column(JSONB, nullable=True)  # {"domain_whois": {...}, "asn": {...}}
     webhook_url = Column(String, nullable=True)
+    webhook_format = Column(String, nullable=False, default="json", server_default="json")  # json | slack | discord
+    webhook_secret = Column(String, nullable=True)  # HMAC-SHA256 signing key for the json format
+    alert_min_severity = Column(String, nullable=False, default="medium", server_default="medium")
     
     # Rate limiting per target
     rate_limit = Column(Integer, default=10)

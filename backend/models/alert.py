@@ -10,8 +10,14 @@ class Alert(Base):
     target_id = Column(Integer, ForeignKey("targets.id"), nullable=False)
     scan_id = Column(Integer, ForeignKey("scans.id"), nullable=False)
 
-    # Alert type: new_asset, changed_asset, disappeared_asset
+    # Alerts are generated from confirmed ChangeEvents (alert_type = "<category>_<change_type>",
+    # or "changes_summary" when a scan exceeded the per-scan cap). Rows written before change-event
+    # alerting keep their legacy types (new_asset, changed_asset, disappeared_asset, ...).
     alert_type = Column(String, nullable=False, index=True)
+    change_event_id = Column(Integer, ForeignKey("change_events.id"), nullable=True, unique=True)
+    severity = Column(String, nullable=True, index=True)
+    category = Column(String, nullable=True)
+    summary = Column(Text, nullable=True)
     
     # What changed
     asset_subdomain = Column(String, nullable=False)

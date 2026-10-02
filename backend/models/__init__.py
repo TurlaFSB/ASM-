@@ -8,3 +8,4 @@ from backend.models.discovered_path import DiscoveredPath
 
 from backend.models.scan_snapshot import ScanSnapshot
 from backend.models.change_event import ChangeEvent
+from backend.models.webhook_delivery import WebhookDelivery

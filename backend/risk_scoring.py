@@ -150,21 +150,5 @@ def score_all_assets(db, target_id: int, scan_id: int):
             exp = evaluate_exploitability(v, asset)
             v.is_exploitable_confirmed = exp["is_exploitable_confirmed"]
             v.exploitability_reasons = exp["exploitability_reasons"]
-            if exp["is_exploitable_confirmed"]:
-                from backend.models.alert import Alert
-                alert = Alert(
-                    target_id=target_id,
-                    scan_id=scan_id,
-                    alert_type="exploitable_finding",
-                    asset_subdomain=asset.subdomain,
-                    asset_ip=asset.ip,
-                    detail={
-                        "vulnerability_id": v.id,
-                        "name": v.name,
-                        "cve_id": v.cve_id,
-                        "reasons": exp["exploitability_reasons"],
-                    },
-                )
-                db.add(alert)
 
     db.commit()

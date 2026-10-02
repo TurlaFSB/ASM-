@@ -242,6 +242,94 @@ def update_dirbuster_toggle(target_id: int, payload: TargetDirbusterUpdate, requ
     return target
 
 
+class NotificationSettingsUpdate(BaseModel):
+    webhook_url: Optional[str] = None          # empty or null removes the webhook
+    webhook_format: str = "json"
+    alert_min_severity: str = "medium"
+    rotate_secret: bool = False
+
+    @field_validator("webhook_format")
+    @classmethod
+    def _fmt(cls, v):
+        from backend.notifications import WEBHOOK_FORMATS
+        v = (v or "").lower()
+        if v not in WEBHOOK_FORMATS:
+            raise ValueError(f"must be one of: {', '.join(WEBHOOK_FORMATS)}")
+        return v
+
+    @field_validator("alert_min_severity")
+    @classmethod
+    def _sev(cls, v):
+        from backend.notifications import SEVERITIES
+        v = (v or "").lower()
+        if v not in SEVERITIES:
+            raise ValueError(f"must be one of: {', '.join(SEVERITIES)}")
+        return v
+
+
+def _notification_view(t: Target, new_secret: Optional[str] = None) -> dict:
+    from urllib.parse import urlparse
+    host = urlparse(t.webhook_url).hostname if t.webhook_url else None
+    out = {"target_id": t.id, "alert_min_severity": t.alert_min_severity or "medium",
+           "webhook_configured": bool(t.webhook_url), "webhook_host": host,
+           "webhook_format": t.webhook_format or "json", "has_secret": bool(t.webhook_secret)}
+    if new_secret:
+        out["webhook_secret"] = new_secret      # shown exactly once; only the hash-free key is stored
+    return out
+
+
+def _active_target(db: Session, target_id: int) -> Target:
+    t = db.query(Target).filter(Target.id == target_id, Target.is_active == True).first()  # noqa: E712
+    if not t:
+        raise HTTPException(status_code=404, detail="Target not found")
+    return t
+
+
+@router.get("/{target_id}/notifications")
+def get_notification_settings(target_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    return _notification_view(_active_target(db, target_id))
+
+
+@router.put("/{target_id}/notifications")
+def update_notification_settings(target_id: int, payload: NotificationSettingsUpdate, request: Request,
+                                 db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    import secrets
+    from backend.validators import validate_webhook_url
+    t = _active_target(db, target_id)
+    url = (payload.webhook_url or "").strip()
+    if url:
+        try:
+            url = validate_webhook_url(url)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    new_secret = None
+    t.alert_min_severity = payload.alert_min_severity
+    t.webhook_format = payload.webhook_format
+    if not url:
+        t.webhook_url, t.webhook_secret = None, None
+    else:
+        t.webhook_url = url
+        if payload.rotate_secret or not t.webhook_secret:
+            t.webhook_secret = new_secret = secrets.token_urlsafe(32)
+    db.commit()
+    db.refresh(t)
+    log_action(db, current_user.username, "notification_settings_updated", target_id=t.id,
+               detail={"min_severity": t.alert_min_severity, "format": t.webhook_format,
+                       "webhook": bool(t.webhook_url), "secret_rotated": bool(new_secret)},
+               ip_address=request.client.host if request.client else None)
+    return _notification_view(t, new_secret)
+
+
+@router.post("/{target_id}/notifications/test")
+def test_webhook(target_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    from backend.notifications import send_test
+    t = _active_target(db, target_id)
+    if not t.webhook_url:
+        raise HTTPException(status_code=422, detail="No webhook is configured for this target")
+    rec = send_test(db, t, sleep=lambda _s: None)
+    return {"status": rec.status, "http_status": rec.http_status, "attempts": rec.attempts, "error": rec.error}
+
+
 @router.delete("/{target_id}")
 def delete_target(target_id: int, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     target = db.query(Target).filter(Target.id == target_id).first()

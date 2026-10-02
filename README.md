@@ -114,7 +114,8 @@ Each scan runs as one Celery task and reports progress per stage to the UI. Data
 ### Change detection
 - Versioned snapshots of assets, ports, services, technologies, HTTP metadata, discovered paths and findings
 - Structured, severity-rated change events with a coverage-aware trust model (see [Change detection](#change-detection))
-- Legacy new/changed/disappeared asset alerts with per-target webhook delivery
+- Alerts and webhooks driven by confirmed change events: a per-target minimum severity, pending removals never notify, in-app alerts capped per scan, and one bounded digest webhook per scan (CVE roll-ups folded into one line per component)
+- Webhooks are SSRF-checked, never follow redirects, retry with backoff, are signed with HMAC-SHA256 (`X-ASM-Signature` over `<timestamp>.<body>`), support generic JSON, Slack and Discord formats, and every delivery is recorded
 
 ### Risk and reporting
 - Per-asset risk scoring: CVSS baseline, boosted for high-risk ports and admin surfaces, force-escalated to Critical when a matched CVE is in KEV
@@ -361,7 +362,8 @@ docker exec asm_postgres pg_restore -U asm_user -d asm_db --clean --if-exists -v
 | Historical diff engine, change events API | Done |
 | CVE roll-up: one line per component and host with "N of M" (report, vulnerabilities API and page, changes API) | Done |
 | Changes page in the UI | Done |
-| Alerts and webhooks driven by change events | Planned |
+| Alerts and webhooks driven by change events (backend, settings API, delivery log) | Done |
+| Alerts page and per-target notification settings in the UI | Planned |
 | Per-port path tracking (paths keyed by host and port) | Done |
 | AI-assisted triage: severity, summary and recommended action per change, with guardrails | Planned |
 | Leak and breach collectors (HIBP, GitHub code search, paste sites) | Planned |

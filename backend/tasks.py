@@ -5,45 +5,6 @@ import redis
 
 logger = logging.getLogger(__name__)
 
-def send_webhook_alerts(db, target_id, alerts):
-    """
-    POST each newly created alert to the target's configured webhook_url,
-    if one is set. Never raises -- a webhook failure should never break
-    the scan pipeline that's delivering it.
-    """
-    import requests
-    from backend.models.target import Target
-
-    from backend.validators import validate_webhook_url
-
-    target = db.query(Target).filter(Target.id == target_id).first()
-    if not target or not target.webhook_url:
-        return
-    try:
-        validate_webhook_url(target.webhook_url)
-    except ValueError as e:
-        logger.warning(f"[webhook] blocked for target {target_id}: {e}")
-        return
-
-    for alert in alerts:
-        payload = {
-            "alert_id": alert.id,
-            "target_id": target_id,
-            "target_domain": target.domain,
-            "alert_type": alert.alert_type,
-            "asset_subdomain": alert.asset_subdomain,
-            "asset_ip": alert.asset_ip,
-            "detail": alert.detail,
-        }
-        try:
-            resp = requests.post(target.webhook_url, json=payload, timeout=5, allow_redirects=False)
-            if resp.ok:
-                alert.webhook_sent = True
-        except requests.RequestException as e:
-            logger.warning(f"[webhook] delivery failed for alert {alert.id}: {e}")
-
-    db.commit()
-
 celery_app = Celery(
     "asm_platform",
     broker=settings.redis_url,
@@ -89,7 +50,6 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
     from backend.db import SessionLocal
     from backend.models.scan import Scan
     from backend.models.asset import Asset
-    from backend.models.alert import Alert
     from backend.models.vulnerability import Vulnerability
     from backend.models.scan_asset import ScanAsset
     from backend.models.discovered_path import DiscoveredPath
@@ -513,8 +473,6 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             Asset.status != "disappeared"
         ).all()
 
-        created_alerts = []
-
         removals_trusted = pipeline_trusted_for_removals(module_results, internal_target)
         if not removals_trusted:
             logger.warning("[pipeline] discovery not fully successful -- skipping 'disappeared' detection")
@@ -523,16 +481,6 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             if removals_trusted and existing_asset.subdomain not in found_subdomains:
                 existing_asset.status = "disappeared"
                 disappeared_count += 1
-                alert = Alert(
-                    target_id=target_id,
-                    scan_id=scan_id,
-                    alert_type="disappeared_asset",
-                    asset_subdomain=existing_asset.subdomain,
-                    asset_ip=existing_asset.ip,
-                    detail={"reason": "Asset not found in latest scan"}
-                )
-                db.add(alert)
-                created_alerts.append(alert)
 
         for host in live_hosts:
             subdomain = host["subdomain"]
@@ -576,14 +524,6 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
 
             if existing:
                 if existing.content_hash != content_hash:
-                    old_detail = {
-                        "old_ports": [p["port"] for p in (existing.open_ports or [])],
-                        "new_ports": [p["port"] for p in ports],
-                        "old_technologies": existing.technologies or [],
-                        "new_technologies": technologies,
-                        "old_http_status": existing.http_status,
-                        "new_http_status": http_status,
-                    }
                     existing.content_hash = content_hash
                     existing.ip = ip
                     existing.open_ports = ports
@@ -594,25 +534,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                     existing.last_seen = datetime.now(timezone.utc)
                     scanned_assets_this_run.append(existing)
                     changed_count += 1
-                    alert = Alert(
-                        target_id=target_id,
-                        scan_id=scan_id,
-                        alert_type="changed_asset",
-                        asset_subdomain=subdomain,
-                        asset_ip=ip,
-                        detail=old_detail
-                    )
-                    db.add(alert)
-                    created_alerts.append(alert)
                 else:
-                    if existing.status == "disappeared":
-                        alert = Alert(
-                            target_id=target_id, scan_id=scan_id, alert_type="reappeared_asset",
-                            asset_subdomain=subdomain, asset_ip=ip,
-                            detail={"reason": "Asset seen again after being marked disappeared"},
-                        )
-                        db.add(alert)
-                        created_alerts.append(alert)
                     # unchanged since last scan: no longer "new"/"changed"/"disappeared"
                     existing.status = "active"
                     existing.last_seen = datetime.now(timezone.utc)
@@ -633,16 +555,6 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                 db.add(new_asset)
                 scanned_assets_this_run.append(new_asset)
                 new_count += 1
-                alert = Alert(
-                    target_id=target_id,
-                    scan_id=scan_id,
-                    alert_type="new_asset",
-                    asset_subdomain=subdomain,
-                    asset_ip=ip,
-                    detail={"technologies": technologies, "http_status": http_status}
-                )
-                db.add(alert)
-                created_alerts.append(alert)
 
         db.commit()
 
@@ -676,10 +588,6 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                 db.commit()
             logger.info(f"[pipeline] Saved {paths_saved} discovered paths to DB")
 
-        # Deliver webhook notifications for all alerts generated this run
-        if created_alerts:
-            send_webhook_alerts(db, target_id, created_alerts)
-
         # Record which assets were actually observed in this scan, for
         # point-in-time report scoping (independent of Asset's mutable state)
         for a in scanned_assets_this_run:
@@ -697,6 +605,12 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                                                f"{diff_summary['pending']} pending)")
                 module_results["diff_detail"] = diff_summary
                 logger.info(f"[diff] {module_results['diff']}")
+                # Alerts and the webhook digest come from the CONFIRMED events just recorded.
+                from backend.notifications import notify_scan_changes
+                note = notify_scan_changes(db, scan)
+                module_results["notify"] = (f"ok ({note['alerts']} alerts, webhook {note['webhook']})"
+                                            if note["qualifying"] else "nothing to announce")
+                logger.info(f"[notify] {module_results['notify']}")
             except Exception as e:  # noqa: BLE001
                 db.rollback()
                 logger.exception("[diff] failed to record changes")
