@@ -1,5 +1,4 @@
 import subprocess
-import subprocess
 import logging
 import time
 import xml.etree.ElementTree as ET
@@ -47,6 +46,28 @@ def parse_nmap_xml(xml_output: str) -> List[Dict]:
     return ports
 
 
+NMAP_HOST_TIMEOUT = "600s"
+NMAP_PROCESS_TIMEOUT = 720
+
+
+def build_nmap_cmd(host: str, rate_limit: int) -> List[str]:
+    """Build the nmap command.
+
+    rate_limit is the per-target "politeness" knob shared with the HTTP tools
+    (default 10). Passing it directly as --min-rate (10 pkt/s) made a 1000-port
+    scan take >100s and trip the host timeout, silently yielding 0 ports. We
+    cap the rate instead (--max-rate) at a sane multiple, and give the host
+    enough time for service-version detection.
+    """
+    max_rate = max(100, int(rate_limit) * 50)
+    return [
+        "nmap", "-Pn", "-n", "-sS", "-sV", "--version-light",
+        "--top-ports", "1000", "--max-rate", str(max_rate),
+        "--open", "-T4", "--host-timeout", NMAP_HOST_TIMEOUT,
+        "-oX", "-", host,
+    ]
+
+
 def scan_ports(host: str, rate_limit: int = 100) -> Dict:
     """
     Run Nmap against a single host.
@@ -62,26 +83,8 @@ def scan_ports(host: str, rate_limit: int = 100) -> Dict:
 
     try:
         nmap_result = _run_with_process_group_cleanup(
-            [
-                "nmap",
-                "-Pn",
-                "-n",
-                "-sS",
-                "-sV",
-                "--version-light",
-                "--top-ports",
-                "1000",
-                "--min-rate",
-                str(rate_limit),
-                "--open",
-                "-T4",
-                "--host-timeout",
-                "60s",
-                "-oX",
-                "-",
-                host,
-            ],
-            timeout=180,
+            build_nmap_cmd(host, rate_limit),
+            timeout=NMAP_PROCESS_TIMEOUT,
         )
 
         if nmap_result.returncode != 0:
@@ -98,6 +101,11 @@ def scan_ports(host: str, rate_limit: int = 100) -> Dict:
                 logger.error(nmap_result.stderr.strip())
 
             result["module_status"] = "failed"
+            return result
+
+        if "due to host timeout" in (nmap_result.stderr or ""):
+            logger.error(f"[nmap] host={host} status=timeout (nmap host-timeout hit)")
+            result["module_status"] = "timeout"
             return result
 
         result["ports"] = parse_nmap_xml(nmap_result.stdout)
