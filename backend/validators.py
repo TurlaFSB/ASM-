@@ -74,3 +74,25 @@ def validate_target(value: str) -> str:
     if not DOMAIN_REGEX.match(v):
         raise ValueError("Invalid domain format (e.g. example.com or 8.8.8.8)")
     return v
+
+
+def validate_webhook_url(url: str) -> str:
+    """Webhook destinations must be https and resolve only to public addresses
+    (blocks SSRF to cloud metadata / internal services). Raises ValueError.
+    Note: DNS can change between check and use; callers should also disable redirects."""
+    import socket
+    from urllib.parse import urlparse
+
+    u = urlparse((url or "").strip())
+    if u.scheme != "https" or not u.hostname:
+        raise ValueError("Webhook URL must be https")
+    try:
+        infos = socket.getaddrinfo(u.hostname, u.port or 443, proto=socket.IPPROTO_TCP)
+    except socket.gaierror:
+        raise ValueError("Webhook host does not resolve")
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast
+                or ip.is_unspecified or ip.is_reserved):
+            raise ValueError("Webhook host resolves to a non-public address")
+    return url.strip()

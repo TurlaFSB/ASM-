@@ -14,8 +14,15 @@ def send_webhook_alerts(db, target_id, alerts):
     import requests
     from backend.models.target import Target
 
+    from backend.validators import validate_webhook_url
+
     target = db.query(Target).filter(Target.id == target_id).first()
     if not target or not target.webhook_url:
+        return
+    try:
+        validate_webhook_url(target.webhook_url)
+    except ValueError as e:
+        logger.warning(f"[webhook] blocked for target {target_id}: {e}")
         return
 
     for alert in alerts:
@@ -29,7 +36,7 @@ def send_webhook_alerts(db, target_id, alerts):
             "detail": alert.detail,
         }
         try:
-            resp = requests.post(target.webhook_url, json=payload, timeout=5)
+            resp = requests.post(target.webhook_url, json=payload, timeout=5, allow_redirects=False)
             if resp.ok:
                 alert.webhook_sent = True
         except requests.RequestException as e:
@@ -631,8 +638,20 @@ def check_scheduled_scans():
 
         for sched in due:
             target = db.query(Target).filter(Target.id == sched.target_id).first()
-            if not target or not target.authorized or not target.is_active:
-                # Skip and push next_run forward so we don't spin on a dead/unauthorized target
+            skip = (not target or not target.authorized or not target.is_active)
+            if not skip:
+                from backend.validators import validate_target
+                try:
+                    validate_target(target.domain)
+                except ValueError as e:
+                    logger.warning(f"[scheduler] target {target.id} failed validation: {e}")
+                    skip = True
+            if not skip and db.query(Scan).filter(
+                    Scan.target_id == target.id, Scan.status.in_(["pending", "running"])).first():
+                logger.info(f"[scheduler] scan already active for target {target.id}, skipping this tick")
+                skip = True
+            if skip:
+                # Push next_run forward so we don't spin on a dead/unauthorized/busy target
                 itr = croniter(sched.cron_expression, now)
                 sched.next_run_at = itr.get_next(datetime)
                 continue
@@ -646,12 +665,14 @@ def check_scheduled_scans():
             db.commit()
             db.refresh(db_scan)
 
-            run_scan.delay(
+            task = run_scan.delay(
                 target_id=target.id,
                 domain=target.domain,
                 rate_limit=target.rate_limit,
                 scan_id=db_scan.id
             )
+            db_scan.celery_task_id = task.id
+            db.commit()
 
             sched.last_run_at = now
             itr = croniter(sched.cron_expression, now)

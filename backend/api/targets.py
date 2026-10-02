@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 from typing import Optional
 from datetime import datetime, timezone
 from backend.db import get_db
@@ -67,8 +67,7 @@ class TargetResponse(BaseModel):
     whois_data: Optional[dict] = None
     dirbuster_enabled: bool = True
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 @router.post("/", response_model=TargetResponse)
 def create_target(target: TargetCreate, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
