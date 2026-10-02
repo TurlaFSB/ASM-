@@ -123,9 +123,14 @@ def build_snapshot(profile: str, module_results: Dict, assets: List[Dict],
             "cvss": f.get("cvss_score"),
         }
 
+    degraded = sorted({str(d.get("target")) for d in (module_results or {}).get("nuclei_network_degraded") or []
+                       if isinstance(d, dict) and d.get("target")})
     snap = {
         "schema": SCHEMA_VERSION, "profile": get_profile(profile).name,
         "coverage": compute_coverage(profile, module_results),
+        # host:ports whose network checks hit transient errors even after a retry: findings there are
+        # unreliable in BOTH directions, so the diff holds removals and flags additions
+        "degraded": degraded,
         "assets": snap_assets, "paths": snap_paths, "findings": snap_findings,
     }
     return snap

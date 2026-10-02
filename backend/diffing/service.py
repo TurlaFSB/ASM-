@@ -21,6 +21,8 @@ from backend.models.vulnerability import Vulnerability
 
 logger = logging.getLogger(__name__)
 
+PENDING_MAX_AGE_SCANS = 5
+
 
 def snapshot_from_db(db: Session, scan: Scan, module_results: Optional[Dict] = None) -> Dict:
     """Snapshot of what THIS scan observed (assets via scan_assets, paths and findings by scan_id)."""
@@ -108,13 +110,19 @@ def record_scan_changes(db: Session, scan: Scan, module_results: Optional[Dict] 
                                      ChangeEvent.profile == snap["profile"],
                                      ChangeEvent.status == "pending").all())
     if baseline is not None:
-        # A pending removal is always settled by the very next scan. Rows that predate the baseline
-        # scan are orphans (left behind by older tooling or interrupted runs): close them so they
-        # cannot be revived into every later comparison.
-        for row in [r for r in existing_pending if r.scan_id < baseline.scan_id]:
+        # Pending removals are normally settled by the next comparable scan, and may be carried for a few
+        # scans while coverage is poor. Rows older than the last PENDING_MAX_AGE_SCANS same-profile scans
+        # are orphans (left behind by older tooling or interrupted runs): close them so they cannot be
+        # revived into every later comparison.
+        recent = [r[0] for r in db.query(ScanSnapshot.scan_id)
+                  .filter(ScanSnapshot.target_id == scan.target_id, ScanSnapshot.profile == snap["profile"],
+                          ScanSnapshot.scan_id != scan.id)
+                  .order_by(ScanSnapshot.scan_id.desc()).limit(PENDING_MAX_AGE_SCANS).all()]
+        oldest = min(recent) if recent else baseline.scan_id
+        for row in [r for r in existing_pending if r.scan_id < oldest]:
             row.status = "superseded"
             row.resolved_by_scan_id = scan.id
-        existing_pending = [r for r in existing_pending if r.scan_id >= baseline.scan_id]
+        existing_pending = [r for r in existing_pending if r.scan_id >= oldest]
     pending_by_fp: Dict[str, List[ChangeEvent]] = {}
     for r in existing_pending:
         pending_by_fp.setdefault(r.fingerprint, []).append(r)

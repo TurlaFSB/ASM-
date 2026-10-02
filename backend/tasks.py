@@ -414,6 +414,8 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         net_data = stage_results.get("nuclei_network")
         if net_data is not None:
             module_results["nuclei_network"] = net_data["module_status"]
+            if net_data.get("degraded"):
+                module_results["nuclei_network_degraded"] = net_data["degraded"]   # host:ports not fully tested
             vuln_data["findings"] = list(vuln_data.get("findings", [])) + net_data.get("findings", [])
         else:
             module_results["nuclei_network"] = (

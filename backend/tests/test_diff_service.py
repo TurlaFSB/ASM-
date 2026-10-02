@@ -254,9 +254,10 @@ def test_orphan_pending_rows_are_closed_and_cannot_be_revived(db):
     s2, _ = run_scan(db, [80])                                   # finding missing: pending
     pend = db.query(ChangeEvent).filter_by(scan_id=s2.id, status="pending").one()
     s3, _ = run_scan(db, [80])                                   # still missing: confirmed
-    s4, _ = run_scan(db, [80])                                   # nothing more to say
-    assert db.query(ChangeEvent).filter_by(scan_id=s4.id).count() == 0
-    # old tooling leaves a pending copy attributed to scan 1 (older than scan 3's baseline scan 2...)
+    for _ in range(5):                                           # nothing more to say
+        s4, _ = run_scan(db, [80])
+        assert db.query(ChangeEvent).filter_by(scan_id=s4.id).count() == 0
+    # old tooling leaves a pending copy attributed to scan 1, now outside the recent-scan window
     _stale_pending_copy(db, s1.id, pend)
     s5, summ = run_scan(db, [80])
     assert summ["events"] == 0 and summ["pending"] == 0
@@ -273,3 +274,14 @@ def test_every_pending_row_with_the_same_fingerprint_is_settled(db):
     assert summ["events"] == 1
     assert db.query(ChangeEvent).filter_by(status="pending").count() == 0
     assert db.query(ChangeEvent).filter_by(fingerprint=pend.fingerprint, status="superseded").count() == 2
+
+
+def test_recently_carried_pending_rows_are_not_treated_as_orphans(db):
+    run_scan(db, [80], findings=[("smb-x", "high")])
+    s2, _ = run_scan(db, [80])
+    pend = db.query(ChangeEvent).filter_by(scan_id=s2.id, status="pending").one()
+    bad = dict(MR, nuclei_network="partial (timeout)")           # cannot judge: carried
+    for _ in range(3):
+        run_scan(db, [80], mr=bad)
+    db.refresh(pend)
+    assert pend.status == "pending"

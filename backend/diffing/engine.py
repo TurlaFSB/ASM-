@@ -226,11 +226,17 @@ def _group(f: Dict) -> Optional[str]:
     return m.group(1).strip() if m else None
 
 
+def _is_degraded(snap: Dict, finding: Dict) -> bool:
+    """True for a network finding on a host:port whose checks did not fully run in this snapshot."""
+    return finding.get("source") == "network" and (finding.get("host") or "") in set(snap.get("degraded") or [])
+
+
 def _diff_findings(old, new, ev, skipped):
     of, nf = old["findings"], new["findings"]
     for source in ("web", "network", "cve", "tls"):
         sec = f"findings_{source}"
         add_ok, rm_ok = _can_add(old, new, sec), _can_remove(old, new, sec)
+        held = 0
         okeys = {k for k, v in of.items() if v.get("source") == source}
         nkeys = {k for k, v in nf.items() if v.get("source") == source}
         if add_ok:
@@ -238,9 +244,12 @@ def _diff_findings(old, new, ev, skipped):
                 f = nf[k]
                 label = f.get("cve") or f.get("name")
                 conf = "inferred" if f.get("unverified") else "confirmed"
+                note = ""
+                if _is_degraded(old, f):          # the old scan could not fully test this service
+                    conf, note = "inferred", " (previous scan had incomplete coverage here)"
                 ev.append(_event("finding", "added", sec, f.get("host") or "", k, f.get("severity", "info"),
                                  f"New {f.get('severity', 'info')} finding on {f.get('host')}: {label}"
-                                 + (" (KEV)" if f.get("kev") else ""),
+                                 + (" (KEV)" if f.get("kev") else "") + note,
                                  after=f, group=_group(f), confidence=conf))
             for k in sorted(nkeys & okeys):
                 o, n = of[k], nf[k]
@@ -252,9 +261,16 @@ def _diff_findings(old, new, ev, skipped):
         if rm_ok:
             for k in sorted(okeys - nkeys):
                 f = of[k]
-                ev.append(_event("finding", "removed", sec, f.get("host") or "", k, "info",
-                                 f"Finding resolved on {f.get('host')}: {f.get('cve') or f.get('name')}",
-                                 before=f, group=_group(f), confidence="inferred" if f.get("unverified") else "confirmed"))
+                e = _event("finding", "removed", sec, f.get("host") or "", k, "info",
+                           f"Finding resolved on {f.get('host')}: {f.get('cve') or f.get('name')}",
+                           before=f, group=_group(f), confidence="inferred" if f.get("unverified") else "confirmed")
+                if _is_degraded(new, f):          # not tested properly this time: absence proves nothing
+                    e["held"] = True              # kept pending, never confirmed from this scan
+                    held += 1
+                ev.append(e)
+        if held:
+            skipped.append({"section": sec, "reason": f"low coverage: {held} removal(s) held on host:ports that were "
+                                                      f"not fully tested ({', '.join(new.get('degraded') or [])})"})
         if not (add_ok and rm_ok):
             skipped.append({"section": sec, "reason": f"{source} vulnerability stage did not run cleanly in one of the scans"})
 
@@ -287,13 +303,17 @@ def diff_snapshots(old: Optional[Dict], new: Dict, pending: Optional[List[Dict]]
     _diff_findings(eff, new, raw, skipped)
 
     pending_fps = {p["fingerprint"] for p in pending}
-    raw_removal_fps = {e["fingerprint"] for e in raw if e["change_type"] == "removed"}
+    raw_removal_fps = {e["fingerprint"] for e in raw if e["change_type"] == "removed" and not e.get("held")}
 
     events: List[Dict] = []
     new_pending: List[Dict] = []
     for e in raw:
         if e["change_type"] != "removed":
             events.append(e)
+        elif e.get("held"):
+            if e["fingerprint"] not in pending_fps:    # first sighting under low coverage: record, wait
+                e["status"] = "pending"
+                new_pending.append(e)                  # (an existing pending row is carried below)
         elif e["fingerprint"] in pending_fps:
             e["status"] = "confirmed"
             events.append(e)                       # still missing on the second comparable scan
@@ -306,7 +326,9 @@ def diff_snapshots(old: Optional[Dict], new: Dict, pending: Optional[List[Dict]]
         if p["fingerprint"] in raw_removal_fps:
             continue                               # confirmed above
         sec = p.get("section")
-        if _can_remove(eff, new, sec):
+        if p.get("category") == "finding" and _is_degraded(new, p.get("before") or {}):
+            carried.append(p)                      # service not fully tested this scan: keep waiting
+        elif _can_remove(eff, new, sec):
             dismissed.append(p["fingerprint"])     # item is back: it was a flap
         else:
             carried.append(p)                      # cannot judge this scan; keep waiting

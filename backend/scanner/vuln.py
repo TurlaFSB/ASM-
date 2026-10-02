@@ -80,6 +80,11 @@ NUCLEI_CONCURRENCY = os.getenv("NUCLEI_CONCURRENCY", "15")
 # Service-tag (network) pass: many parallel handshakes against one daemon (e.g. old OpenSSH with
 # MaxStartups) can get dropped, which makes whole template families flap between scans.
 NUCLEI_NETWORK_CONCURRENCY = os.getenv("NUCLEI_NETWORK_CONCURRENCY", "4")
+# Second-chance pass for templates that hit transient errors (timeouts/resets) during the network pass
+NUCLEI_RETRY_PAUSE = float(os.getenv("NUCLEI_RETRY_PAUSE", "5"))
+NUCLEI_RETRY_TIMEOUT = int(os.getenv("NUCLEI_RETRY_TIMEOUT", "150"))
+NUCLEI_RETRY_MAX_TARGETS = 5
+DEGRADED_MIN_TEMPLATES = 2      # transient errors in at least this many templates => host:port is degraded
 
 # info-severity results are kept only when they are attack-surface exposures; pure
 # technology/WAF/version detections are already captured by httpx/whatweb/nmap.
@@ -140,7 +145,9 @@ def build_nuclei_cmd(targets_path: str, rate_limit: int, tags=None, severity: st
         "-severity", severity or NUCLEI_SEVERITY,
     ]
     if tags:                      # explicit service tags (network-service pass)
-        cmd += ["-tags", ",".join(tags)]
+        # -v: per-template "Could not execute request" warnings are what tell us a service was not
+        # really tested (see collect_transient_errors); they are not guaranteed without it.
+        cmd += ["-tags", ",".join(tags), "-v"]
     else:
         cmd += ["-as"] if NUCLEI_AUTOSCAN else ["-tags", ",".join(DEFAULT_SCAN_PROFILE)]
     # Stream one JSON result per line to STDOUT (the caller redirects it to a file). The old
@@ -175,6 +182,87 @@ def _run_streaming(cmd: List[str], out_path: str, err_path: str, timeout: int):
                 except subprocess.TimeoutExpired:
                     continue
             return proc.returncode, True
+
+
+# ---------------------------------------------------------------- coverage of a nuclei run
+# nuclei prints "[WRN] [template-id] Could not execute request for host:port: <reason>" per failed
+# template. A few failures are normal (an HTTP template aimed at an SSH port never works), but
+# several TRANSIENT ones (timeouts, resets) on one host:port mean the checks for that service did
+# not really run, and their absence must not be read as "the finding is gone".
+_RUN_ERR_RE = re.compile(r"\[WRN\] \[([^\]]+)\] Could not execute request for (\S+?): (.*)")
+_TRANSIENT_RE = re.compile(
+    r"i/o timeout|timed out|timeout|deadline exceeded|connection reset|connection refused|broken pipe|"
+    r"unreachable|\beof\b", re.I)
+
+
+def _norm_target(t: str) -> str:
+    return re.sub(r"^[a-z][a-z0-9+.-]*://", "", t.strip()).split("/")[0]
+
+
+def collect_transient_errors(stderr: str) -> Dict[str, Dict[str, str]]:
+    """{host:port: {template_id: first transient error message}} from nuclei's stderr."""
+    out: Dict[str, Dict[str, str]] = {}
+    for m in _RUN_ERR_RE.finditer(stderr or ""):
+        tid, target, msg = m.group(1), _norm_target(m.group(2)), m.group(3)
+        if _TRANSIENT_RE.search(msg):
+            out.setdefault(target, {}).setdefault(tid, msg.strip()[:200])
+    return out
+
+
+def degraded_targets(errors: Dict[str, Dict[str, str]], min_templates: int = None) -> Dict[str, Dict[str, str]]:
+    n = DEGRADED_MIN_TEMPLATES if min_templates is None else min_templates
+    return {t: e for t, e in errors.items() if len(e) >= n}
+
+
+def build_retry_cmd(target: str, template_ids: List[str], rate_limit: int, severity: str = None):
+    return [
+        "nuclei", "-nc", "-u", target, "-id", ",".join(template_ids),
+        "-c", "1", "-retries", "1", "-timeout", "15",
+        "-rate-limit", str(max(1, min(int(rate_limit), 10))),
+        "-ni", "-duc", "-v", "-severity", severity or NUCLEI_SEVERITY, "-jsonl",
+    ]
+
+
+def retry_degraded(result: Dict, degraded: Dict[str, Dict[str, str]], rate_limit: int, severity: str = None):
+    """Re-run ONLY the templates that errored, one at a time, against ONLY the affected host:port, after a
+    pause (a service that was overwhelmed by the parallel pass usually answers a calm retry).
+    Merges recovered findings into `result`; returns the targets that are still degraded."""
+    known = {(f.get("template_id"), f.get("host")) for f in result["findings"]}
+    still: Dict[str, Dict[str, str]] = {}
+    result["retried"] = {}
+    for target in sorted(degraded)[:NUCLEI_RETRY_MAX_TARGETS]:
+        ids = sorted(degraded[target])
+        result["retried"][target] = len(ids)
+        logger.warning(f"[nuclei] {target}: {len(ids)} templates hit transient errors; retrying them "
+                       f"serially after {NUCLEI_RETRY_PAUSE:.0f}s")
+        time.sleep(NUCLEI_RETRY_PAUSE)
+        out_path = err_path = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as t1:
+                out_path = t1.name
+            with tempfile.NamedTemporaryFile(suffix=".err", delete=False) as t2:
+                err_path = t2.name
+            _run_streaming(build_retry_cmd(target, ids, rate_limit, severity), out_path, err_path,
+                           NUCLEI_RETRY_TIMEOUT)
+            for f in _read_findings(out_path):
+                if keep_finding(f) and (f.get("template_id"), f.get("host")) not in known:
+                    result["findings"].append(f)
+                    known.add((f.get("template_id"), f.get("host")))
+            left = collect_transient_errors(_read_text(err_path)).get(target, {})
+            if len(left) >= DEGRADED_MIN_TEMPLATES:
+                still[target] = left
+            logger.info(f"[nuclei] {target}: retry recovered {len(ids) - len(left)} of {len(ids)} templates")
+        except Exception as e:  # noqa: BLE001  a failed retry must never fail the scan
+            logger.warning(f"[nuclei] {target}: retry failed ({e})")
+            still[target] = degraded[target]
+        finally:
+            for pth in (out_path, err_path):
+                if pth and os.path.exists(pth):
+                    os.unlink(pth)
+    for target in sorted(degraded)[NUCLEI_RETRY_MAX_TARGETS:]:
+        still[target] = degraded[target]            # not retried: stays degraded
+    _summarize(result)
+    return still
 
 
 def _read_text(path: str, limit: int = 200_000) -> str:
@@ -350,6 +438,18 @@ def run_nuclei(hosts: List[str], rate_limit: int = 50, tags=None,
         if skipped_hosts:
             logger.warning("[nuclei] host(s) skipped as unresponsive -- results are INCOMPLETE")
             result["module_status"] = "partial (host skipped as unresponsive; lower the scan rate)"
+
+        if tags:        # network-service pass: see which host:ports did not really get tested
+            degraded = degraded_targets(collect_transient_errors(stderr_txt))
+            if degraded:
+                still = retry_degraded(result, degraded, rate_limit, severity)
+                result["degraded"] = [{"target": t, "templates": sorted(e), "sample": next(iter(e.values()))}
+                                      for t, e in sorted(still.items())]
+                if still:
+                    logger.warning(f"[nuclei] LOW COVERAGE on {', '.join(sorted(still))}: removals there will "
+                                   f"be held, not confirmed")
+                    if result["module_status"] == "ok":
+                        result["module_status"] = f"ok (low coverage: {', '.join(sorted(still))})"
 
         if result["total"] == 0 and not skipped_hosts:
             executed = templates_executed(stderr_txt)

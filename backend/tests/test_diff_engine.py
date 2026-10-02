@@ -276,3 +276,54 @@ def test_schema_v1_baseline_is_treated_as_fresh_baseline():
     new = _psnap([(80, "/b", 200)])
     r = diff_snapshots(old, new)
     assert r["baseline"] and r["events"] == [] and r["pending"] == []
+
+
+# ---- low coverage on a host:port ----
+
+def _lsnap(findings, degraded=()):
+    mr = dict(OK_MR)
+    if degraded:
+        mr["nuclei_network_degraded"] = [{"target": d, "templates": ["a", "b"], "sample": "i/o timeout"} for d in degraded]
+    return _snap(findings=findings, mr=mr)
+
+
+SSH = ("ssh-weak-algo-supported", "10.0.0.5:22")
+
+
+def test_removal_on_degraded_host_port_is_held_as_pending_not_confirmed():
+    old = _lsnap([_find(SSH[0], SSH[1])])
+    new = _lsnap([], degraded=["10.0.0.5:22"])
+    r = diff_snapshots(old, new)
+    assert r["events"] == [] and len(r["pending"]) == 1
+    assert any("low coverage" in s["reason"] for s in r["skipped"])
+
+
+def test_pending_removal_stays_pending_while_still_degraded():
+    old = _lsnap([_find(SSH[0], SSH[1])])
+    r1 = diff_snapshots(old, _lsnap([], degraded=["10.0.0.5:22"]))
+    r2 = diff_snapshots(_lsnap([], degraded=["10.0.0.5:22"]), _lsnap([], degraded=["10.0.0.5:22"]), r1["pending"])
+    assert r2["events"] == [] and r2["dismissed"] == [] and len(r2["pending"]) == 1
+
+
+def test_held_removal_is_confirmed_by_a_healthy_scan_and_dismissed_if_finding_returns():
+    old = _lsnap([_find(SSH[0], SSH[1])])
+    degraded = _lsnap([], degraded=["10.0.0.5:22"])
+    pend = diff_snapshots(old, degraded)["pending"]
+    gone = diff_snapshots(degraded, _lsnap([]), pend)
+    assert [e["change_type"] for e in gone["events"]] == ["removed"]
+    back = diff_snapshots(degraded, _lsnap([_find(SSH[0], SSH[1])]), pend)
+    assert back["events"] == [] and len(back["dismissed"]) == 1
+
+
+def test_degraded_only_affects_its_own_host_port():
+    old = _lsnap([_find("t1", "10.0.0.5:22"), _find("t2", "10.0.0.5:445")])
+    r = diff_snapshots(old, _lsnap([], degraded=["10.0.0.5:22"]))
+    assert len(r["pending"]) == 2                       # both are first-sighting removals (pending)
+    assert sum(1 for e in r["pending"] if e.get("held")) == 1
+
+
+def test_addition_after_a_degraded_baseline_is_inferred_and_says_so():
+    old = _lsnap([], degraded=["10.0.0.5:22"])
+    new = _lsnap([_find(SSH[0], SSH[1])])
+    ev = diff_snapshots(old, new)["events"]
+    assert len(ev) == 1 and ev[0]["confidence"] == "inferred" and "incomplete coverage" in ev[0]["summary"]

@@ -130,3 +130,73 @@ def test_network_pass_uses_gentler_concurrency_and_more_retries():
     assert net[net.index("-c") + 1] == vuln_mod.NUCLEI_NETWORK_CONCURRENCY
     assert net[net.index("-retries") + 1] == "2" and web[web.index("-retries") + 1] == "1"
     assert web[web.index("-c") + 1] == vuln_mod.NUCLEI_CONCURRENCY
+
+
+# ---- coverage of a network run ----
+
+def test_transient_errors_are_collected_and_protocol_mismatches_ignored():
+    from backend.scanner.vuln import collect_transient_errors, degraded_targets
+    err = (
+        "[WRN] [CVE-2026-45695] Could not execute request for 10.0.0.5:22: [:RUNTIME] tls: first record does not "
+        "look like a TLS handshake; could not tls handshake\n"
+        "[WRN] [ssh-a] Could not execute request for 10.0.0.5:22: ssh: handshake failed: read tcp 1->2: i/o timeout\n"
+        "[WRN] [ssh-b] Could not execute request for 10.0.0.5:22: ssh: handshake failed: EOF\n"
+        "[WRN] [ftp-a] Could not execute request for 10.0.0.5:21: connection reset by peer\n")
+    errs = collect_transient_errors(err)
+    assert set(errs["10.0.0.5:22"]) == {"ssh-a", "ssh-b"} and set(errs["10.0.0.5:21"]) == {"ftp-a"}
+    assert set(degraded_targets(errs)) == {"10.0.0.5:22"}          # one error alone is not degradation
+
+
+def test_network_pass_uses_verbose_so_warnings_are_always_present():
+    from backend.scanner.vuln import build_nuclei_cmd, build_retry_cmd
+    assert "-v" in build_nuclei_cmd("/t", 20, tags=["ssh"]) and "-v" not in build_nuclei_cmd("/t", 20)
+    cmd = build_retry_cmd("10.0.0.5:22", ["b", "a"], 50)
+    assert cmd[cmd.index("-id") + 1] == "b,a" and cmd[cmd.index("-c") + 1] == "1"
+    assert cmd[cmd.index("-rate-limit") + 1] == "10"
+
+
+def test_retry_recovers_findings_and_reports_what_is_still_degraded(monkeypatch):
+    from backend.scanner import vuln
+    monkeypatch.setattr(vuln, "NUCLEI_RETRY_PAUSE", 0)
+    calls = []
+
+    def fake_run(cmd, out_path, err_path, timeout):
+        calls.append(cmd)
+        target = cmd[cmd.index("-u") + 1]
+        if target.endswith(":22"):                   # recovers
+            open(out_path, "w").write('{"template-id":"ssh-a","host":"10.0.0.5:22","info":{"name":"A","severity":"medium"}}\n')
+        else:                                        # still failing
+            open(err_path, "w").write(
+                "[WRN] [x1] Could not execute request for 10.0.0.5:21: i/o timeout\n"
+                "[WRN] [x2] Could not execute request for 10.0.0.5:21: i/o timeout\n")
+        return 0, False
+
+    monkeypatch.setattr(vuln, "_run_streaming", fake_run)
+    result = {"findings": [], "total": 0}
+    degraded = {"10.0.0.5:22": {"ssh-a": "i/o timeout", "ssh-b": "i/o timeout"},
+                "10.0.0.5:21": {"x1": "i/o timeout", "x2": "i/o timeout"}}
+    still = vuln.retry_degraded(result, degraded, 50, "info,low,medium,high,critical")
+    assert [f["template_id"] for f in result["findings"]] == ["ssh-a"] and result["total"] == 1
+    assert set(still) == {"10.0.0.5:21"} and len(calls) == 2
+
+
+def test_run_nuclei_marks_status_and_degraded_when_retry_does_not_help(monkeypatch):
+    from backend.scanner import vuln
+    monkeypatch.setattr(vuln, "NUCLEI_RETRY_PAUSE", 0)
+    monkeypatch.setattr(vuln, "template_count", lambda: 100)
+    monkeypatch.setattr(vuln, "check_template_freshness", lambda: "fresh")
+    warn = ("[WRN] [ssh-a] Could not execute request for 10.0.0.5:22: ssh: handshake failed: i/o timeout\n"
+            "[WRN] [ssh-b] Could not execute request for 10.0.0.5:22: ssh: handshake failed: i/o timeout\n"
+            "[INF] Executing 30 signed templates from x\n")
+
+    def fake_run(cmd, out_path, err_path, timeout):
+        open(err_path, "w").write(warn)                  # first pass AND retry both fail
+        return 0, False
+
+    monkeypatch.setattr(vuln, "_run_streaming", fake_run)
+    r = vuln.run_nuclei(["10.0.0.5"], 20, tags=["ssh"])
+    assert r["module_status"] == "ok (low coverage: 10.0.0.5:22)"
+    assert r["degraded"][0]["target"] == "10.0.0.5:22" and r["degraded"][0]["templates"] == ["ssh-a", "ssh-b"]
+    # the web pass (no tags) never does this
+    r2 = vuln.run_nuclei(["http://10.0.0.5"], 20)
+    assert "degraded" not in r2
