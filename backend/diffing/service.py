@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
-from backend.diffing.engine import diff_snapshots
+from backend.diffing.engine import _fp, diff_snapshots
 from backend.diffing.snapshot import SCHEMA_VERSION, build_snapshot, compute_coverage, snapshot_hash
 from backend.models.asset import Asset
 from backend.models.change_event import ChangeEvent
@@ -56,6 +56,39 @@ def _healed_baseline_data(db: Session, baseline: ScanSnapshot) -> Dict:
     return data
 
 
+REAPPEAR_WINDOW = 5      # scans
+
+
+def _label_reappeared(db: Session, scan: Scan, profile: str, events: List[Dict]) -> None:
+    """An 'added' event whose removal was confirmed within the last few scans is a flap, not news.
+    It stays reported (a real regression must not be hidden) but says so, so alternating
+    added/removed noise from unstable detection is recognisable at a glance."""
+    adds = [e for e in events if e["change_type"] == "added"]
+    if not adds:
+        return
+    recent = [r[0] for r in db.query(ScanSnapshot.scan_id)
+              .filter(ScanSnapshot.target_id == scan.target_id, ScanSnapshot.profile == profile,
+                      ScanSnapshot.scan_id != scan.id)
+              .order_by(ScanSnapshot.scan_id.desc()).limit(REAPPEAR_WINDOW).all()]
+    if not recent:
+        return
+    fps = {e["fingerprint"]: _fp(e["category"], "removed", e["asset"], e["subject"]) for e in adds}
+    rows = (db.query(ChangeEvent).filter(ChangeEvent.target_id == scan.target_id,
+                                         ChangeEvent.profile == profile, ChangeEvent.status == "confirmed",
+                                         ChangeEvent.change_type == "removed",
+                                         ChangeEvent.scan_id.in_(recent),
+                                         ChangeEvent.fingerprint.in_(set(fps.values())))
+            .order_by(ChangeEvent.scan_id.desc()).all())
+    last_removed = {}
+    for r in rows:
+        last_removed.setdefault(r.fingerprint, r.scan_id)
+    for e in adds:
+        sid = last_removed.get(fps[e["fingerprint"]])
+        if sid is not None:
+            e["summary"] += f" (reappeared; had been resolved in scan {sid})"
+            e["after"] = dict(e.get("after") or {}, reappeared_after_scan=sid)
+
+
 def record_scan_changes(db: Session, scan: Scan, module_results: Optional[Dict] = None) -> Dict:
     """Store this scan's snapshot and the change events versus its baseline. Idempotent per scan.
     module_results: the live pipeline's per-stage results (scan.module_results is not saved yet)."""
@@ -77,6 +110,8 @@ def record_scan_changes(db: Session, scan: Scan, module_results: Optional[Dict] 
 
     result = diff_snapshots(_healed_baseline_data(db, baseline) if baseline else None, snap,
                             [_row_to_dict(r) for r in existing_pending])
+
+    _label_reappeared(db, scan, snap["profile"], result["events"])
 
     def _add(e: Dict, status: str):
         db.add(ChangeEvent(

@@ -1,4 +1,5 @@
 import json
+from backend.scanner import vuln as vuln_mod
 from backend.scanner.vuln import _read_findings, _summarize
 
 
@@ -121,3 +122,11 @@ def test_read_findings_ignores_noise_lines(tmp_path):
     p = tmp_path / "o"
     p.write_text('[INF] banner\n\n{"template-id":"x","info":{"severity":"low"}}\nnot json\n')
     assert [f["template_id"] for f in v._read_findings(str(p))] == ["x"]
+
+
+def test_network_pass_uses_gentler_concurrency_and_more_retries():
+    net = vuln_mod.build_nuclei_cmd("t", 5, tags=["ssh"])
+    web = vuln_mod.build_nuclei_cmd("t", 5)
+    assert net[net.index("-c") + 1] == vuln_mod.NUCLEI_NETWORK_CONCURRENCY
+    assert net[net.index("-retries") + 1] == "2" and web[web.index("-retries") + 1] == "1"
+    assert web[web.index("-c") + 1] == vuln_mod.NUCLEI_CONCURRENCY
