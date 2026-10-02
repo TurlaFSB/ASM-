@@ -37,8 +37,6 @@ services:
     restart: unless-stopped
     env_file:
       - .env.docker
-    environment:
-      ASM_ALLOW_PRIVATE_TARGETS: ${ASM_ALLOW_PRIVATE_TARGETS:-false}
     depends_on:
       postgres:
         condition: service_healthy
@@ -64,8 +62,6 @@ services:
     command: celery -A backend.tasks worker --loglevel=info --concurrency=1
     env_file:
       - .env.docker
-    environment:
-      ASM_ALLOW_PRIVATE_TARGETS: ${ASM_ALLOW_PRIVATE_TARGETS:-false}
     depends_on:
       postgres:
         condition: service_healthy
@@ -87,8 +83,6 @@ services:
     command: celery -A backend.tasks beat --loglevel=info
     env_file:
       - .env.docker
-    environment:
-      ASM_ALLOW_PRIVATE_TARGETS: ${ASM_ALLOW_PRIVATE_TARGETS:-false}
     depends_on:
       postgres:
         condition: service_healthy
