@@ -40,9 +40,9 @@ def _build_finding(template_id, name, severity, description, host, matched_at, c
     }
 
 
-def _extract_findings(host: str, cmds) -> List[Dict]:
+def _extract_findings(host: str, cmds, port: int = 443) -> List[Dict]:
     findings = []
-    matched_at = f"{host}:443"
+    matched_at = f"{host}:{port}"
 
     # --- Legacy protocol support ---
     for attr, label, severity in _LEGACY_PROTOCOLS:
@@ -123,10 +123,10 @@ def _extract_findings(host: str, cmds) -> List[Dict]:
     return findings
 
 
-def run_sslyze(hosts: List[str], timeout: int = 30) -> Dict:
+def run_sslyze(hosts, timeout: int = 30) -> Dict:
     """
-    hosts: list of bare hostnames (NOT urls -- sslyze connects directly on port 443,
-    it doesn't parse http:// or https:// prefixes).
+    hosts: list of bare hostnames (port 443) or (hostname, port) tuples -- NOT urls;
+    sslyze connects directly and doesn't parse http(s):// prefixes.
     """
     result = {"findings": [], "module_status": "ok"}
     if not hosts:
@@ -135,9 +135,10 @@ def run_sslyze(hosts: List[str], timeout: int = 30) -> Dict:
 
     scanner = Scanner()
     valid_requests = []
-    for host in hosts:
+    for entry in hosts:
+        host, port = entry if isinstance(entry, tuple) else (entry, 443)
         try:
-            location = ServerNetworkLocation(hostname=host, port=443)
+            location = ServerNetworkLocation(hostname=host, port=port)
             valid_requests.append(ServerScanRequest(server_location=location))
         except ServerHostnameCouldNotBeResolved:
             logger.warning(f"[sslyze] could not resolve {host}, skipping")
@@ -157,7 +158,7 @@ def run_sslyze(hosts: List[str], timeout: int = 30) -> Dict:
             logger.warning(f"[sslyze] scan not completed for {host}: {scan_result.scan_status}")
             continue
         try:
-            findings = _extract_findings(host, scan_result.scan_result)
+            findings = _extract_findings(host, scan_result.scan_result, scan_result.server_location.port)
             result["findings"].extend(findings)
             scanned += 1
         except Exception as e:

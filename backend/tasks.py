@@ -234,16 +234,24 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         # -follow-redirects, so we don't need to force a scheme upfront.
         stage_start = time.time()
 
+        from backend.pipeline_utils import (
+            build_web_targets, tls_targets_from_urls, merge_http_info,
+            pipeline_trusted_for_removals,
+        )
         bare_hosts = [h["subdomain"] for h in live_hosts]
-        http_data = run_httpx(bare_hosts, rate_limit)
+        # Probe every web-looking port nmap found (not just 80/443)
+        web_targets = build_web_targets(port_data["hosts"], bare_hosts)
+        http_data = run_httpx(web_targets, rate_limit)
         module_results["httpprobe"] = http_data["module_status"]
 
         # Use CONFIRMED live URLs (with correct scheme) from HTTPX output for
         # downstream tools, instead of the original guessed http:// list.
         # Falls back to bare hostnames only if HTTPX found nothing, so
         # nuclei/eyewitness don't get an empty target list on partial failure.
-        confirmed_urls = [h["url"] for h in http_data["hosts"] if h.get("url")]
-        host_urls = confirmed_urls if confirmed_urls else bare_hosts
+        confirmed_urls = list(dict.fromkeys(h["url"] for h in http_data["hosts"] if h.get("url")))
+        # No confirmed web service -> web stages get nothing (bare hosts have no scheme
+        # and would make feroxbuster/nuclei/eyewitness error out).
+        host_urls = confirmed_urls
 
         stage_timings["httpx"] = round(time.time()-stage_start,2)
         logger.info(
@@ -346,7 +354,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             scan.current_stage = "tls_analysis"
             db.commit()
         stage_start = time.time()
-        sslyze_data = run_sslyze(bare_hosts)
+        sslyze_data = run_sslyze(tls_targets_from_urls(confirmed_urls))
         module_results["sslyze"] = sslyze_data["module_status"]
         for finding in sslyze_data.get("findings", []):
             vuln = Vulnerability(
@@ -393,18 +401,8 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             scan.current_stage = "saving_results"
             db.commit()
 
-        http_lookup = {h["host"]: h for h in http_data["hosts"]}
-        # httpx sometimes returns the resolved IP in "host" instead of the
-        # hostname it was given (seen on internal/lab targets) -- build an
-        # IP-keyed fallback so lookups by subdomain don't silently miss.
-        http_lookup_by_ip = {}
-        for h in http_data["hosts"]:
-            try:
-                import ipaddress as _ipaddr
-                _ipaddr.ip_address(h["host"])
-                http_lookup_by_ip[h["host"]] = h
-            except ValueError:
-                pass
+        # One merged record per host across ALL its web ports (union of technologies)
+        http_merged = merge_http_info(http_data["hosts"])
         port_lookup = {h["subdomain"]: h["ports"] for h in port_data["hosts"]}
 
         new_count = 0
@@ -421,8 +419,12 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
 
         created_alerts = []
 
+        removals_trusted = pipeline_trusted_for_removals(module_results, internal_target)
+        if not removals_trusted:
+            logger.warning("[pipeline] discovery not fully successful -- skipping 'disappeared' detection")
+
         for existing_asset in existing_assets:
-            if existing_asset.subdomain not in found_subdomains:
+            if removals_trusted and existing_asset.subdomain not in found_subdomains:
                 existing_asset.status = "disappeared"
                 disappeared_count += 1
                 alert = Alert(
@@ -439,8 +441,15 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         for host in live_hosts:
             subdomain = host["subdomain"]
             ip = host["ip"]
-            ports = port_lookup.get(subdomain, [])
-            http_info = http_lookup.get(subdomain) or http_lookup_by_ip.get(ip, {})
+            if subdomain in port_lookup:
+                ports = port_lookup[subdomain]
+            else:
+                # nmap failed/timed out for this host: keep last known ports instead of
+                # recording "no open ports" (which would raise a false changed_asset).
+                prev = db.query(Asset).filter(Asset.target_id == target_id,
+                                              Asset.subdomain == subdomain).first()
+                ports = (prev.open_ports or []) if prev else []
+            http_info = http_merged.get(subdomain) or http_merged.get(ip) or {}
             technologies = http_info.get("technologies", [])
             http_status = http_info.get("status_code")
             http_title = http_info.get("title", "")
