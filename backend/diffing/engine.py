@@ -228,7 +228,12 @@ def _group(f: Dict) -> Optional[str]:
 
 def _is_degraded(snap: Dict, finding: Dict) -> bool:
     """True for a network finding on a host:port whose checks did not fully run in this snapshot."""
-    return finding.get("source") == "network" and (finding.get("host") or "") in set(snap.get("degraded") or [])
+    if finding.get("source") != "network":
+        return False
+    host = finding.get("host") or ""
+    bare = host.rsplit(":", 1)[0] if ":" in host else host
+    degraded = set(snap.get("degraded") or [])
+    return host in degraded or bare in degraded        # a bare-host entry covers every port on that host
 
 
 def _diff_findings(old, new, ev, skipped):

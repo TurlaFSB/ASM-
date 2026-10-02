@@ -152,7 +152,7 @@ def test_network_pass_uses_verbose_so_warnings_are_always_present():
     assert "-v" in build_nuclei_cmd("/t", 20, tags=["ssh"]) and "-v" not in build_nuclei_cmd("/t", 20)
     cmd = build_retry_cmd("10.0.0.5:22", ["b", "a"], 50)
     assert cmd[cmd.index("-id") + 1] == "b,a" and cmd[cmd.index("-c") + 1] == "1"
-    assert cmd[cmd.index("-rate-limit") + 1] == "10"
+    assert cmd[cmd.index("-rate-limit") + 1] == "1"
 
 
 def test_retry_recovers_findings_and_reports_what_is_still_degraded(monkeypatch):
@@ -200,3 +200,16 @@ def test_run_nuclei_marks_status_and_degraded_when_retry_does_not_help(monkeypat
     # the web pass (no tags) never does this
     r2 = vuln.run_nuclei(["http://10.0.0.5"], 20)
     assert "degraded" not in r2
+
+
+def test_real_destination_port_is_taken_from_the_socket_error():
+    from backend.scanner.vuln import collect_transient_errors
+    err = (
+        "[WRN] [ssh-a] Could not execute request for 192.168.16.128: ssh: handshake failed: read tcp "
+        "172.18.0.5:41158->192.168.16.128:22: i/o timeout\n"
+        "[WRN] [ssh-b] Could not execute request for 192.168.16.128: ssh: handshake failed: read tcp "
+        "172.18.0.5:41160->192.168.16.128:22: i/o timeout\n"
+        "[WRN] [ftp-a] Could not execute request for 192.168.16.128: connection reset by peer\n")
+    errs = collect_transient_errors(err)
+    assert set(errs) == {"192.168.16.128:22", "192.168.16.128"}
+    assert set(errs["192.168.16.128:22"]) == {"ssh-a", "ssh-b"}

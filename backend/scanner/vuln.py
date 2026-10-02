@@ -83,6 +83,7 @@ NUCLEI_NETWORK_CONCURRENCY = os.getenv("NUCLEI_NETWORK_CONCURRENCY", "4")
 # Second-chance pass for templates that hit transient errors (timeouts/resets) during the network pass
 NUCLEI_RETRY_PAUSE = float(os.getenv("NUCLEI_RETRY_PAUSE", "5"))
 NUCLEI_RETRY_TIMEOUT = int(os.getenv("NUCLEI_RETRY_TIMEOUT", "150"))
+NUCLEI_RETRY_RATE = os.getenv("NUCLEI_RETRY_RATE", "1")
 NUCLEI_RETRY_MAX_TARGETS = 5
 DEGRADED_MIN_TEMPLATES = 2      # transient errors in at least this many templates => host:port is degraded
 
@@ -199,13 +200,26 @@ def _norm_target(t: str) -> str:
     return re.sub(r"^[a-z][a-z0-9+.-]*://", "", t.strip()).split("/")[0]
 
 
+_DEST_RE = re.compile(r"->([\w.\-]+):(\d+)\b")
+
+
+def _error_key(target: str, msg: str) -> str:
+    """nuclei names the INPUT target (often a bare host, since network templates carry their own port).
+    The socket error text usually names the real destination ('...->10.0.0.5:22: i/o timeout'): use that
+    so the degraded unit is host:port; otherwise fall back to the target as given."""
+    m = _DEST_RE.search(msg)
+    if m and m.group(1) == target.rsplit(":", 1)[0].strip("[]"):
+        return f"{m.group(1)}:{m.group(2)}"
+    return target
+
+
 def collect_transient_errors(stderr: str) -> Dict[str, Dict[str, str]]:
-    """{host:port: {template_id: first transient error message}} from nuclei's stderr."""
+    """{host:port (or bare host): {template_id: first transient error message}} from nuclei's stderr."""
     out: Dict[str, Dict[str, str]] = {}
     for m in _RUN_ERR_RE.finditer(stderr or ""):
         tid, target, msg = m.group(1), _norm_target(m.group(2)), m.group(3)
         if _TRANSIENT_RE.search(msg):
-            out.setdefault(target, {}).setdefault(tid, msg.strip()[:200])
+            out.setdefault(_error_key(target, msg), {}).setdefault(tid, msg.strip()[:200])
     return out
 
 
@@ -218,7 +232,7 @@ def build_retry_cmd(target: str, template_ids: List[str], rate_limit: int, sever
     return [
         "nuclei", "-nc", "-u", target, "-id", ",".join(template_ids),
         "-c", "1", "-retries", "1", "-timeout", "15",
-        "-rate-limit", str(max(1, min(int(rate_limit), 10))),
+        "-rate-limit", NUCLEI_RETRY_RATE,           # spaced out: one request per second by default
         "-ni", "-duc", "-v", "-severity", severity or NUCLEI_SEVERITY, "-jsonl",
     ]
 

@@ -327,3 +327,9 @@ def test_addition_after_a_degraded_baseline_is_inferred_and_says_so():
     new = _lsnap([_find(SSH[0], SSH[1])])
     ev = diff_snapshots(old, new)["events"]
     assert len(ev) == 1 and ev[0]["confidence"] == "inferred" and "incomplete coverage" in ev[0]["summary"]
+
+
+def test_bare_host_degraded_entry_covers_every_port_on_that_host():
+    old = _lsnap([_find("t1", "10.0.0.5:22"), _find("t2", "10.0.0.5:445")])
+    r = diff_snapshots(old, _lsnap([], degraded=["10.0.0.5"]))
+    assert r["events"] == [] and sum(1 for e in r["pending"] if e.get("held")) == 2
