@@ -617,6 +617,22 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             db.add(ScanAsset(scan_id=scan_id, asset_id=a.id))
         db.commit()
 
+        # Historical diff: snapshot this scan and record structured changes vs the previous
+        # comparable scan. A diff bug must never turn a finished scan into a failed one.
+        if scan:
+            try:
+                from backend.diffing.service import record_scan_changes
+                diff_summary = record_scan_changes(db, scan, module_results)
+                module_results["diff"] = ("baseline recorded" if diff_summary.get("baseline")
+                                          else f"ok ({diff_summary['events']} changes, "
+                                               f"{diff_summary['pending']} pending)")
+                module_results["diff_detail"] = diff_summary
+                logger.info(f"[diff] {module_results['diff']}")
+            except Exception as e:  # noqa: BLE001
+                db.rollback()
+                logger.exception("[diff] failed to record changes")
+                module_results["diff"] = f"failed: {e}"
+
         # Stage 8: Risk scoring
         self.update_state(state="PROGRESS", meta={"stage": "risk_scoring"})
         if scan:

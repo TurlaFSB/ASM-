@@ -21,6 +21,8 @@ from backend.models.scan_asset import ScanAsset
 from backend.models.vulnerability import Vulnerability
 from backend.models.alert import Alert
 from backend.models.discovered_path import DiscoveredPath
+from backend.models.change_event import ChangeEvent
+from backend.models.scan_snapshot import ScanSnapshot
 from backend.scan_profiles import get_profile
 from backend.tech_utils import clean_technologies
 from backend.path_flags import is_sensitive_path
@@ -212,6 +214,35 @@ def _paths_view(db: Session, scan_id: int, assets: Dict[int, Asset]) -> List[Dic
     return out
 
 
+def _changes_view(db: Session, scan: Scan, mr: Dict) -> Optional[Dict]:
+    """Structured changes for this scan from the diff engine; None for scans recorded before it existed
+    (the template then falls back to the legacy per-asset alerts)."""
+    if not db.query(ScanSnapshot).filter(ScanSnapshot.scan_id == scan.id).first():
+        return None
+    detail = mr.get("diff_detail") or {}
+    rows = (db.query(ChangeEvent).filter(ChangeEvent.scan_id == scan.id, ChangeEvent.status == "confirmed").all())
+    rows.sort(key=lambda r: (SEVERITY_ORDER.index(r.severity) if r.severity in SEVERITY_ORDER else 9,
+                             r.category, r.asset, r.subject))
+    direct, grouped = [], {}
+    for r in rows:
+        if r.group and r.confidence == "inferred":
+            g = grouped.setdefault((r.group, r.asset, r.change_type), {"group": r.group, "asset": r.asset,
+                                                                       "change_type": r.change_type, "n": 0,
+                                                                       "severity": r.severity})
+            g["n"] += 1
+        else:
+            direct.append({"severity": r.severity, "category": r.category, "change_type": r.change_type,
+                           "asset": r.asset, "summary": r.summary, "confidence": r.confidence})
+    counts = {k: 0 for k in COUNTED}
+    for r in rows:
+        counts[r.severity] = counts.get(r.severity, 0) + 1
+    baseline_id = detail.get("baseline_scan_id")
+    pending = db.query(ChangeEvent).filter(ChangeEvent.scan_id == scan.id, ChangeEvent.status == "pending").count()
+    return {"is_baseline": baseline_id is None, "baseline_scan_id": baseline_id, "total": len(rows),
+            "counts": counts, "events": direct, "inferred_groups": sorted(grouped.values(), key=lambda g: -g["n"]),
+            "pending": pending, "not_compared": detail.get("skipped", [])}
+
+
 def build_report_context(db: Session, scan_id: int):
     scan = db.query(Scan).filter(Scan.id == scan_id).first()
     if not scan:
@@ -325,13 +356,15 @@ def build_report_context(db: Session, scan_id: int):
     actions.sort(key=lambda a: (SEVERITY_ORDER.index(a["severity"]), not a["kev"]))
     top_actions = actions[:5]
 
+    changes = _changes_view(db, scan, mr)
+
     technologies = sorted({t for a in assets for t in clean_technologies(a.technologies)})
 
     return {
         "report_id": f"ASM-{scan.id:05d}",
         "target": target, "scan": scan, "profile": profile, "duration": duration,
         "assets": assets, "vulnerabilities": vulns,
-        "top_actions": top_actions, "confirmed_vulns": confirmed_vulns, "inferred_groups": inferred_groups,
+        "changes": changes, "top_actions": top_actions, "confirmed_vulns": confirmed_vulns, "inferred_groups": inferred_groups,
         "severity_counts": severity_counts, "confirmed_counts": confirmed_counts,
         "unverified_counts": unverified_counts,
         "risk_rating": rating, "rating_basis": rating_basis, "key_findings": key_findings,

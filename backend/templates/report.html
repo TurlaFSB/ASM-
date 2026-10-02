@@ -606,6 +606,46 @@
 <h2 class="section"><span class="section-num">06</span>Change Detection</h2>
 <p class="section-intro">Differences from the previous scan of this target.</p>
 
+{% if changes %}
+  {% if changes.is_baseline %}
+  <div class="note">First scan with this profile for this target: it is recorded as the <strong>baseline</strong>.
+    Changes appear from the next scan onwards.</div>
+  {% else %}
+  <p class="section-intro">Compared with scan #{{ changes.baseline_scan_id }} (same scan profile). {{ changes.total }} confirmed change(s)
+    {%- if changes.pending %}; {{ changes.pending }} removal(s) are being held until the next scan confirms them{% endif %}.</p>
+  {% if changes.total %}
+  <div style="margin:6px 0 10px;">{% for k in ['critical','high','medium','low','info'] if changes.counts[k] %}<span class="badge {{ k }}" style="margin-right:6px;">{{ changes.counts[k] }} {{ k }}</span>{% endfor %}</div>
+  {% endif %}
+  {% if changes.events %}
+  <table>
+    <thead><tr><th style="width:11%">Severity</th><th style="width:12%">Type</th><th style="width:20%">Asset</th><th>Change</th></tr></thead>
+    <tbody>
+    {% for e in changes.events %}
+    <tr><td><span class="badge {{ e.severity }}">{{ e.severity }}</span></td><td>{{ e.category }} {{ e.change_type }}</td>
+        <td class="mono" style="font-size:8px;">{{ e.asset }}</td><td>{{ e.summary }}{% if e.confidence == 'inferred' %} <span class="flag unverified">Unverified</span>{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% if changes.inferred_groups %}
+  <h3 style="margin-top:14px;">Version-inferred vulnerability changes</h3>
+  <table>
+    <thead><tr><th style="width:11%">Severity</th><th>Component</th><th style="width:16%">Change</th><th style="width:12%">CVEs</th></tr></thead>
+    <tbody>
+    {% for g in changes.inferred_groups %}
+    <tr><td><span class="badge {{ g.severity }}">{{ g.severity }}</span></td><td>{{ g.group }} <span style="font-size:8px;color:#6b7280;">({{ g.asset }})</span></td><td>{{ g.change_type }}</td><td>{{ g.n }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% if not changes.events and not changes.inferred_groups %}<div class="empty-state">No changes since the previous comparable scan.</div>{% endif %}
+  {% if changes.not_compared %}
+  <div class="note warn" style="margin-top:10px;"><strong>Not compared in this scan:</strong>
+    {% for s in changes.not_compared %}{{ s.section }}{% if not loop.last %}, {% endif %}{% endfor %}
+    (a stage did not complete cleanly in one of the scans, so absence there proves nothing).</div>
+  {% endif %}
+  {% endif %}
+{% else %}
 {% macro change_table(title, rows, show_lines) %}
 <h3>{{ title }} ({{ rows|length }})</h3>
 {% if rows %}
@@ -624,6 +664,8 @@
 {{ change_table('Changed Assets', changed_assets, true) }}
 {{ change_table('Disappeared Assets', disappeared_assets, true) }}
 {% if reappeared_assets %}{{ change_table('Reappeared Assets', reappeared_assets, true) }}{% endif %}
+
+{% endif %}
 
 <!-- ================= 07 REMEDIATION PRIORITIES ================= -->
 <h2 class="section break"><span class="section-num">07</span>Remediation Priorities</h2>
