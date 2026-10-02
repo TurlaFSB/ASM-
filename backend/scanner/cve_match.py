@@ -166,7 +166,9 @@ def run_cve_match(port_hosts: List[Dict], min_cvss: Optional[float] = None, max_
                 result["services_checked"] += 1
                 label = " ".join(x for x in (p.get("product"), p.get("version")) if x) or cpe23
                 relevant = [c for c in cves if (c["cvss"] or 0) >= min_cvss]
-                relevant.sort(key=lambda c: (c["kev"], c["cvss"] or 0), reverse=True)
+                # Deterministic order: with a per-service cap, ties on (kev, cvss) must always break the same way,
+                # otherwise the capped set rotates between scans and shows up as phantom CVE changes.
+                relevant.sort(key=lambda c: (c["kev"], c["cvss"] or 0, c["cve_id"]), reverse=True)
                 for c in relevant[:max_per_service]:
                     tags = ["version-match", "unverified", "nvd", "cve"] + (["kev"] if c["kev"] else [])
                     result["findings"].append({

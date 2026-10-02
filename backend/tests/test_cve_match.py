@@ -125,3 +125,17 @@ def test_nvd_query_restricts_to_vulnerable_component():
     from backend.scanner.cve_match import NVD_PARAMS
     p = NVD_PARAMS("cpe:2.3:a:ruby-lang:ruby:2.3.7:*:*:*:*:*:*:*")
     assert "isVulnerable" in p and p["cpeName"].startswith("cpe:2.3:a:ruby-lang")
+
+
+def test_capped_cve_set_is_independent_of_nvd_response_order():
+    """With a per-service cap, equal-score CVEs must be chosen the same way whatever order NVD returns."""
+    def vuln(cid):
+        return {"cve": {"id": cid, "descriptions": [{"lang": "en", "value": "x"}],
+                        "metrics": {"cvssMetricV31": [{"cvssData": {"baseScore": 7.5}}]}}}
+    ids = [f"CVE-2020-{n:04d}" for n in range(1, 31)]
+    a = {"vulnerabilities": [vuln(i) for i in ids]}
+    b = {"vulnerabilities": [vuln(i) for i in reversed(ids)]}
+    ra = run_cve_match(HOSTS, session=FakeSession(a), sleep=lambda s: None, max_per_service=15)
+    rb = run_cve_match(HOSTS, session=FakeSession(b), sleep=lambda s: None, max_per_service=15)
+    assert [f["cve_id"] for f in ra["findings"]] == [f["cve_id"] for f in rb["findings"]]
+    assert len(ra["findings"]) == 15
