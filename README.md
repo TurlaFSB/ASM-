@@ -363,7 +363,7 @@ docker exec asm_postgres pg_restore -U asm_user -d asm_db --clean --if-exists -v
 | CVE roll-up: one line per component and host with "N of M" (report, vulnerabilities API and page, changes API) | Done |
 | Changes page in the UI | Done |
 | Alerts and webhooks driven by change events (backend, settings API, delivery log) | Done |
-| Alerts page and per-target notification settings in the UI | Planned |
+| Alerts page and per-target notification settings in the UI | Done |
 | Per-port path tracking (paths keyed by host and port) | Done |
 | AI-assisted triage: severity, summary and recommended action per change, with guardrails | Planned |
 | Leak and breach collectors (HIBP, GitHub code search, paste sites) | Planned |

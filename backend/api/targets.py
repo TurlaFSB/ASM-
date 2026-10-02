@@ -243,7 +243,7 @@ def update_dirbuster_toggle(target_id: int, payload: TargetDirbusterUpdate, requ
 
 
 class NotificationSettingsUpdate(BaseModel):
-    webhook_url: Optional[str] = None          # empty or null removes the webhook
+    webhook_url: Optional[str] = None          # omitted/null keeps the current webhook; "" removes it
     webhook_format: str = "json"
     alert_min_severity: str = "medium"
     rotate_secret: bool = False
@@ -296,6 +296,7 @@ def update_notification_settings(target_id: int, payload: NotificationSettingsUp
     import secrets
     from backend.validators import validate_webhook_url
     t = _active_target(db, target_id)
+    keep_url = payload.webhook_url is None
     url = (payload.webhook_url or "").strip()
     if url:
         try:
@@ -305,7 +306,10 @@ def update_notification_settings(target_id: int, payload: NotificationSettingsUp
     new_secret = None
     t.alert_min_severity = payload.alert_min_severity
     t.webhook_format = payload.webhook_format
-    if not url:
+    if keep_url:
+        if t.webhook_url and payload.rotate_secret:
+            t.webhook_secret = new_secret = secrets.token_urlsafe(32)
+    elif not url:
         t.webhook_url, t.webhook_secret = None, None
     else:
         t.webhook_url = url

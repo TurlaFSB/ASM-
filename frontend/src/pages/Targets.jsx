@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import { getTargets, createTarget, deleteTarget, triggerScan, getTargetHistory, getTargetInfrastructure, updateDirbusterToggle, getScanProfiles, updateTargetProfile } from "../api";
-import { Plus, Trash2, Play, Shield, History, Globe } from "lucide-react";
+import { Plus, Trash2, Play, Shield, History, Globe, Bell } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import ScrollHint from "../components/ScrollHint";
 import ProfilePicker from "../components/ProfilePicker";
 import ToggleSwitch from "../components/ToggleSwitch";
+import NotificationSettings from "../components/NotificationSettings";
 
 function extractErrorMessage(err, fallback) {
   const detail = err.response?.data?.detail;
@@ -105,6 +106,7 @@ export default function Targets() {
   const [dirbusterEnabled, setDirbusterEnabled] = useState({});
   const [infraExpandedId, setInfraExpandedId] = useState(null);
   const [infraData, setInfraData] = useState({});
+  const [notifExpandedId, setNotifExpandedId] = useState(null);
 
   const fetchTargets = () => {
     getTargets()
@@ -376,11 +378,20 @@ export default function Targets() {
                     <button className="btn btn-secondary btn-sm" onClick={() => toggleInfra(target.id)}>
                       <Globe size={14} /> Infrastructure
                     </button>
+                    <button className="btn btn-secondary btn-sm" onClick={() => setNotifExpandedId(notifExpandedId === target.id ? null : target.id)}
+                      aria-expanded={notifExpandedId === target.id}>
+                      <Bell size={14} /> Notifications
+                    </button>
                     <button className="btn btn-danger btn-sm" onClick={() => handleDelete(target.id)}>
                       <Trash2 size={14} />
                     </button>
                   </td>
                 </tr>
+                {notifExpandedId === target.id && (
+                  <tr>
+                    <td colSpan={5}><NotificationSettings target={target} /></td>
+                  </tr>
+                )}
                 {expandedId === target.id && (
                   <tr>
                     <td colSpan={5}>

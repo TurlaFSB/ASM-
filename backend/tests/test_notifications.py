@@ -310,6 +310,17 @@ def test_clear_webhook_removes_secret(client, db):
     assert r["webhook_configured"] is False and r["has_secret"] is False
 
 
+def test_omitting_url_keeps_webhook_and_changes_other_settings(client, db):
+    tid = db.target.id
+    client.put(f"/targets/{tid}/notifications", json={"webhook_url": "https://hooks.example/abc"})
+    r = client.put(f"/targets/{tid}/notifications", json={"alert_min_severity": "critical", "webhook_format": "slack"}).json()
+    assert r["webhook_configured"] is True and r["has_secret"] is True
+    assert r["alert_min_severity"] == "critical" and r["webhook_format"] == "slack"
+    rot = client.put(f"/targets/{tid}/notifications", json={"rotate_secret": True}).json()
+    assert rot["webhook_secret"]
+    assert client.put(f"/targets/{tid}/notifications", json={"webhook_url": ""}).json()["webhook_configured"] is False
+
+
 @pytest.mark.parametrize("body", [
     {"webhook_url": "http://hooks.example/x"},
     {"webhook_url": "https://hooks.example/x", "webhook_format": "teams"},
