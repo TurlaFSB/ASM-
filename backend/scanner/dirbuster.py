@@ -60,6 +60,35 @@ def _sanitize_filename(url: str) -> str:
     return _SAFE_NAME_RE.sub("_", raw).strip("_") or "unknown_host"
 
 
+DIRBUSTER_MAX_SECONDS = int(os.getenv("DIRBUSTER_MAX_SECONDS", "900"))
+
+
+def _count_words(path: str) -> int:
+    try:
+        with open(path, "rb") as f:
+            return sum(1 for line in f if line.strip() and not line.startswith(b"#"))
+    except OSError:
+        return 0
+
+
+def compute_process_timeout(words: int, rate_limit: int, with_extensions: bool,
+                            floor: int = 120, cap: int = None) -> int:
+    """Wall-clock budget needed to finish the wordlist at the target's rate limit.
+    Requests = words * (1 + extensions); time = requests / rate + 60s slack.
+    Bounded by DIRBUSTER_MAX_SECONDS so one slow host can't stall the pipeline."""
+    cap = DIRBUSTER_MAX_SECONDS if cap is None else cap
+    mult = 1 + (len(EXTENSIONS.split(",")) if with_extensions else 0)
+    needed = int(words * mult / max(1, rate_limit)) + 60
+    return max(floor, min(needed, cap))
+
+
+def _salvage(out) -> str:
+    """subprocess.TimeoutExpired carries partial output (bytes even with text=True)."""
+    if out is None:
+        return ""
+    return out.decode("utf-8", "replace") if isinstance(out, bytes) else out
+
+
 def _parse_ferox_json(raw_stdout: str) -> List[Dict]:
     """
     feroxbuster --json emits one JSON object per line (true JSON-lines,
@@ -134,9 +163,18 @@ def run_dirbuster(
             logger.warning(f"[dirbuster] could not create output dir {output_dir}: {e}")
             output_dir = None
 
+    words = _count_words(wordlist_path)
+    process_timeout = compute_process_timeout(
+        words, rate_limit, with_extensions=(wordlist == "medium"),
+        floor=process_timeout if process_timeout != 300 else 120,
+    )
+    logger.info(f"[dirbuster] wordlist={wordlist} words={words} rate={rate_limit}/s "
+                f"per-host timeout={process_timeout}s")
+
     start = time.time()
     success_count = 0
     failure_count = 0
+    partial_count = 0
 
     for url in urls:
         try:
@@ -193,10 +231,25 @@ def run_dirbuster(
                 })
             result["hosts"][url] = {"paths": paths}
             success_count += 1
-        except subprocess.TimeoutExpired:
-            logger.warning(f"[dirbuster] timeout scanning {url}")
-            result["failures"][url] = f"process timeout after {process_timeout}s"
-            failure_count += 1
+        except subprocess.TimeoutExpired as te:
+            # Keep whatever feroxbuster found before the budget ran out instead of
+            # discarding it, and flag the host as partial (not a silent success).
+            partial_raw = _salvage(te.stdout)
+            found = _parse_ferox_json(partial_raw)
+            logger.warning(f"[dirbuster] timeout scanning {url} after {process_timeout}s "
+                           f"(salvaged {len(found)} paths)")
+            if found:
+                result["hosts"][url] = {"paths": [{
+                    "path": _extract_path(e.get("url", ""), url) if e.get("url") else "/",
+                    "status_code": e.get("status"),
+                    "content_length": e.get("content_length"),
+                    "redirect_location": (e.get("headers") or {}).get("location"),
+                } for e in found], "partial": True}
+                partial_count += 1
+                success_count += 1
+            else:
+                result["failures"][url] = f"process timeout after {process_timeout}s"
+                failure_count += 1
             continue
         except Exception as e:
             logger.warning(f"[dirbuster] error scanning {url}: {e}")
@@ -212,6 +265,8 @@ def run_dirbuster(
 
     if success_count == 0 and failure_count > 0:
         result["module_status"] = "failed"
+    elif partial_count and not failure_count:
+        result["module_status"] = f"partial ({partial_count}/{len(urls)} hosts hit time limit)"
     elif failure_count > 0:
         result["module_status"] = f"partial ({success_count}/{len(urls)} hosts succeeded)"
     else:
