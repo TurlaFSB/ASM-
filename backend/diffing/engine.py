@@ -222,7 +222,7 @@ def _group(f: Dict) -> Optional[str]:
 
 def _diff_findings(old, new, ev, skipped):
     of, nf = old["findings"], new["findings"]
-    for source in ("web", "network", "cve"):
+    for source in ("web", "network", "cve", "tls"):
         sec = f"findings_{source}"
         add_ok, rm_ok = _can_add(old, new, sec), _can_remove(old, new, sec)
         okeys = {k for k, v in of.items() if v.get("source") == source}

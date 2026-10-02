@@ -5,3 +5,6 @@ from backend.models.alert import Alert
 from backend.models.vulnerability import Vulnerability
 from backend.models.scan_asset import ScanAsset
 from backend.models.discovered_path import DiscoveredPath
+
+from backend.models.scan_snapshot import ScanSnapshot
+from backend.models.change_event import ChangeEvent

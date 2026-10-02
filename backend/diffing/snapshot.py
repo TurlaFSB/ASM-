@@ -56,6 +56,8 @@ def compute_coverage(profile_name: str, module_results: Dict) -> Dict:
         "findings_web": lvl(prof.run_nuclei and _ok(mr.get("vuln"))),
         "findings_network": lvl(prof.run_nuclei_network and _ok(mr.get("nuclei_network"))),
         "findings_cve": lvl(prof.run_cve_match and _ok(mr.get("cve_match"))),
+        # "no hosts provided" means there was nothing to assess, so it vouches for nothing
+        "findings_tls": lvl(prof.run_sslyze and _ok(mr.get("sslyze"))),
     }
 
 
@@ -65,6 +67,8 @@ def finding_source(tags) -> str:
         return "cve"
     if "network" in t:
         return "network"
+    if "sslyze" in t:
+        return "tls"
     return "web"
 
 
