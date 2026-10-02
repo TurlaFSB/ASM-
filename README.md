@@ -359,6 +359,7 @@ docker exec asm_postgres pg_restore -U asm_user -d asm_db --clean --if-exists -v
 | Area | Status |
 |---|---|
 | Historical diff engine, change events API | Done |
+| CVE roll-up: one line per component and host with "N of M" (report, vulnerabilities API and page, changes API) | Done |
 | Changes page in the UI; alerts and webhooks driven by change events | Planned |
 | Per-port path tracking (paths keyed by host and port) | Done |
 | AI-assisted triage: severity, summary and recommended action per change, with guardrails | Planned |
@@ -375,6 +376,7 @@ docker exec asm_postgres pg_restore -U asm_user -d asm_db --clean --if-exists -v
 - **Single operator model.** There is no self-service registration or multi-user management; the admin account is script-created.
 - **CVE matching is version-based.** At most 15 CVEs are kept per service (highest risk first); the report says when a list was capped. It depends on the version a service reports. Services without a banner version produce no matches, and matches are marked *inferred* until verified.
 - **Profile blind spots.** Quick and Standard do not see services outside their port lists (top 100, and top 1000 plus a curated extras list).
+- **Network service checks can be starved.** Some services (an old OpenSSH, for instance) answer the banner but stall on the deeper protocol handshakes the nuclei network templates perform. The scanner detects this (per-template timeouts), retries the affected templates gently, and if they still fail marks the host `low coverage`: removals there are held as pending and never reported as fixed. Root-causing a stalling service is left to the operator.
 - **Time-boxed stages.** Nuclei and directory discovery stop at their time budget; collected results are kept and the stage is reported as `partial`.
 - **TLS findings are not de-duplicated across scans**; recurring issues add rows on every scan.
 - **Legacy alerts** are derived from asset state and are not yet unified with change events.

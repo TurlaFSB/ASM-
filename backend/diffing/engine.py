@@ -24,7 +24,7 @@ from backend.path_flags import is_sensitive_path, REACHABLE
 SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"]
 RISKY_PORTS = {21, 23, 69, 110, 111, 135, 139, 445, 512, 513, 514, 1433, 1521, 2049, 2375, 3306, 3389,
                5432, 5900, 5985, 6379, 6667, 9200, 11211, 27017}
-_COMPONENT_RE = re.compile(r"^\[version match\]\s+(.*?):\s+CVE-\d{4}-\d{4,}")
+from backend.rollup import COMPONENT_RE as _COMPONENT_RE  # noqa: E402
 
 
 def _fp(category: str, change_type: str, asset: str, subject: str) -> str:

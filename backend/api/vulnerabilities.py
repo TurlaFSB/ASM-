@@ -7,6 +7,7 @@ from backend.db import get_db
 from backend.models.vulnerability import Vulnerability
 from backend.models.scan import Scan
 from backend.auth import get_current_user
+from backend.rollup import rollup_findings
 
 router = APIRouter(prefix="/vulnerabilities", tags=["vulnerabilities"])
 
@@ -76,6 +77,25 @@ def list_vulnerabilities(limit: int = Query(500, ge=1, le=1000), offset: int = Q
                         Vulnerability.cvss_score.desc().nullslast(), Vulnerability.id)
              .limit(limit).offset(offset).all())
     return [_serialize(v) for v in vulns]
+
+@router.get("/rollup")
+def vuln_rollup(limit: int = Query(1000, ge=1, le=5000), scope: str = Query("latest", pattern="^(latest|all)$"),
+                scan_id: Optional[int] = None, target_id: Optional[int] = None,
+                db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    """Same data as `/`, but version-matched CVEs collapse into ONE item per (scan, host, component) with
+    worst severity, KEV count and 'shown of total' (the per-service cap hides the lowest-risk matches).
+    Scanner-verified findings stay one item each. Items are ordered most urgent first."""
+    q = _scoped(db, scope, scan_id, target_id)
+    vulns = q.order_by(SEVERITY_RANK, Vulnerability.id).limit(limit).all()
+    rows = [_serialize(v) for v in vulns]
+    totals = {}
+    for sid, mr in db.query(Scan.id, Scan.module_results).filter(Scan.id.in_({r["scan_id"] for r in rows})).all():
+        for t in (mr or {}).get("cve_truncated") or []:
+            if t.get("label"):
+                totals[(sid, t.get("host"), t["label"])] = t.get("total")
+    items = rollup_findings(rows, totals)
+    return {"items": items, "findings": len(rows), "lines": len(items)}
+
 
 @router.get("/target/{target_id}")
 def vulns_by_target(target_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):

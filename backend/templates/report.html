@@ -580,7 +580,7 @@
     <div class="vuln-name">{{ g.component }}{% if g.kev_count %}<span class="flag kev">{{ g.kev_count }} KEV</span>{% endif %}</div>
     <span class="badge {{ g.severity }}">{{ g.severity }}</span>
   </div>
-  <div class="vuln-meta"><strong>Host:</strong> {{ g.host or '—' }} &nbsp;|&nbsp; <strong>{{ g.count }}</strong>{% if cve_totals.get(g.component) and cve_totals[g.component] > g.count %} of {{ cve_totals[g.component] }}{% endif %} matching CVE(s){% if cve_totals.get(g.component) and cve_totals[g.component] > g.count %} <span style="color:#6b7280;">(highest-risk shown)</span>{% endif %}
+  <div class="vuln-meta"><strong>Host:</strong> {{ g.host or '—' }} &nbsp;|&nbsp; <strong>{{ g.count }}</strong>{% if cve_totals.get(g.host ~ '|' ~ g.component) and cve_totals[g.host ~ '|' ~ g.component] > g.count %} of {{ cve_totals[g.host ~ '|' ~ g.component] }}{% endif %} matching CVE(s){% if cve_totals.get(g.host ~ '|' ~ g.component) and cve_totals[g.host ~ '|' ~ g.component] > g.count %} <span style="color:#6b7280;">(highest-risk shown)</span>{% endif %}
     &nbsp;|&nbsp; {% for k, n in g.by_sev %}{{ n }} {{ k }}{% if not loop.last %}, {% endif %}{% endfor %}
     &nbsp;|&nbsp; <strong>Max CVSS:</strong> {{ '%.1f'|format(g.max_cvss) }}</div>
   <table style="margin-top:8px;table-layout:fixed;">

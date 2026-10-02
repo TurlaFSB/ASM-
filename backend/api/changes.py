@@ -7,6 +7,7 @@ from backend.auth import get_current_user
 from backend.db import get_db
 from backend.models.change_event import ChangeEvent
 from backend.models.scan import Scan
+from backend.rollup import rollup_events
 
 router = APIRouter(prefix="/changes", tags=["changes"])
 
@@ -31,6 +32,8 @@ def list_changes(
     status: str = Query("confirmed", pattern="^(confirmed|pending|dismissed|superseded)$"),
     limit: int = Query(200, ge=1, le=1000),
     offset: int = Query(0, ge=0),
+    collapse_cves: bool = Query(False, description="fold version-matched CVE events into one roll-up per component "
+                                                   "(returned as {events, rollups} instead of a plain list)"),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
@@ -50,11 +53,18 @@ def list_changes(
     if confidence:
         q = q.filter(ChangeEvent.confidence == confidence)
     rows = q.order_by(ChangeEvent.created_at.desc(), ChangeEvent.id.desc()).limit(limit).offset(offset).all()
-    return [_view(r) for r in rows]
+    views = [_view(r) for r in rows]
+    if collapse_cves:
+        rest, rollups = rollup_events(views)
+        return {"events": rest, "rollups": rollups}
+    return views
 
 
 @router.get("/scans/{scan_id}")
-def scan_changes(scan_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def scan_changes(scan_id: int,
+                 collapse_cves: bool = Query(False, description="leave version-matched CVE events out of `events`; "
+                                                                "they are always summarised in `rollups`"),
+                 db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     """Everything that changed in one scan versus its baseline, with counts and comparison coverage."""
     scan = db.query(Scan).filter(Scan.id == scan_id).first()
     if not scan:
@@ -64,10 +74,13 @@ def scan_changes(scan_id: int, db: Session = Depends(get_db), current_user: dict
     counts = {s: 0 for s in SEVERITIES}
     for r in rows:
         counts[r.severity] = counts.get(r.severity, 0) + 1
+    views = [_view(r) for r in rows]
+    rest, rollups = rollup_events(views)
+    events = rest if collapse_cves else views
     detail = (scan.module_results or {}).get("diff_detail") or {}
     pending = db.query(ChangeEvent).filter(ChangeEvent.scan_id == scan_id, ChangeEvent.status == "pending").count()
     return {"scan_id": scan_id, "profile": scan.profile,
             "baseline_scan_id": detail.get("baseline_scan_id"),
             "is_baseline": bool(detail.get("baseline")) or (scan.module_results or {}).get("diff") == "baseline recorded",
             "counts": counts, "pending_removals": pending, "not_compared": detail.get("skipped", []),
-            "events": [_view(r) for r in rows]}
+            "events": events, "rollups": rollups}

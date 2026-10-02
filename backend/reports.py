@@ -133,20 +133,12 @@ def _sort_key(v: Dict):
     return (sev, not v["kev"], not v["exploitable"], v["unverified"], -(v["cvss"] or 0), v["host"] or "")
 
 
-COMPONENT_RE = re.compile(r"^\[version match\]\s+(.*?):\s+CVE-\d{4}-\d{4,}")
-SENT_END_RE = re.compile(r"(?<=[.!?])\s")
+from backend.rollup import COMPONENT_RE, short_summary as _short_summary  # noqa: E402
 
 
 def _component(v: Dict) -> str:
     m = COMPONENT_RE.match(v.get("name") or "")
     return m.group(1).strip() if m else (v.get("name") or "Unknown component")
-
-
-def _short_summary(desc: str, limit: int = 170) -> str:
-    """First sentence of an NVD description, without our own 'Matched by service version' tail."""
-    desc = (desc or "").split(" Matched by service version")[0].strip()
-    first = SENT_END_RE.split(desc, maxsplit=1)[0]
-    return first if len(first) <= limit else first[:limit].rstrip() + " …"
 
 
 def group_inferred(vulns: List[Dict]) -> List[Dict]:
@@ -303,7 +295,7 @@ def build_report_context(db: Session, scan_id: int):
     confirmed_vulns = [v for v in vulns if not v["unverified"]]
     inferred_groups = group_inferred([v for v in vulns if v["unverified"] and v["severity"] != "info"])
     # per-service cap: how many CVEs matched in total vs how many were kept (label == group component)
-    cve_totals = {t["label"]: t["total"] for t in (mr.get("cve_truncated") or []) if t.get("label")}
+    cve_totals = {f"{t.get('host')}|{t['label']}": t["total"] for t in (mr.get("cve_truncated") or []) if t.get("label")}
 
     # Remediation priorities: one row per distinct confirmed finding (hosts aggregated) plus one
     # row per inferred component, so the list stays actionable instead of repeating itself.

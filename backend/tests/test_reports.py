@@ -200,7 +200,7 @@ def test_report_says_when_cve_list_was_capped(db):
         {"host": "10.0.0.5", "port": 21, "label": "ProFTPD 1.3.5", "shown": 3, "total": 43}])
     db.commit()
     ctx = reports.build_report_context(db, db.scan_id)
-    assert ctx["cve_totals"] == {"ProFTPD 1.3.5": 43}
+    assert ctx["cve_totals"] == {"10.0.0.5|ProFTPD 1.3.5": 43}
     env = Environment(loader=FileSystemLoader(str(reports.TEMPLATE_DIR)), autoescape=select_autoescape(["html"], default=True))
     env.filters["clean_tech"] = reports.clean_technologies
     html = env.get_template("report.html").render(**ctx)
