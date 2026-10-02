@@ -302,6 +302,8 @@ def build_report_context(db: Session, scan_id: int):
 
     confirmed_vulns = [v for v in vulns if not v["unverified"]]
     inferred_groups = group_inferred([v for v in vulns if v["unverified"] and v["severity"] != "info"])
+    # per-service cap: how many CVEs matched in total vs how many were kept (label == group component)
+    cve_totals = {t["label"]: t["total"] for t in (mr.get("cve_truncated") or []) if t.get("label")}
 
     # Remediation priorities: one row per distinct confirmed finding (hosts aggregated) plus one
     # row per inferred component, so the list stays actionable instead of repeating itself.
@@ -364,7 +366,7 @@ def build_report_context(db: Session, scan_id: int):
         "report_id": f"ASM-{scan.id:05d}",
         "target": target, "scan": scan, "profile": profile, "duration": duration,
         "assets": assets, "vulnerabilities": vulns,
-        "changes": changes, "top_actions": top_actions, "confirmed_vulns": confirmed_vulns, "inferred_groups": inferred_groups,
+        "changes": changes, "top_actions": top_actions, "confirmed_vulns": confirmed_vulns, "inferred_groups": inferred_groups, "cve_totals": cve_totals,
         "severity_counts": severity_counts, "confirmed_counts": confirmed_counts,
         "unverified_counts": unverified_counts,
         "risk_rating": rating, "rating_basis": rating_basis, "key_findings": key_findings,

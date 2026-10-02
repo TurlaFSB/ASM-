@@ -230,7 +230,8 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             db.commit()
         stage_start = time.time()
 
-        port_data = scan_multiple_hosts(live_hosts, rate_limit, prof.nmap_ports, prof.nmap_host_timeout)
+        port_data = scan_multiple_hosts(live_hosts, rate_limit, prof.nmap_ports, prof.nmap_host_timeout,
+                                       prof.nmap_version_intensity)
         module_results["portscan"] = port_data["module_status"]
 
         stage_timings["portscan"] = round(time.time()-stage_start,2)
@@ -358,6 +359,8 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                 skipped if not prof.run_nuclei_network else "skipped (no recognised network services)")
         cve_data = stage_results.get("cve_match") or {"findings": [], "module_status": skipped}
         module_results["cve_match"] = cve_data["module_status"]
+        if cve_data.get("truncated"):
+            module_results["cve_truncated"] = cve_data["truncated"]      # report says "N of M shown"
         # version-matched CVEs flow through the same save/score/KEV path as nuclei findings
         vuln_data.setdefault("findings", [])
         vuln_data["findings"] = list(vuln_data["findings"]) + cve_data.get("findings", [])

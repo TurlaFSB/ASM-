@@ -135,7 +135,7 @@ def run_cve_match(port_hosts: List[Dict], min_cvss: Optional[float] = None, max_
     min_cvss = float(os.getenv("CVE_MIN_CVSS", "7.0")) if min_cvss is None else min_cvss
     api_key = api_key if api_key is not None else (os.getenv("NVD_API_KEY") or None)
     session = session or requests.Session()
-    result = {"findings": [], "module_status": "ok", "services_checked": 0}
+    result = {"findings": [], "module_status": "ok", "services_checked": 0, "truncated": []}
     started = time.time()
     last_call = [0.0]
     errors = 0
@@ -169,6 +169,9 @@ def run_cve_match(port_hosts: List[Dict], min_cvss: Optional[float] = None, max_
                 # Deterministic order: with a per-service cap, ties on (kev, cvss) must always break the same way,
                 # otherwise the capped set rotates between scans and shows up as phantom CVE changes.
                 relevant.sort(key=lambda c: (c["kev"], c["cvss"] or 0, c["cve_id"]), reverse=True)
+                if len(relevant) > max_per_service:
+                    result["truncated"].append({"host": h["subdomain"], "port": p.get("port"), "label": label,
+                                                "shown": max_per_service, "total": len(relevant)})
                 for c in relevant[:max_per_service]:
                     tags = ["version-match", "unverified", "nvd", "cve"] + (["kev"] if c["kev"] else [])
                     result["findings"].append({

@@ -187,3 +187,21 @@ def test_top_actions_rank_kev_and_severity(db):
     assert 0 < len(acts) <= 5
     sev = ["critical", "high", "medium", "low", "info"]
     assert [sev.index(a["severity"]) for a in acts] == sorted(sev.index(a["severity"]) for a in acts)
+
+
+def test_report_says_when_cve_list_was_capped(db):
+    for i in range(3):
+        cve = f"CVE-2020-000{i}"
+        db.add(Vulnerability(target_id=1, scan_id=db.scan_id, template_id=f"nvd-{cve}", severity="high",
+                             name=f"[version match] ProFTPD 1.3.5: {cve}", host="10.0.0.5", cve_id=cve,
+                             cvss_score=7.5, tags=["version-match"], description="x. Matched by service version (c). Unverified."))
+    scan = db.query(Scan).get(db.scan_id)
+    scan.module_results = dict(scan.module_results, cve_truncated=[
+        {"host": "10.0.0.5", "port": 21, "label": "ProFTPD 1.3.5", "shown": 3, "total": 43}])
+    db.commit()
+    ctx = reports.build_report_context(db, db.scan_id)
+    assert ctx["cve_totals"] == {"ProFTPD 1.3.5": 43}
+    env = Environment(loader=FileSystemLoader(str(reports.TEMPLATE_DIR)), autoescape=select_autoescape(["html"], default=True))
+    env.filters["clean_tech"] = reports.clean_technologies
+    html = env.get_template("report.html").render(**ctx)
+    assert "of 43" in html and "highest-risk shown" in html

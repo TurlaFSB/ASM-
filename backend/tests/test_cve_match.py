@@ -139,3 +139,13 @@ def test_capped_cve_set_is_independent_of_nvd_response_order():
     rb = run_cve_match(HOSTS, session=FakeSession(b), sleep=lambda s: None, max_per_service=15)
     assert [f["cve_id"] for f in ra["findings"]] == [f["cve_id"] for f in rb["findings"]]
     assert len(ra["findings"]) == 15
+
+
+def test_truncation_is_reported_not_silent():
+    def vuln(cid):
+        return {"cve": {"id": cid, "descriptions": [{"lang": "en", "value": "x"}],
+                        "metrics": {"cvssMetricV31": [{"cvssData": {"baseScore": 8.0}}]}}}
+    nvd = {"vulnerabilities": [vuln(f"CVE-2021-{n:04d}") for n in range(1, 21)]}
+    r = run_cve_match(HOSTS, session=FakeSession(nvd), sleep=lambda s: None, max_per_service=15)
+    assert r["truncated"] == [{"host": "10.0.0.5", "port": 21, "label": "ProFTPD 1.3.5", "shown": 15, "total": 20}]
+    assert run_cve_match(HOSTS, session=FakeSession(nvd), sleep=lambda s: None, max_per_service=50)["truncated"] == []
