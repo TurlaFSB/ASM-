@@ -360,7 +360,8 @@ docker exec asm_postgres pg_restore -U asm_user -d asm_db --clean --if-exists -v
 |---|---|
 | Historical diff engine, change events API | Done |
 | CVE roll-up: one line per component and host with "N of M" (report, vulnerabilities API and page, changes API) | Done |
-| Changes page in the UI; alerts and webhooks driven by change events | Planned |
+| Changes page in the UI | Done |
+| Alerts and webhooks driven by change events | Planned |
 | Per-port path tracking (paths keyed by host and port) | Done |
 | AI-assisted triage: severity, summary and recommended action per change, with guardrails | Planned |
 | Leak and breach collectors (HIBP, GitHub code search, paste sites) | Planned |
