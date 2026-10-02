@@ -29,6 +29,22 @@ services:
       timeout: 5s
       retries: 5
 
+  # One-shot: applies Alembic migrations, then exits. App services wait for it to succeed.
+  migrate:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: asm_migrate
+    restart: "no"
+    command: ["alembic", "-c", "backend/alembic.ini", "upgrade", "head"]
+    env_file:
+      - .env.docker
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app/backend
+
   backend:
     build:
       context: .
@@ -42,6 +58,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
@@ -67,6 +85,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     volumes:
       - screenshots_data:/app/screenshots
       - ./backend:/app/backend
@@ -88,6 +108,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   frontend:
     build:

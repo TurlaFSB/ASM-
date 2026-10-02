@@ -18,7 +18,6 @@ export default function Vulnerabilities() {
   const tableContainerRef = useRef(null);
 
   useEffect(() => {
-    setLoading(true);
     const params = { scope };
     Promise.all([getVulnerabilities(params), getVulnSummary(params)])
       .then(([v, s]) => {
@@ -28,6 +27,8 @@ export default function Vulnerabilities() {
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [scope]);
+
+  const changeScope = (next) => { setLoading(true); setScope(next); };
 
   const filtered = vulns.filter(v =>
     (severity === "all" || v.severity === severity) &&
@@ -77,8 +78,8 @@ export default function Vulnerabilities() {
           Version match ({unverifiedCount})
         </button>
         <span style={{ fontSize: 12, color: "var(--text-tertiary)", marginLeft: 12 }}>Showing</span>
-        <button style={chip(scope === "latest")} onClick={() => setScope("latest")}>Latest scan</button>
-        <button style={chip(scope === "all")} onClick={() => setScope("all")}>All history</button>
+        <button style={chip(scope === "latest")} onClick={() => changeScope("latest")}>Latest scan</button>
+        <button style={chip(scope === "all")} onClick={() => changeScope("all")}>All history</button>
       </div>
       {source !== "verified" && unverifiedCount > 0 && (
         <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 8 }}>

@@ -113,3 +113,17 @@ def effective_rate(rate_limit: int, multiplier_env: Optional[str] = None, cap: i
     except ValueError:
         mult = 1.0
     return max(1, min(int(rate_limit * mult), cap))
+
+
+def merge_known_ports(previous, current):
+    """A narrower scan (e.g. top-100 ports) must not 'close' ports a wider scan found earlier.
+    Union by port number; the fresh observation wins for ports seen in both."""
+    merged = {p["port"]: p for p in (previous or []) if isinstance(p, dict) and "port" in p}
+    for p in current or []:
+        merged[p["port"]] = p
+    return [merged[k] for k in sorted(merged)]
+
+
+def merge_known_technologies(previous, current):
+    """Same idea for technologies when a profile skips the tech-fingerprinting stage."""
+    return sorted(set(previous or []) | set(current or []))

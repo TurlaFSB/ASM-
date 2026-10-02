@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { Activity, Play, X, Download } from "lucide-react";
+import { Activity, X, Download } from "lucide-react";
 import { getScans, getScanProgress, cancelScan, downloadScanReport } from "../api";
+import { ProfileBadge } from "../components/ProfilePicker";
 
 const STAGE_LABELS = {
   subdomain_enumeration: "Subfinder + Amass",
@@ -18,11 +19,30 @@ const STAGE_LABELS = {
   risk_scoring: "Risk Scoring",
 };
 
+// Pipeline order, used for the progress bar while a scan runs
+const STAGE_ORDER = [
+  "subdomain_enumeration", "dns_resolution", "whois_asn_lookup", "port_scanning",
+  "http_probing", "web_analysis", "saving_results", "risk_scoring",
+];
+
 const MODULE_LABELS = {
   subfinder: "subfinder", amass: "amass", dns: "dns", whois_asn: "whois",
   portscan: "nmap", httpprobe: "httpx", whatweb: "whatweb", dirbuster: "dirs",
-  vuln: "nuclei", sslyze: "tls", screenshot: "shots",
+  vuln: "nuclei", nuclei_network: "net-nuclei", cve_match: "cve", sslyze: "tls", screenshot: "shots",
 };
+
+function formatDuration(seconds) {
+  if (seconds == null || seconds < 0) return "—";
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  return m < 60 ? `${m}m ${seconds % 60}s` : `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+function scanDuration(scan) {
+  if (!scan.started_at) return null;
+  const end = scan.completed_at ? new Date(scan.completed_at) : (scan.status === "running" ? new Date() : null);
+  return end ? Math.round((end - new Date(scan.started_at)) / 1000) : null;
+}
 
 function moduleColor(status) {
   const v = String(status || "").toLowerCase();
@@ -130,7 +150,7 @@ export default function Scans() {
               <th>New</th>
               <th>Changed</th>
               <th>Started</th>
-              <th>Completed</th>
+              <th>Duration</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -144,26 +164,33 @@ export default function Scans() {
                   {scan.target_domain || "Target #" + scan.target_id}
                 </td>
                 <td>
-                  <span className={"badge badge-" + scan.status}>
-                    {scan.status}
-                  </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span className={"badge badge-" + scan.status}>
+                      {scan.status}
+                    </span>
+                    <ProfileBadge name={scan.profile} />
+                  </div>
                   {scan.status !== "running" && <ModuleChips results={scan.module_results} />}
                   {scan.status === "running" && stages[scan.id] && (
-                    <div className="progress-stage" style={{ marginTop: 6 }}>
-                      {STAGE_LABELS[stages[scan.id]] || stages[scan.id]}
-                    </div>
+                    <>
+                      <div className="progress-stage" style={{ marginTop: 6 }}>
+                        {STAGE_LABELS[stages[scan.id]] || stages[scan.id]}
+                      </div>
+                      <div className="scan-progress" title={`Stage ${Math.max(1, STAGE_ORDER.indexOf(stages[scan.id]) + 1)} of ${STAGE_ORDER.length}`}>
+                        <div style={{ width: `${Math.round(((STAGE_ORDER.indexOf(stages[scan.id]) + 1) / STAGE_ORDER.length) * 100)}%` }} />
+                      </div>
+                    </>
                   )}
                 </td>
                 <td>{scan.total_assets || 0}</td>
                 <td style={{ color: "var(--green)" }}>{scan.new_assets || 0}</td>
                 <td style={{ color: "var(--orange)" }}>{scan.changed_assets || 0}</td>
-                <td style={{ fontSize: 12 }}>
+                <td style={{ fontSize: 12 }} title={scan.completed_at ? `Completed ${new Date(scan.completed_at).toLocaleString()}` : ""}>
                   {scan.started_at ? new Date(scan.started_at).toLocaleString() : "—"}
                 </td>
-                <td style={{ fontSize: 12 }}>
-                  {scan.completed_at ? new Date(scan.completed_at).toLocaleString() : "—"}
-                </td>
-                <td className="actions">
+                <td className="mono-dim">{formatDuration(scanDuration(scan))}</td>
+                <td>
+                  <div className="actions">
                   {scan.status === "running" && (
                     <button
                       className="btn btn-sm btn-danger"
@@ -182,6 +209,7 @@ export default function Scans() {
                       {downloadingId === scan.id ? "Generating..." : "Report"}
                     </button>
                   )}
+                  </div>
                 </td>
               </tr>
             ))}

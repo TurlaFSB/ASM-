@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Clock, Plus, Trash2, Power } from "lucide-react";
+import { Plus, Trash2, Power } from "lucide-react";
 import { getSchedules, createSchedule, toggleSchedule, deleteSchedule, getTargets } from "../api";
 
 function extractErrorMessage(err, fallback) {

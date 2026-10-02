@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Bell, CheckCheck } from "lucide-react";
+import { CheckCheck } from "lucide-react";
 import { getAlerts, markAlertRead, markAllAlertsRead } from "../api";
 
 export default function Alerts() {

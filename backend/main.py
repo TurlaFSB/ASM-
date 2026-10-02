@@ -18,7 +18,8 @@ from backend.security import SECURITY_HEADERS
 
 @asynccontextmanager
 async def lifespan(app):
-    Base.metadata.create_all(bind=engine)
+    # Schema is owned by Alembic (the `migrate` compose service / `alembic upgrade head`),
+    # not create_all: create_all silently skips changes to existing tables.
     yield
 
 

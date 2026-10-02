@@ -114,7 +114,8 @@ def keep_finding(f: Dict) -> bool:
     return bool({str(t).lower() for t in tags} & INFO_KEEP_TAGS)
 
 
-def build_nuclei_cmd(targets_path: str, out_path: str, rate_limit: int, tags=None):
+def build_nuclei_cmd(targets_path: str, out_path: str, rate_limit: int, tags=None,
+                     severity: str = None):
     cmd = [
         "nuclei", "-nc",              # NOT -silent: warnings (e.g. host skipped) must reach stderr
         "-l", targets_path,
@@ -125,7 +126,7 @@ def build_nuclei_cmd(targets_path: str, out_path: str, rate_limit: int, tags=Non
         "-ni",                        # no interactsh/OAST
         "-duc",                       # no update check at scan time
         "-timeout", "10",
-        "-severity", NUCLEI_SEVERITY,
+        "-severity", severity or NUCLEI_SEVERITY,
     ]
     if tags:                      # explicit service tags (network-service pass)
         cmd += ["-tags", ",".join(tags)]
@@ -224,12 +225,14 @@ def check_template_freshness(max_age_days: int = 7) -> str:
     return "fresh"
 
 
-def run_nuclei(hosts: List[str], rate_limit: int = 50, tags=None) -> Dict:
+def run_nuclei(hosts: List[str], rate_limit: int = 50, tags=None,
+               severity: str = None, timeout: int = None) -> Dict:
     """
     Run Nuclei against a list of confirmed HTTP endpoints.
     Returns structured vulnerability data.
     """
 
+    timeout = timeout or NUCLEI_TIMEOUT
     result = {
         "findings": [],
         "module_status": "ok",
@@ -288,8 +291,8 @@ def run_nuclei(hosts: List[str], rate_limit: int = 50, tags=None) -> Dict:
         )
 
         nuclei_result = _run_with_process_group_cleanup(
-            build_nuclei_cmd(targets_path, tmp_path, rate_limit, tags),
-            timeout=NUCLEI_TIMEOUT,
+            build_nuclei_cmd(targets_path, tmp_path, rate_limit, tags, severity),
+            timeout=timeout,
         )
 
         if nuclei_result.returncode != 0:
@@ -335,7 +338,7 @@ def run_nuclei(hosts: List[str], rate_limit: int = 50, tags=None) -> Dict:
         result["findings"] = [f for f in _read_findings(tmp_path) if keep_finding(f)]  # keep what was found before the cap
         _summarize(result)
         logger.error(
-            f"[nuclei] hosts_in={len(hosts)} status=timeout after {NUCLEI_TIMEOUT}s "
+            f"[nuclei] hosts_in={len(hosts)} status=timeout after {timeout}s "
             f"(salvaged {result['total']} findings) duration={duration:.2f}s"
         )
         result["module_status"] = (

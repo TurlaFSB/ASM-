@@ -11,13 +11,21 @@ from backend.tasks import run_scan, celery_app
 from backend.auth import get_current_user
 from backend.audit import log_action
 from backend.validators import validate_target
+from backend.scan_profiles import PROFILES, DEFAULT_PROFILE, get_profile, is_valid_profile
+from typing import Optional
 
 router = APIRouter(prefix="/scans", tags=["scans"])
 
 class ScanCreate(BaseModel):
     target_id: int
-    wordlist: str = "small"  # directory discovery wordlist: "small" (fast default) or "medium" (deeper, slower)
-    run_dirbuster: bool = True  # toggle directory/content discovery stage on/off for this scan
+    profile: Optional[str] = None       # quick | standard | deep; None = the target's default profile
+    run_dirbuster: Optional[bool] = None  # False vetoes directory discovery even if the profile has it
+
+
+@router.get("/profiles")
+def list_profiles(current_user: dict = Depends(get_current_user)):
+    """Scan depth presets for the UI, so labels/estimates live in one place (scan_profiles.py)."""
+    return {"default": DEFAULT_PROFILE, "profiles": [p.public() for p in PROFILES.values()]}
 
 @router.post("/")
 def trigger_scan(scan: ScanCreate, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
@@ -51,24 +59,34 @@ def trigger_scan(scan: ScanCreate, request: Request, db: Session = Depends(get_d
             detail=f"A scan (#{active_scan.id}) is already {active_scan.status} for {target.domain}. Wait for it to finish or cancel it first."
         )
 
+    requested = scan.profile or target.default_profile
+    if not is_valid_profile(requested):
+        raise HTTPException(status_code=422, detail=f"Unknown profile '{requested}'. Use one of: {', '.join(PROFILES)}")
+    prof = get_profile(requested)
+    # Directory discovery runs only if the profile includes it AND neither the target
+    # toggle nor this request turned it off.
+    dirs_on = bool(prof.run_dirbuster and target.dirbuster_enabled and scan.run_dirbuster is not False)
+
     db_scan = Scan(
         target_id=target.id,
         status="pending",
+        profile=prof.name,
         created_at=datetime.now(timezone.utc)
     )
     db.add(db_scan)
     db.commit()
     db.refresh(db_scan)
     log_action(db, current_user.username, "scan_triggered", target_id=target.id,
-               scan_id=db_scan.id, detail={"domain": target.domain}, ip_address=request.client.host)
+               scan_id=db_scan.id, detail={"domain": target.domain, "profile": prof.name, "directory_discovery": dirs_on},
+               ip_address=request.client.host)
 
     task = run_scan.delay(
         target_id=target.id,
         domain=target.domain,
         rate_limit=target.rate_limit,
         scan_id=db_scan.id,
-        wordlist=scan.wordlist,
-        enable_dirbuster=scan.run_dirbuster
+        enable_dirbuster=dirs_on,
+        profile=prof.name,
     )
 
     db_scan.celery_task_id = task.id
@@ -79,6 +97,7 @@ def trigger_scan(scan: ScanCreate, request: Request, db: Session = Depends(get_d
         "task_id": task.id,
         "target": target.domain,
         "status": "pending",
+        "profile": prof.name,
         "message": "Scan queued successfully"
     }
 

@@ -19,7 +19,7 @@ export default function Login({ onLogin }) {
       const res = await axios.post(`${API}/auth/token`, params);
       localStorage.setItem("token", res.data.access_token);
       onLogin();
-    } catch (e) {
+    } catch {
       setError("Invalid username or password");
     } finally {
       setLoading(false);

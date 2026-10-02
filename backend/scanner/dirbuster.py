@@ -131,6 +131,7 @@ def run_dirbuster(
     scan_id: int = None,
     per_request_timeout: int = 8,
     process_timeout: int = 300,
+    max_seconds: int = None,
 ) -> Dict:
     """
     Runs feroxbuster against each URL individually.
@@ -167,6 +168,7 @@ def run_dirbuster(
     process_timeout = compute_process_timeout(
         words, rate_limit, with_extensions=(wordlist == "medium"),
         floor=process_timeout if process_timeout != 300 else 120,
+        cap=max_seconds,
     )
     logger.info(f"[dirbuster] wordlist={wordlist} words={words} rate={rate_limit}/s "
                 f"per-host timeout={process_timeout}s")

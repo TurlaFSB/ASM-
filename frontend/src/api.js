@@ -37,6 +37,8 @@ export const createTarget = (data) => api.post("/targets/", data);
 export const deleteTarget = (id) => api.delete(`/targets/${id}`);
 export const updateDirbusterToggle = (id, enabled) => api.patch(`/targets/${id}/dirbuster-toggle`, { dirbuster_enabled: enabled });
 export const triggerScan = (data) => api.post("/scans/", data);
+export const getScanProfiles = () => api.get("/scans/profiles");
+export const updateTargetProfile = (id, profile) => api.patch(`/targets/${id}/profile`, { default_profile: profile });
 export const cancelScan = (id) => api.patch(`/scans/${id}/cancel`);
 export const getScanProgress = (id) => api.get(`/scans/${id}/progress`);
 
