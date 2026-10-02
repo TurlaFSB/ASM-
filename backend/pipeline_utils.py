@@ -70,3 +70,34 @@ def pipeline_trusted_for_removals(module_results: Dict, internal_target: bool) -
     if internal_target:
         return dns.startswith("resolved")
     return dns == "ok" and str(module_results.get("subfinder", "")) == "ok"
+
+
+def run_stages_parallel(jobs: Dict[str, Optional[callable]], defaults: Dict[str, Dict],
+                        max_workers: int = 5, parallel: bool = True):
+    """Run independent scanner stages concurrently (they only read the confirmed web
+    targets and never touch the DB). A crashing stage degrades to its default result with
+    a failed status instead of killing the scan. Returns (results, timings)."""
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    results: Dict[str, Dict] = {}
+    timings: Dict[str, float] = {}
+
+    def _run(name, fn):
+        t0 = time.time()
+        try:
+            res = fn()
+        except Exception as e:  # noqa: BLE001
+            res = {**defaults.get(name, {}), "module_status": f"failed: {e}"}
+        return name, res, round(time.time() - t0, 2)
+
+    active = {k: v for k, v in jobs.items() if v is not None}
+    if parallel and len(active) > 1:
+        with ThreadPoolExecutor(max_workers=min(max_workers, len(active))) as ex:
+            for name, res, dt in ex.map(lambda kv: _run(*kv), active.items()):
+                results[name], timings[name] = res, dt
+    else:
+        for kv in active.items():
+            name, res, dt = _run(*kv)
+            results[name], timings[name] = res, dt
+    return results, timings

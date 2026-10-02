@@ -259,59 +259,62 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             f"({len(http_data['hosts'])} live web services)"
         )
 
-        # Stage 4.5: WhatWeb technology fingerprinting
-        self.update_state(state="PROGRESS", meta={"stage": "tech_fingerprinting"})
+        # Stages 4.5-6: independent web-facing modules run CONCURRENTLY
+        # (whatweb, directory discovery, nuclei, sslyze, screenshots). Total time becomes
+        # the slowest module instead of the sum. They only read host_urls/TLS targets and
+        # never touch the DB, so this is thread-safe. ASM_PARALLEL_STAGES=false disables it.
+        import os as _os
+        from backend.pipeline_utils import run_stages_parallel
+        self.update_state(state="PROGRESS", meta={"stage": "web_analysis"})
         if scan:
-            scan.current_stage = "tech_fingerprinting"
+            scan.current_stage = "web_analysis"
             db.commit()
         stage_start = time.time()
-        whatweb_data = run_whatweb(host_urls)
+        tls_targets = tls_targets_from_urls(confirmed_urls)
+        stage_results, stage_dts = run_stages_parallel(
+            jobs={
+                "whatweb": lambda: run_whatweb(host_urls),
+                "dirbuster": (lambda: run_dirbuster(host_urls, rate_limit, wordlist, scan_id=scan_id))
+                             if enable_dirbuster else None,
+                "nuclei": lambda: run_nuclei(host_urls, rate_limit),
+                "sslyze": lambda: run_sslyze(tls_targets),
+                "screenshot": lambda: run_eyewitness(host_urls),
+            },
+            defaults={
+                "whatweb": {"hosts": {}}, "dirbuster": {"hosts": {}},
+                "nuclei": {"findings": []}, "sslyze": {"findings": []},
+                "screenshot": {"screenshots": []},
+            },
+            parallel=_os.getenv("ASM_PARALLEL_STAGES", "true").lower() != "false",
+        )
+        stage_timings.update(stage_dts)
+        stage_timings["web_analysis_wall"] = round(time.time() - stage_start, 2)
+
+        whatweb_data = stage_results["whatweb"]
         module_results["whatweb"] = whatweb_data["module_status"]
         for entry in http_data["hosts"]:
             ww_result = whatweb_data["hosts"].get(entry.get("url", ""))
             if ww_result:
                 merged = set(entry.get("technologies", [])) | set(ww_result.get("technologies", []))
                 entry["technologies"] = sorted(merged)
-        stage_timings["whatweb"] = round(time.time()-stage_start,2)
-        logger.info(
-            f"[pipeline] WhatWeb completed in {stage_timings['whatweb']}s "
-            f"({len(whatweb_data['hosts'])} hosts fingerprinted)"
-        )
 
-
-        # Stage 4.7: Directory/content discovery
-        self.update_state(state="PROGRESS", meta={"stage": "dir_discovery"})
-        if scan:
-            scan.current_stage = "dir_discovery"
-            db.commit()
-        stage_start = time.time()
         if enable_dirbuster:
-            dirbuster_data = run_dirbuster(host_urls, rate_limit, wordlist, scan_id=scan_id)
+            dirbuster_data = stage_results["dirbuster"]
             module_results["dirbuster"] = dirbuster_data["module_status"]
-            stage_timings["dirbuster"] = round(time.time()-stage_start,2)
-            total_paths_found = sum(len(h.get("paths", [])) for h in dirbuster_data["hosts"].values())
-            logger.info(
-                f"[pipeline] Directory discovery completed in {stage_timings['dirbuster']}s "
-                f"({total_paths_found} paths found across {len(dirbuster_data['hosts'])} hosts)"
-            )
         else:
             dirbuster_data = {"hosts": {}, "module_status": "skipped"}
             module_results["dirbuster"] = "skipped"
-            logger.info("[pipeline] Directory discovery skipped (disabled by user)")
-        # Stage 5: Vulnerability scanning
-        self.update_state(state="PROGRESS", meta={"stage": "vuln_scanning"})
-        if scan:
-            scan.current_stage = "vuln_scanning"
-            db.commit()
-        stage_start = time.time()
 
-        vuln_data = run_nuclei(host_urls, rate_limit)
+        vuln_data = stage_results["nuclei"]
         module_results["vuln"] = vuln_data["module_status"]
-
-        stage_timings["nuclei"] = round(time.time()-stage_start,2)
+        sslyze_data = stage_results["sslyze"]
+        module_results["sslyze"] = sslyze_data["module_status"]
+        screenshot_data = stage_results["screenshot"]
+        module_results["screenshot"] = screenshot_data["module_status"]
         logger.info(
-            f"[pipeline] Nuclei completed in {stage_timings['nuclei']}s "
-            f"({len(vuln_data.get('findings', []))} findings)"
+            f"[pipeline] web analysis done in {stage_timings['web_analysis_wall']}s wall "
+            f"(per-module: {stage_dts}); nuclei findings={len(vuln_data.get('findings', []))}, "
+            f"sslyze findings={len(sslyze_data.get('findings', []))}"
         )
 
         # Save Nuclei findings to DB
@@ -348,14 +351,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
 
         db.commit()
 
-        # Stage 5.5: sslyze TLS/SSL analysis
-        self.update_state(state="PROGRESS", meta={"stage": "tls_analysis"})
-        if scan:
-            scan.current_stage = "tls_analysis"
-            db.commit()
-        stage_start = time.time()
-        sslyze_data = run_sslyze(tls_targets_from_urls(confirmed_urls))
-        module_results["sslyze"] = sslyze_data["module_status"]
+        # Save sslyze findings
         for finding in sslyze_data.get("findings", []):
             vuln = Vulnerability(
                 target_id=target_id,
@@ -373,28 +369,6 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             )
             db.add(vuln)
         db.commit()
-        stage_timings["sslyze"] = round(time.time()-stage_start,2)
-        logger.info(
-            f"[pipeline] sslyze completed in {stage_timings['sslyze']}s "
-            f"({len(sslyze_data.get('findings', []))} findings)"
-        )
-
-        # Stage 6: Screenshots
-        self.update_state(state="PROGRESS", meta={"stage": "screenshots"})
-        if scan:
-            scan.current_stage = "screenshots"
-            db.commit()
-        stage_start = time.time()
-
-        screenshot_data = run_eyewitness(host_urls)
-        module_results["screenshot"] = screenshot_data["module_status"]
-
-        stage_timings["eyewitness"] = round(time.time()-stage_start,2)
-        logger.info(
-            f"[pipeline] EyeWitness completed in {stage_timings['eyewitness']}s "
-            f"({len(screenshot_data.get('screenshots', []))} screenshots)"
-        )
-
         # Stage 7: Save assets to DB with upsert + change detection
         self.update_state(state="PROGRESS", meta={"stage": "saving_results"})
         if scan:

@@ -43,3 +43,23 @@ def test_removals_not_trusted_when_dns_failed():
     assert pipeline_trusted_for_removals({"dns": "ok", "subfinder": "ok"}, False)
     assert pipeline_trusted_for_removals({"dns": "resolved directly (internal target)"}, True)
     assert not pipeline_trusted_for_removals({"dns": "resolution failed"}, True)
+
+
+def test_parallel_runner_isolates_failures_and_skips_none():
+    from backend.pipeline_utils import run_stages_parallel
+    def ok(): return {"findings": [1], "module_status": "ok"}
+    def boom(): raise RuntimeError("tool crashed")
+    res, t = run_stages_parallel(
+        {"a": ok, "b": boom, "c": None},
+        defaults={"b": {"findings": []}},
+    )
+    assert res["a"]["findings"] == [1]
+    assert res["b"]["findings"] == [] and res["b"]["module_status"].startswith("failed: tool crashed")
+    assert "c" not in res and set(t) == {"a", "b"}
+
+
+def test_parallel_runner_sequential_mode():
+    from backend.pipeline_utils import run_stages_parallel
+    res, _ = run_stages_parallel({"a": lambda: {"module_status": "ok"}, "b": lambda: {"module_status": "ok"}},
+                                 defaults={}, parallel=False)
+    assert set(res) == {"a", "b"}
