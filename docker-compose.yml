@@ -50,7 +50,8 @@ services:
       - screenshots_data:/app/screenshots
       - ./backend:/app/backend
       - ./scan_output:/app/scan_output
-    command: ["/app/backend/start-dev.sh"]
+    # Strip any Windows CR before executing, so a CRLF checkout can't break the entrypoint
+    command: ["bash", "-c", "tr -d '\\r' < /app/backend/start-dev.sh > /tmp/start-dev.sh && exec bash /tmp/start-dev.sh"]
     extra_hosts:
       - "ms3.local:${LAB_MS3_IP:-192.0.2.1}"
 
