@@ -451,7 +451,7 @@ def run_nuclei(hosts: List[str], rate_limit: int = 50, tags=None,
                     if result["module_status"] == "ok":
                         result["module_status"] = f"ok (low coverage: {', '.join(sorted(still))})"
 
-        if result["total"] == 0 and not skipped_hosts:
+        if result["total"] == 0 and not skipped_hosts and not result.get("degraded"):
             executed = templates_executed(stderr_txt)
             if executed > 0:
                 # Templates really ran and matched nothing: a clean result, not a suspicious one
