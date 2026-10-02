@@ -76,6 +76,7 @@ def test_network_tags_from_services_and_cmd():
 
 
 def test_templates_executed_parses_nuclei_stderr():
+    import backend.scanner.vuln as v
     err = ("[INF] Executing 148 templates on http://192.168.16.128:80\n"
            "[INF] Executing 13 templates on http://192.168.16.128:8080\n[INF] Targets loaded: 2")
     assert v.templates_executed(err) == 161
