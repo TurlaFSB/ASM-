@@ -10,6 +10,7 @@ from backend.models.vulnerability import Vulnerability
 from backend.tasks import run_scan, celery_app
 from backend.auth import get_current_user
 from backend.audit import log_action
+from backend.validators import validate_target
 
 router = APIRouter(prefix="/scans", tags=["scans"])
 
@@ -24,11 +25,21 @@ def trigger_scan(scan: ScanCreate, request: Request, db: Session = Depends(get_d
     if not target:
         raise HTTPException(status_code=404, detail="Target not found")
 
-    if not target.authorized:
+    if not target.is_active:
+        raise HTTPException(status_code=404, detail="Target not found")
+
+    if not target.authorized or not target.authorized_by:
         raise HTTPException(
             status_code=403,
             detail=f"Target {target.domain} is not authorized for scanning."
         )
+
+    # Re-validate at scan time: policy (e.g. private targets flag) may have changed
+    # since the target was created, and DB rows can be edited out-of-band.
+    try:
+        validate_target(target.domain)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
     active_scan = db.query(Scan).filter(
         Scan.target_id == target.id,

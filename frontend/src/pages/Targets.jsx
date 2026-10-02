@@ -16,7 +16,8 @@ function extractErrorMessage(err, fallback) {
   return fallback;
 }
 
-// Mirrors backend/api/targets.py DOMAIN_REGEX exactly
+// UX pre-check only; backend/validators.py is authoritative (private ranges etc.)
+const IPV4_REGEX = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
 const DOMAIN_REGEX = /^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.[A-Za-z0-9-]{1,63}(?<!-))*\.[A-Za-z]{2,}$/;
 
 const formatDate = (iso) =>
@@ -56,7 +57,7 @@ const validators = {
     const val = v.trim().toLowerCase();
     if (!val) return "Domain is required";
     if (val.length > 253) return "Domain exceeds 253 characters";
-    if (!DOMAIN_REGEX.test(val)) return "Invalid format (e.g. example.com)";
+    if (!DOMAIN_REGEX.test(val) && !IPV4_REGEX.test(val)) return "Invalid format (e.g. example.com or 8.8.8.8)";
     return null;
   },
   authorized_by: (v) => {

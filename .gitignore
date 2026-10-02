@@ -24,3 +24,7 @@ recovered_bundle.js
 *.pcap
 scan_output/
 apply_lock_fix.py
+geckodriver.log
+__pycache__/
+.pytest_cache/
+.coverage

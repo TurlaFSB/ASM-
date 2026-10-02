@@ -17,7 +17,7 @@ from backend.db import SessionLocal
 from backend.models.user import User
 from backend.auth import pwd_context
 
-MIN_PASSWORD_LENGTH = 5
+MIN_PASSWORD_LENGTH = 12
 
 
 def validate_username(username: str) -> str | None:

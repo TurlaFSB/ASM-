@@ -117,14 +117,10 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         stage_start = time.time()
 
         import ipaddress
+        from backend.validators import classify_target, INTERNAL_SUFFIXES
+
         def _is_internal_target(d):
-            try:
-                ipaddress.ip_address(d)
-                return True
-            except ValueError:
-                pass
-            internal_suffixes = (".local", ".internal", ".lan", ".corp", ".home")
-            return d.lower().endswith(internal_suffixes)
+            return classify_target(d) == "ip" or d.lower().endswith(INTERNAL_SUFFIXES)
 
         internal_target = _is_internal_target(domain)
 

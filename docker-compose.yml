@@ -10,7 +10,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U asm_user -d asm_db"]
       interval: 5s
@@ -22,7 +22,7 @@ services:
     container_name: asm_redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -37,20 +37,22 @@ services:
     restart: unless-stopped
     env_file:
       - .env.docker
+    environment:
+      ASM_ALLOW_PRIVATE_TARGETS: ${ASM_ALLOW_PRIVATE_TARGETS:-false}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - screenshots_data:/app/screenshots
       - ./backend:/app/backend
       - ./scan_output:/app/scan_output
     command: ["/app/backend/start-dev.sh"]
     extra_hosts:
-      - "metasploitable.local:192.168.75.130"
+      - "ms3.local:${LAB_MS3_IP:-192.0.2.1}"
 
   celery_worker:
     build:
@@ -61,6 +63,8 @@ services:
     command: celery -A backend.tasks worker --loglevel=info --concurrency=1
     env_file:
       - .env.docker
+    environment:
+      ASM_ALLOW_PRIVATE_TARGETS: ${ASM_ALLOW_PRIVATE_TARGETS:-false}
     depends_on:
       postgres:
         condition: service_healthy
@@ -71,7 +75,7 @@ services:
       - ./backend:/app/backend
       - ./scan_output:/app/scan_output
     extra_hosts:
-      - "metasploitable.local:192.168.75.130"
+      - "ms3.local:${LAB_MS3_IP:-192.0.2.1}"
 
   celery_beat:
     build:
@@ -82,6 +86,8 @@ services:
     command: celery -A backend.tasks beat --loglevel=info
     env_file:
       - .env.docker
+    environment:
+      ASM_ALLOW_PRIVATE_TARGETS: ${ASM_ALLOW_PRIVATE_TARGETS:-false}
     depends_on:
       postgres:
         condition: service_healthy
@@ -95,9 +101,23 @@ services:
     container_name: asm_frontend
     restart: unless-stopped
     ports:
-      - "3000:80"
+      - "127.0.0.1:3000:80"
     depends_on:
       - backend
+
+  backend-tests:
+    profiles: ["test"]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: sh -c "pip install --no-cache-dir -r backend/requirements-dev.txt && python -m pytest"
+    environment:
+      DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/asm_test
+      REDIS_URL: redis://localhost:6379/15
+      SECRET_KEY: test-only-secret-key-0123456789abcdef0123456789
+    volumes:
+      - ./backend:/app/backend
+      - ./pytest.ini:/app/pytest.ini
 
 volumes:
   postgres_data:

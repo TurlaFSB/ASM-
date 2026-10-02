@@ -1,4 +1,3 @@
-import re
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -12,12 +11,10 @@ from backend.models.vulnerability import Vulnerability
 from backend.models.asset import Asset
 from backend.auth import get_current_user
 from backend.audit import log_action
+from backend.validators import validate_target
 
 router = APIRouter(prefix="/targets", tags=["targets"])
 
-DOMAIN_REGEX = re.compile(
-    r"^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.[A-Za-z0-9-]{1,63}(?<!-))*\.[A-Za-z]{2,}$"
-)
 
 class TargetCreate(BaseModel):
     domain: str
@@ -29,14 +26,7 @@ class TargetCreate(BaseModel):
     @field_validator("domain")
     @classmethod
     def validate_domain(cls, v: str) -> str:
-        v = v.strip().lower()
-        if not v:
-            raise ValueError("Domain cannot be empty")
-        if len(v) > 253:
-            raise ValueError("Domain is too long")
-        if not DOMAIN_REGEX.match(v):
-            raise ValueError("Invalid domain format (e.g. example.com)")
-        return v
+        return validate_target(v)
 
     @field_validator("authorized_by")
     @classmethod
