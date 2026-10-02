@@ -101,3 +101,15 @@ def run_stages_parallel(jobs: Dict[str, Optional[callable]], defaults: Dict[str,
             name, res, dt = _run(*kv)
             results[name], timings[name] = res, dt
     return results, timings
+
+
+def effective_rate(rate_limit: int, multiplier_env: Optional[str] = None, cap: int = 1000) -> int:
+    """Target.rate_limit is a polite default (10 req/s). For lab/internal scans the operator
+    can raise throughput for the heavy tools with ASM_RATE_MULTIPLIER (default 1 = unchanged)."""
+    import os
+    raw = multiplier_env if multiplier_env is not None else os.getenv("ASM_RATE_MULTIPLIER", "1")
+    try:
+        mult = max(1.0, float(raw))
+    except ValueError:
+        mult = 1.0
+    return max(1, min(int(rate_limit * mult), cap))

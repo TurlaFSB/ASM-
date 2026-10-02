@@ -68,6 +68,55 @@ DEFAULT_SCAN_PROFILE = ASM_TAGS
 
 
 
+NUCLEI_TIMEOUT = int(os.getenv("NUCLEI_TIMEOUT", "1800"))
+
+
+def _read_findings(path: str) -> List[Dict]:
+    """Parse nuclei's JSONL export. Used for both normal completion and for salvaging
+    findings written before a timeout."""
+    findings: List[Dict] = []
+    if not path or not os.path.exists(path):
+        return findings
+    with open(path, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                data = json.loads(line)
+            except json.JSONDecodeError:
+                logger.warning("[nuclei] Skipping malformed JSON line.")
+                continue
+            if not isinstance(data, dict):
+                continue
+            info = data.get("info", {})
+            classification = info.get("classification", {}) or {}
+            cve_ids = classification.get("cve-id") or []
+            findings.append({
+                "host": data.get("host", ""),
+                "template_id": data.get("template-id", ""),
+                "name": info.get("name", ""),
+                "severity": info.get("severity", ""),
+                "description": info.get("description", ""),
+                "matched_at": data.get("matched-at", ""),
+                "type": data.get("type", ""),
+                "tags": info.get("tags", []),
+                "cvss_score": classification.get("cvss-score"),
+                "cvss_metrics": classification.get("cvss-metrics"),
+                "cve_id": cve_ids[0] if cve_ids else None,
+            })
+    return findings
+
+
+def _summarize(result: Dict) -> None:
+    result["total"] = len(result["findings"])
+    counts: Dict[str, int] = {}
+    for f in result["findings"]:
+        sev = f.get("severity", "unknown")
+        counts[sev] = counts.get(sev, 0) + 1
+    result["severity_counts"] = counts
+
+
 def check_template_freshness(max_age_days: int = 7) -> str:
     """
     Check whether local Nuclei templates are reasonably fresh.
@@ -157,7 +206,9 @@ def run_nuclei(hosts: List[str], rate_limit: int = 50) -> Dict:
                 str(rate_limit),
 
                 "-retries",
-                "2",
+                "1",
+                "-ni",   # no interactsh/OAST: avoids slow startup and outbound callbacks
+                "-duc",  # no update check at scan time
 
                 "-timeout",
                 "10",
@@ -170,7 +221,7 @@ def run_nuclei(hosts: List[str], rate_limit: int = 50) -> Dict:
                 "-jsonl-export",
                 tmp_path,
             ],
-            timeout=600,
+            timeout=NUCLEI_TIMEOUT,
         )
 
         if nuclei_result.returncode != 0:
@@ -188,53 +239,8 @@ def run_nuclei(hosts: List[str], rate_limit: int = 50) -> Dict:
             result["module_status"] = "failed"
             return result
 
-        with open(tmp_path, "r") as f:
-            for line in f:
-                line = line.strip()
-
-                if not line:
-                    continue
-
-                try:
-                    data = json.loads(line)
-                    if not isinstance(data, dict):
-                        continue
-
-                    info = data.get("info", {})
-                    classification = info.get("classification", {}) or {}
-                    cve_ids = classification.get("cve-id") or []
-
-                    result["findings"].append(
-                        {
-                            "host": data.get("host", ""),
-                            "template_id": data.get("template-id", ""),
-                            "name": info.get("name", ""),
-                            "severity": info.get("severity", ""),
-                            "description": info.get("description", ""),
-                            "matched_at": data.get("matched-at", ""),
-                            "type": data.get("type", ""),
-                            "tags": info.get("tags", []),
-                            "cvss_score": classification.get("cvss-score"),
-                            "cvss_metrics": classification.get("cvss-metrics"),
-                            "cve_id": cve_ids[0] if cve_ids else None,
-                        }
-                    )
-
-                except json.JSONDecodeError:
-                    logger.warning(
-                        "[nuclei] Skipping malformed JSON line."
-                    )
-                    continue
-
-        result["total"] = len(result["findings"])
-
-        severity_counts = {}
-
-        for f in result["findings"]:
-            s = f.get("severity","unknown")
-            severity_counts[s] = severity_counts.get(s,0)+1
-
-        result["severity_counts"] = severity_counts
+        result["findings"] = _read_findings(tmp_path)
+        _summarize(result)
 
         if result["total"] == 0:
             result["module_status"] = "empty"
@@ -251,15 +257,15 @@ def run_nuclei(hosts: List[str], rate_limit: int = 50) -> Dict:
 
     except subprocess.TimeoutExpired:
         duration = time.time() - start
-
+        result["findings"] = _read_findings(tmp_path)  # keep what was found before the cap
+        _summarize(result)
         logger.error(
-            f"[nuclei] "
-            f"hosts_in={len(hosts)} "
-            f"status=timeout "
-            f"duration={duration:.2f}s"
+            f"[nuclei] hosts_in={len(hosts)} status=timeout after {NUCLEI_TIMEOUT}s "
+            f"(salvaged {result['total']} findings) duration={duration:.2f}s"
         )
-
-        result["module_status"] = "timeout"
+        result["module_status"] = (
+            f"partial (timeout, {result['total']} findings kept)" if result["total"] else "timeout"
+        )
 
     except FileNotFoundError:
         logger.error("[nuclei] tool_not_found")

@@ -63,3 +63,12 @@ def test_parallel_runner_sequential_mode():
     res, _ = run_stages_parallel({"a": lambda: {"module_status": "ok"}, "b": lambda: {"module_status": "ok"}},
                                  defaults={}, parallel=False)
     assert set(res) == {"a", "b"}
+
+
+def test_effective_rate():
+    from backend.pipeline_utils import effective_rate
+    assert effective_rate(10, "1") == 10
+    assert effective_rate(10, "10") == 100
+    assert effective_rate(100, "50") == 1000          # capped
+    assert effective_rate(10, "garbage") == 10
+    assert effective_rate(10, "0.1") == 10            # never below configured limit

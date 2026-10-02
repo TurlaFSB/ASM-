@@ -271,7 +271,8 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         # the slowest module instead of the sum. They only read host_urls/TLS targets and
         # never touch the DB, so this is thread-safe. ASM_PARALLEL_STAGES=false disables it.
         import os as _os
-        from backend.pipeline_utils import run_stages_parallel
+        from backend.pipeline_utils import run_stages_parallel, effective_rate
+        heavy_rate = effective_rate(rate_limit)
         self.update_state(state="PROGRESS", meta={"stage": "web_analysis"})
         if scan:
             scan.current_stage = "web_analysis"
@@ -281,9 +282,9 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         stage_results, stage_dts = run_stages_parallel(
             jobs={
                 "whatweb": lambda: run_whatweb(host_urls),
-                "dirbuster": (lambda: run_dirbuster(host_urls, rate_limit, wordlist, scan_id=scan_id))
+                "dirbuster": (lambda: run_dirbuster(host_urls, heavy_rate, wordlist, scan_id=scan_id))
                              if enable_dirbuster else None,
-                "nuclei": lambda: run_nuclei(host_urls, rate_limit),
+                "nuclei": lambda: run_nuclei(host_urls, heavy_rate),
                 "sslyze": lambda: run_sslyze(tls_targets),
                 "screenshot": lambda: run_eyewitness(host_urls),
             },
