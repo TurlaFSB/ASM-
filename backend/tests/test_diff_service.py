@@ -155,3 +155,48 @@ def test_report_uses_diff_events_and_legacy_fallback_for_old_scans(db):
     db.add(legacy); db.commit()
     assert reports.build_report_context(db, legacy.id)["changes"] is None      # pre-engine scan: legacy view
     assert reports.generate_pdf_report(db, legacy.id).startswith(b"%PDF")
+
+
+def _run_like_pipeline(db, ports, mr=None):
+    """The live pipeline calls record_scan_changes BEFORE scan.module_results is saved."""
+    t = db.target
+    scan = Scan(target_id=t.id, status="running", profile="standard", module_results=None)
+    db.add(scan); db.commit()
+    a = db.query(Asset).filter(Asset.target_id == t.id).first()
+    if not a:
+        a = Asset(target_id=t.id, subdomain="10.0.0.5", ip="10.0.0.5"); db.add(a); db.commit()
+    a.open_ports = [{"port": p, "protocol": "tcp", "service": "http"} for p in ports]
+    a.technologies = ["Apache:2.4.7"]; a.http_status = 200; a.http_title = "x"
+    db.add(ScanAsset(scan_id=scan.id, asset_id=a.id)); db.commit()
+    live = dict(mr or MR)
+    summ = record_scan_changes(db, scan, live)
+    scan.module_results = live; scan.status = "completed"; db.commit()      # what the pipeline does afterwards
+    return scan, summ
+
+
+def test_live_pipeline_ordering_still_detects_changes(db):
+    _run_like_pipeline(db, [80])
+    _, summ = _run_like_pipeline(db, [80, 8000])
+    assert summ["events"] == 1
+    assert db.query(ChangeEvent).filter_by(subject="8000/tcp", change_type="added").count() == 1
+
+
+def test_baseline_written_without_module_results_is_healed(db):
+    s1, _ = run_scan(db, [80])
+    snap = db.query(ScanSnapshot).filter_by(scan_id=s1.id).one()
+    snap.data = dict(snap.data, coverage={k: None for k in snap.data["coverage"]})      # the old buggy snapshot
+    db.commit()
+    _, summ = run_scan(db, [80, 8000])
+    assert summ["events"] == 1
+
+
+def test_rebuild_recomputes_newest_scan_and_refuses_older(db):
+    s1, _ = run_scan(db, [80])
+    s2, _ = run_scan(db, [80, 8000])
+    from backend.diffing.service import rebuild_scan_changes
+    db.query(ChangeEvent).delete(); db.commit()                                         # simulate lost events
+    db.query(ScanSnapshot).filter_by(scan_id=s2.id).delete(); db.commit()
+    again = rebuild_scan_changes(db, s2)
+    assert again["events"] == 1 and db.query(ChangeEvent).filter_by(status="confirmed").count() == 1
+    with pytest.raises(ValueError):
+        rebuild_scan_changes(db, s1)

@@ -622,7 +622,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         if scan:
             try:
                 from backend.diffing.service import record_scan_changes
-                diff_summary = record_scan_changes(db, scan)
+                diff_summary = record_scan_changes(db, scan, module_results)
                 module_results["diff"] = ("baseline recorded" if diff_summary.get("baseline")
                                           else f"ok ({diff_summary['events']} changes, "
                                                f"{diff_summary['pending']} pending)")

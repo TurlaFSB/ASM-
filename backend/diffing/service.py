@@ -10,7 +10,7 @@ from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from backend.diffing.engine import diff_snapshots
-from backend.diffing.snapshot import SCHEMA_VERSION, build_snapshot, snapshot_hash
+from backend.diffing.snapshot import SCHEMA_VERSION, build_snapshot, compute_coverage, snapshot_hash
 from backend.models.asset import Asset
 from backend.models.change_event import ChangeEvent
 from backend.models.discovered_path import DiscoveredPath
@@ -22,7 +22,7 @@ from backend.models.vulnerability import Vulnerability
 logger = logging.getLogger(__name__)
 
 
-def snapshot_from_db(db: Session, scan: Scan) -> Dict:
+def snapshot_from_db(db: Session, scan: Scan, module_results: Optional[Dict] = None) -> Dict:
     """Snapshot of what THIS scan observed (assets via scan_assets, paths and findings by scan_id)."""
     assets = (db.query(Asset).join(ScanAsset, ScanAsset.asset_id == Asset.id)
               .filter(ScanAsset.scan_id == scan.id).all())
@@ -36,7 +36,9 @@ def snapshot_from_db(db: Session, scan: Scan) -> Dict:
     findings = [{"template_id": v.template_id, "host": v.host, "name": v.name, "severity": v.severity,
                  "tags": v.tags, "cve_id": v.cve_id, "cvss_score": v.cvss_score}
                 for v in db.query(Vulnerability).filter(Vulnerability.scan_id == scan.id).all()]
-    return build_snapshot(scan.profile, scan.module_results or {}, asset_dicts, paths, findings)
+    # The pipeline only persists scan.module_results at the very end, so the live run passes its own.
+    return build_snapshot(scan.profile, module_results if module_results is not None else (scan.module_results or {}),
+                          asset_dicts, paths, findings)
 
 
 def _row_to_dict(r: ChangeEvent) -> Dict:
@@ -44,12 +46,23 @@ def _row_to_dict(r: ChangeEvent) -> Dict:
             "subject": r.subject, "before": r.before, "after": r.after, "status": r.status}
 
 
-def record_scan_changes(db: Session, scan: Scan) -> Dict:
-    """Store this scan's snapshot and the change events versus its baseline. Idempotent per scan."""
+def _healed_baseline_data(db: Session, baseline: ScanSnapshot) -> Dict:
+    """Coverage is derived from the scan's stored module_results, which is the source of truth.
+    Recomputing it for the baseline heals snapshots written before module_results was available."""
+    data = dict(baseline.data)
+    bscan = db.query(Scan).filter(Scan.id == baseline.scan_id).first()
+    if bscan is not None and bscan.module_results:
+        data["coverage"] = compute_coverage(baseline.profile, bscan.module_results)
+    return data
+
+
+def record_scan_changes(db: Session, scan: Scan, module_results: Optional[Dict] = None) -> Dict:
+    """Store this scan's snapshot and the change events versus its baseline. Idempotent per scan.
+    module_results: the live pipeline's per-stage results (scan.module_results is not saved yet)."""
     if db.query(ScanSnapshot).filter(ScanSnapshot.scan_id == scan.id).first():
         return {"baseline": False, "skipped_existing": True, "events": 0, "pending": 0, "dismissed": 0}
 
-    snap = snapshot_from_db(db, scan)
+    snap = snapshot_from_db(db, scan, module_results)
     baseline: Optional[ScanSnapshot] = (
         db.query(ScanSnapshot)
         .filter(ScanSnapshot.target_id == scan.target_id, ScanSnapshot.profile == snap["profile"],
@@ -62,7 +75,7 @@ def record_scan_changes(db: Session, scan: Scan) -> Dict:
                                      ChangeEvent.status == "pending").all())
     pending_by_fp = {r.fingerprint: r for r in existing_pending}
 
-    result = diff_snapshots(baseline.data if baseline else None, snap,
+    result = diff_snapshots(_healed_baseline_data(db, baseline) if baseline else None, snap,
                             [_row_to_dict(r) for r in existing_pending])
 
     def _add(e: Dict, status: str):
@@ -96,3 +109,30 @@ def record_scan_changes(db: Session, scan: Scan) -> Dict:
     return {"baseline": result["baseline"], "baseline_scan_id": baseline.scan_id if baseline else None,
             "events": len(result["events"]), "pending": len(result["pending"]),
             "dismissed": len(result["dismissed"]), "by_severity": by_sev, "skipped": result["skipped"]}
+
+
+def rebuild_scan_changes(db: Session, scan: Scan) -> Dict:
+    """Recompute one scan's snapshot and change events from its stored data (maintenance tool).
+
+    Only safe for the NEWEST scan of its profile: later scans' events were derived from this scan's
+    snapshot and are not recomputed. Limitation: pending removals that this scan had dismissed as flaps
+    are not restored (rebuild is for diagnosing a just-finished scan, not for history surgery)."""
+    newer = (db.query(ScanSnapshot).filter(ScanSnapshot.target_id == scan.target_id,
+                                            ScanSnapshot.profile == scan.profile,
+                                            ScanSnapshot.scan_id > scan.id).first())
+    if newer is not None:
+        raise ValueError(f"scan {scan.id} is not the newest {scan.profile} scan (scan {newer.scan_id} came after)")
+    # Undo this scan's side effects on older pending removals before recomputing
+    mine = db.query(ChangeEvent).filter(ChangeEvent.scan_id == scan.id).all()
+    for e in mine:
+        if e.status == "confirmed" and e.change_type == "removed":
+            old = (db.query(ChangeEvent).filter(ChangeEvent.fingerprint == e.fingerprint,
+                                                ChangeEvent.target_id == scan.target_id,
+                                                ChangeEvent.status == "superseded").first())
+            if old is not None:
+                old.status = "pending"
+    for e in mine:
+        db.delete(e)
+    db.query(ScanSnapshot).filter(ScanSnapshot.scan_id == scan.id).delete()
+    db.commit()
+    return record_scan_changes(db, scan, scan.module_results or {})
