@@ -136,3 +136,34 @@ def test_lock_held_by_live_scan_is_respected(env):
         _run(new, t)
     assert "Retry" in type(e.value).__name__ or "retry" in str(e.value).lower()
     assert cx.lock_key(t.id) in FakeLock.held                      # untouched
+
+
+def test_legacy_lock_without_owner_marker_is_cleared_when_nothing_runs(env):
+    """The lock the OLD cancel leaked has no owner key; nothing is running, so it must not block."""
+    db, t, _, _ = env
+    _scan(db, t, "cancelled")
+    FakeLock.held.add(cx.lock_key(t.id))                           # leaked, no owner marker
+    new = _scan(db, t, "pending")
+    import backend.tasks as tasks
+    real, took = cx.ScanGuard, {}
+    class StopEarly(Exception): pass
+    def guard(*a, **k):
+        took["lock"] = True; raise StopEarly()
+    cx.ScanGuard = guard
+    try:
+        with pytest.raises(StopEarly):
+            _run(new, t)
+    finally:
+        cx.ScanGuard = real
+    assert took.get("lock")
+
+
+def test_legacy_lock_is_kept_while_another_scan_is_really_running(env):
+    db, t, _, _ = env
+    _scan(db, t, "running")
+    FakeLock.held.add(cx.lock_key(t.id))                           # no owner marker, but a scan IS running
+    new = _scan(db, t, "pending")
+    with pytest.raises(Exception) as e:
+        _run(new, t)
+    assert "retry" in str(e.value).lower() or "Retry" in type(e.value).__name__
+    assert cx.lock_key(t.id) in FakeLock.held

@@ -104,7 +104,11 @@ export default function Scans() {
 
   const handleCancel = async (id) => {
     if (window.confirm("Cancel this scan?")) {
-      await cancelScan(id);
+      try {
+        await cancelScan(id);
+      } catch (err) {
+        alert(err?.response?.data?.detail || "Could not cancel the scan.");
+      }
       fetchScans();
     }
   };
@@ -191,7 +195,7 @@ export default function Scans() {
                 <td className="mono-dim">{formatDuration(scanDuration(scan))}</td>
                 <td>
                   <div className="actions">
-                  {scan.status === "running" && (
+                  {(scan.status === "running" || scan.status === "pending") && (
                     <button
                       className="btn btn-sm btn-danger"
                       onClick={() => handleCancel(scan.id)}
