@@ -40,7 +40,7 @@ SEVERITY_RECOMMENDATIONS = {
     "info": "No action required; review for exposure of unnecessary information.",
 }
 
-SLA = {"critical": "24-48 hours", "high": "7 days", "medium": "30 days", "low": "Next maintenance cycle", "info": "—"}
+SLA = {"critical": "24-48 hours", "high": "7 days", "medium": "30 days", "low": "Next cycle", "info": "—"}
 
 # Tag-driven advice for findings that have no CVE (misconfigurations, exposures, weak settings)
 TAG_ADVICE = [
@@ -316,13 +316,22 @@ def build_report_context(db: Session, scan_id: int):
     if top in severity_counts and severity_counts[top] and confirmed_counts[top] == 0:
         rating_basis = "Based solely on findings inferred from software versions; verification may lower this rating."
 
+    # Top actions for the executive summary: inferred components need verification first, confirmed
+    # findings need fixing; rank both by severity then KEV.
+    actions = [{"text": p["name"], "severity": p["severity"], "kev": p["kev"], "sla": SLA[p["severity"]],
+                "kind": "Fix"} for p in priorities if p["severity"] != "info"]
+    actions += [{"text": f"Verify and patch {g['component']} ({g['count']} inferred CVEs)", "severity": g["severity"],
+                 "kev": g["kev_count"] > 0, "sla": g["verify_sla"], "kind": "Verify"} for g in inferred_groups]
+    actions.sort(key=lambda a: (SEVERITY_ORDER.index(a["severity"]), not a["kev"]))
+    top_actions = actions[:5]
+
     technologies = sorted({t for a in assets for t in clean_technologies(a.technologies)})
 
     return {
         "report_id": f"ASM-{scan.id:05d}",
         "target": target, "scan": scan, "profile": profile, "duration": duration,
         "assets": assets, "vulnerabilities": vulns,
-        "confirmed_vulns": confirmed_vulns, "inferred_groups": inferred_groups,
+        "top_actions": top_actions, "confirmed_vulns": confirmed_vulns, "inferred_groups": inferred_groups,
         "severity_counts": severity_counts, "confirmed_counts": confirmed_counts,
         "unverified_counts": unverified_counts,
         "risk_rating": rating, "rating_basis": rating_basis, "key_findings": key_findings,

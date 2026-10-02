@@ -179,3 +179,11 @@ def test_clean_technologies_drops_noise_and_duplicates():
     raw = ["Apache", "Apache HTTP Server:2.4.7", "Cookies", "HTTPServer", "HttpOnly", "Index-Of", "Java",
            "Jetty", "Jetty:8.1.7", "X-Frame-Options", "Ubuntu"]
     assert clean_technologies(raw) == ["Apache:2.4.7", "Java", "Jetty:8.1.7", "Ubuntu"]
+
+
+def test_top_actions_rank_kev_and_severity(db):
+    ctx = reports.build_report_context(db, db.scan_id)
+    acts = ctx["top_actions"]
+    assert 0 < len(acts) <= 5
+    sev = ["critical", "high", "medium", "low", "info"]
+    assert [sev.index(a["severity"]) for a in acts] == sorted(sev.index(a["severity"]) for a in acts)

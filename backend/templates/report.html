@@ -382,6 +382,20 @@
   {% for f in key_findings %}<li>{{ f }}</li>{% endfor %}
 </ul>
 
+{% if top_actions %}
+<h3>Top Actions</h3>
+<table>
+  <thead><tr><th style="width:12%">Severity</th><th style="width:14%">Type</th><th>Action</th><th style="width:20%">Target</th></tr></thead>
+  <tbody>
+  {% for a in top_actions %}
+  <tr><td><span class="badge {{ a.severity }}">{{ a.severity }}</span></td><td>{{ a.kind }}</td>
+      <td>{{ a.text }}{% if a.kev %}<span class="flag kev">KEV</span>{% endif %}</td>
+      <td>{% if a.kind == 'Verify' %}within {{ a.sla }}{% else %}{{ a.sla }}{% endif %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
 {% set unv = unverified_counts.critical + unverified_counts.high + unverified_counts.medium + unverified_counts.low %}
 {% if unv %}
 <div class="note warn">
@@ -439,14 +453,14 @@
 {% if assets %}
 <table style="table-layout: fixed;">
 <colgroup>
-  <col style="width: 15%;"><col style="width: 14%;"><col style="width: 7%;"><col style="width: 10%;">
-  <col style="width: 18%;"><col style="width: 36%;">
+  <col style="width: 17%;"><col style="width: 14%;"><col style="width: 7%;"><col style="width: 10%;">
+  <col style="width: 17%;"><col style="width: 35%;">
 </colgroup>
 <thead><tr><th>Host</th><th>IP address</th><th style="white-space:nowrap;">HTTP</th><th>Risk</th><th style="word-break:normal;">Technologies</th><th>Open ports &amp; services</th></tr></thead>
 <tbody>
 {% for a in assets %}
 <tr>
-  <td class="mono">{{ a.subdomain }}{% if a.http_title %}<div style="font-family:inherit;font-size:8px;color:#6b7280;margin-top:2px;">{{ a.http_title }}</div>{% endif %}</td>
+  <td class="mono" style="white-space:nowrap;">{{ a.subdomain }}{% if a.http_title %}<div style="font-family:inherit;font-size:8px;color:#6b7280;margin-top:2px;">{{ a.http_title }}</div>{% endif %}</td>
   <td class="mono" style="white-space:nowrap;">{{ a.ip or '—' }}</td>
   <td>{{ a.http_status or '—' }}</td>
   <td>{% if a.risk_level %}<span class="badge {{ a.risk_level.lower() }}">{{ a.risk_level }}</span><div style="font-size:8px;color:#6b7280;margin-top:2px;">{{ a.risk_score|round|int }}/100</div>{% else %}—{% endif %}</td>
