@@ -133,13 +133,18 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             owner_id = int(raw) if raw else None
         except Exception:  # noqa: BLE001
             owner_id = None
-        if owner_id:
-            _db = SessionLocal()
-            try:
+        _db = SessionLocal()
+        try:
+            if owner_id:
                 _o = _db.query(Scan).filter(Scan.id == owner_id).first()
                 stale = _o is None or _o.status not in ("pending", "running")
-            finally:
-                _db.close()
+            else:
+                # Lock taken by code that predates the owner marker (or the marker expired): it is
+                # stale unless some OTHER scan of this target is actually running right now.
+                stale = (_db.query(Scan).filter(Scan.target_id == target_id, Scan.status == "running",
+                                                Scan.id != scan_id).first() is None)
+        finally:
+            _db.close()
         if stale:
             logger.warning(f"[pipeline] clearing stale scan lock for target_id={target_id} (owner scan {owner_id} is not active)")
             redis_client.delete(cx.lock_key(target_id), cx.owner_key(target_id))
