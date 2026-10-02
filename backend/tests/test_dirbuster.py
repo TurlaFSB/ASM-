@@ -1,10 +1,10 @@
-from backend.scanner.dirbuster import compute_process_timeout, _salvage, _parse_ferox_json
+from backend.scanner.dirbuster import compute_budget, _salvage, _parse_ferox_json
 
 
-def test_timeout_scales_with_wordlist_and_rate():
-    assert compute_process_timeout(2500, 10, False) == 310     # 250s + 60s slack
-    assert compute_process_timeout(2500, 100, False) == 120    # floor
-    assert compute_process_timeout(4700, 10, True, cap=900) == 900  # capped
+def test_budget_scales_with_requests_and_rate():
+    assert compute_budget(2500, 10) == 340        # 250s + 30 + 60 slack
+    assert compute_budget(2500, 100) == 120       # floor
+    assert compute_budget(40000, 10, 2, cap=900) == 900   # capped
 
 
 def test_salvage_bytes_and_none():

@@ -13,6 +13,7 @@ from backend.api.vulnerabilities import router as vulnerabilities_router
 from backend.api.auth import router as auth_router
 from backend.api.schedules import router as schedules_router
 from backend.api.audit import router as audit_router
+from backend.api.assets import router as assets_router
 from backend.auth import get_current_user
 from backend.security import SECURITY_HEADERS
 
@@ -45,6 +46,7 @@ app.include_router(alerts_router)
 app.include_router(vulnerabilities_router)
 app.include_router(schedules_router)
 app.include_router(audit_router)
+app.include_router(assets_router)
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
@@ -79,9 +81,3 @@ def readiness(db: Session = Depends(get_db)):
     if "down" in checks.values():
         raise HTTPException(status_code=503, detail=checks)
     return {"status": "ready", **checks}
-
-
-@app.get("/assets/")
-def list_assets(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
-    assets = db.query(Asset).order_by(Asset.created_at.desc()).all()
-    return assets

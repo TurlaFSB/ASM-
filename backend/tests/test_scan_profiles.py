@@ -9,7 +9,7 @@ from sqlalchemy.ext.compiler import compiles
 from backend.scan_profiles import PROFILES, DEFAULT_PROFILE, get_profile, is_valid_profile
 from backend.scanner.portscan import build_nmap_cmd
 from backend.scanner.vuln import build_nuclei_cmd
-from backend.scanner.dirbuster import compute_process_timeout
+from backend.scanner.dirbuster import compute_budget
 from backend.pipeline_utils import merge_known_ports, merge_known_technologies
 from backend.db import Base, get_db
 from backend.main import app
@@ -47,7 +47,7 @@ def test_depth_is_monotonic():
     assert not q.run_dirbuster and s.run_dirbuster and d.run_dirbuster
     assert q.nuclei_timeout < s.nuclei_timeout <= d.nuclei_timeout
     assert q.nmap_host_timeout < s.nmap_host_timeout < d.nmap_host_timeout
-    assert d.dirbuster_cap > s.dirbuster_cap and d.wordlist == "medium"
+    assert d.dirbuster_cap > s.dirbuster_cap and d.wordlist == "medium" and s.wordlist == "core"
 
 
 def test_quick_keeps_the_signal_stages():
@@ -59,7 +59,7 @@ def test_quick_keeps_the_signal_stages():
 def test_public_view_lists_stages():
     p = PROFILES["quick"].public()
     assert p["name"] == "quick" and p["estimate"] and "CVE match" in p["stages"]
-    assert "dirs (small)" not in p["stages"]
+    assert "dirs (core)" not in p["stages"]
     assert any(x.startswith("dirs") for x in PROFILES["deep"].public()["stages"])
 
 
@@ -86,8 +86,8 @@ def test_nuclei_severity_override_and_default():
 
 
 def test_dirbuster_cap_bounds_timeout():
-    assert compute_process_timeout(100000, 1, True, cap=300) == 300
-    assert compute_process_timeout(10, 100, False, cap=300) == 120   # floor still applies
+    assert compute_budget(100000, 1, 1, cap=300) == 300
+    assert compute_budget(10, 100, 1, cap=300) == 120   # floor still applies
 
 
 # ---------- like-with-like merging for narrow profiles ----------

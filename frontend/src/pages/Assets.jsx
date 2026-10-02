@@ -1,7 +1,38 @@
 import { useState, useEffect, useRef } from "react";
-import { getAssets } from "../api";
+import React from "react";
+import { getAssets, getAssetPaths } from "../api";
 import ScrollHint from "../components/ScrollHint";
-import { Database, Search } from "lucide-react";
+import { Database, Search, ChevronRight, ChevronDown, FolderSearch } from "lucide-react";
+
+function PathsPanel({ data }) {
+  if (!data) return <div className="loading">Loading discovered paths...</div>;
+  if (data === "error") return <div className="empty">Could not load discovered paths.</div>;
+  if (data.paths.length === 0) {
+    return (
+      <div className="empty" style={{ padding: 16 }}>
+        <FolderSearch size={14} style={{ verticalAlign: -2, marginRight: 6 }} />
+        No paths discovered. Directory discovery may be off for this profile or target (Quick scans skip it).
+      </div>
+    );
+  }
+  return (
+    <div style={{ padding: "8px 4px" }}>
+      <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 6 }}>
+        {data.paths.length} path(s) from scan #{data.scan_id}; sensitive-looking ones first
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 60px 80px 90px", gap: "6px 12px", fontSize: 12, alignItems: "center" }}>
+        {data.paths.map(p => (
+          <React.Fragment key={`${p.path}-${p.status_code}`}>
+            <span className="mono">{p.path}{p.redirect_location ? <span style={{ color: "var(--text-secondary)" }}> → {p.redirect_location}</span> : null}</span>
+            <span style={{ color: p.status_code >= 400 ? "var(--orange)" : "var(--green)" }}>{p.status_code ?? "—"}</span>
+            <span style={{ color: "var(--text-secondary)" }}>{p.content_length != null ? `${p.content_length} B` : "—"}</span>
+            <span>{p.sensitive ? <span className="badge badge-sev-high">sensitive</span> : null}</span>
+          </React.Fragment>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function Assets() {
   const [assets, setAssets] = useState([]);
@@ -9,6 +40,18 @@ export default function Assets() {
   const [search, setSearch] = useState("");
   const [showDisappeared, setShowDisappeared] = useState(false);
   const tableContainerRef = useRef(null);
+  const [openId, setOpenId] = useState(null);
+  const [pathsById, setPathsById] = useState({});   // { assetId: {scan_id, paths} | "error" }
+
+  const togglePaths = (id) => {
+    if (openId === id) { setOpenId(null); return; }
+    setOpenId(id);
+    if (!pathsById[id]) {
+      getAssetPaths(id)
+        .then(r => setPathsById(prev => ({ ...prev, [id]: r.data })))
+        .catch(() => setPathsById(prev => ({ ...prev, [id]: "error" })));
+    }
+  };
 
   useEffect(() => {
     getAssets()
@@ -66,6 +109,7 @@ export default function Assets() {
         <table>
           <thead>
             <tr>
+              <th style={{ width: 28 }}></th>
               <th>Subdomain</th>
               <th>IP</th>
               <th>HTTP Status</th>
@@ -79,7 +123,14 @@ export default function Assets() {
           </thead>
           <tbody>
             {filtered.map(asset => (
-              <tr key={asset.id}>
+              <React.Fragment key={asset.id}>
+              <tr>
+                <td>
+                  <button className="icon-btn" onClick={() => togglePaths(asset.id)}
+                          title="Discovered paths (directory discovery)" aria-expanded={openId === asset.id}>
+                    {openId === asset.id ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  </button>
+                </td>
                 <td className="mono">{asset.subdomain}</td>
                 <td className="mono">{asset.ip || "—"}</td>
                 <td>{asset.http_status || "—"}</td>
@@ -109,6 +160,14 @@ export default function Assets() {
                 </td>
                 <td style={{ fontSize: 12 }}>{formatDate(asset.last_seen)}</td>
               </tr>
+              {openId === asset.id && (
+                <tr>
+                  <td colSpan={10} style={{ background: "var(--surface-2)" }}>
+                    <PathsPanel data={pathsById[asset.id]} />
+                  </td>
+                </tr>
+              )}
+              </React.Fragment>
             ))}
           </tbody>
         </table>

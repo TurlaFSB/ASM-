@@ -33,7 +33,7 @@ class ScanProfile:
 
     # Directory discovery
     run_dirbuster: bool = True
-    wordlist: str = "small"
+    wordlist: str = "core"
     dirbuster_cap: int = 300      # max seconds per host
 
     # Vulnerability stages
@@ -87,19 +87,19 @@ PROFILES: Dict[str, ScanProfile] = {
     "standard": ScanProfile(
         name="standard",
         label="Standard",
-        description="Balanced: top 1000 ports, tech fingerprinting, TLS, screenshots, short directory discovery.",
+        description="Balanced: top 1000 ports, tech fingerprinting, TLS, screenshots, curated high-signal directory discovery.",
         estimate="~8-10 min",
         nmap_ports="1000",
         nmap_host_timeout=600,
         run_dirbuster=True,
-        wordlist="small",
+        wordlist="core",
         dirbuster_cap=300,
         nuclei_timeout=900,
     ),
     "deep": ScanProfile(
         name="deep",
         label="Deep",
-        description="Exhaustive: all 65535 ports, large wordlist with extensions, long nuclei budget.",
+        description="Exhaustive: all 65535 ports, core paths with backup extensions plus common.txt, long nuclei budget.",
         estimate="~20+ min",
         nmap_ports="all",
         nmap_host_timeout=1800,

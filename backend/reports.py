@@ -22,6 +22,7 @@ from backend.models.vulnerability import Vulnerability
 from backend.models.alert import Alert
 from backend.models.discovered_path import DiscoveredPath
 from backend.scan_profiles import get_profile
+from backend.path_flags import is_sensitive_path
 
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 
@@ -231,8 +232,7 @@ def build_report_context(db: Session, scan_id: int):
     priorities = sorted(grouped.values(), key=_sort_key)
 
     paths = _paths_view(db, scan_id, {a.id: a for a in assets})
-    sensitive = [p for p in paths if p["status"] in (200, 401, 403) and re.search(
-        r"admin|backup|\.(zip|sql|bak|old|tar|gz)$|\.git|\.env|config|phpmyadmin|manager|console|login", p["path"], re.I)]
+    sensitive = [p for p in paths if is_sensitive_path(p["path"], p["status"])]
 
     key_findings = []
     c = severity_counts
