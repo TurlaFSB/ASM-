@@ -13,6 +13,9 @@ from backend.audit import log_action
 from backend.validators import validate_target
 from backend.scan_profiles import PROFILES, DEFAULT_PROFILE, get_profile, is_valid_profile
 from typing import Optional
+import redis
+from backend.config import settings
+from backend.cancellation import request_cancel
 
 router = APIRouter(prefix="/scans", tags=["scans"])
 
@@ -148,26 +151,38 @@ def cancel_scan(scan_id: int, request: Request, db: Session = Depends(get_db), c
         raise HTTPException(status_code=404, detail="Scan not found")
     if scan.status not in ["pending", "running"]:
         raise HTTPException(status_code=400, detail="Scan is not running")
-    if scan.celery_task_id:
-        celery_app.control.revoke(scan.celery_task_id, terminate=True)
+    # Cooperative cancel: flag first (the running task's guard kills its tools and unwinds cleanly,
+    # releasing the target lock), then the DB status, then drop the task if it is still queued.
+    # terminate=True is deliberately NOT used: it SIGTERMs the worker process mid-flight, skipping
+    # cleanup and orphaning nmap/nuclei/feroxbuster, which is what left the next scan 'pending'.
+    try:
+        request_cancel(redis.Redis.from_url(settings.redis_url, socket_timeout=2), scan.id)
+    except Exception:  # noqa: BLE001  the DB status below is still checked by the pipeline
+        pass
     scan.status = "cancelled"
+    scan.current_stage = None
     db.commit()
+    if scan.celery_task_id:
+        celery_app.control.revoke(scan.celery_task_id)
     log_action(db, current_user.username, "scan_cancelled", target_id=scan.target_id,
                scan_id=scan.id, ip_address=request.client.host)
     return {"message": "Scan cancelled"}
 
 from fastapi.responses import Response
-from backend.reports import generate_pdf_report
+from backend.report_cache import cached_pdf
+from backend.report_runner import build_report_isolated
 
 @router.get("/{scan_id}/report")
 def download_scan_report(scan_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     scan = db.query(Scan).filter(Scan.id == scan_id).first()
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
-    try:
-        pdf_bytes = generate_pdf_report(db, scan_id)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    pdf_bytes = cached_pdf(db, scan_id)             # instant when pre-built or generated before
+    if pdf_bytes is None:
+        try:
+            pdf_bytes = build_report_isolated(scan_id)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",

@@ -105,13 +105,53 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
     enable_dirbuster = bool(enable_dirbuster and prof.run_dirbuster)
     logger.info(f"[pipeline] scan_id={scan_id} target={domain} profile={prof.name}")
 
+    from backend import cancellation as cx
+
     redis_client = redis.Redis.from_url(settings.redis_url)
-    lock_key = f"scan_lock:{target_id}"
-    lock = redis_client.lock(lock_key, timeout=1800)
+
+    # A scan cancelled while still queued must never start (and never flip back to 'running').
+    if scan_id:
+        _db = SessionLocal()
+        try:
+            _s = _db.query(Scan).filter(Scan.id == scan_id).first()
+            if cx.is_flagged(redis_client, scan_id) or (_s is not None and _s.status == "cancelled"):
+                if _s is not None and _s.status != "cancelled":
+                    _s.status = "cancelled"
+                    _db.commit()
+                logger.info(f"[pipeline] scan_id={scan_id} was cancelled before it started")
+                return {"status": "cancelled", "scan_id": scan_id}
+        finally:
+            _db.close()
+
+    lock = redis_client.lock(cx.lock_key(target_id), timeout=cx.LOCK_TTL)
     have_lock = lock.acquire(blocking=False)
+    if not have_lock:
+        # A lock whose owner scan is no longer active is stale (worker killed, restarted, OOM).
+        stale = False
+        try:
+            raw = redis_client.get(cx.owner_key(target_id))
+            owner_id = int(raw) if raw else None
+        except Exception:  # noqa: BLE001
+            owner_id = None
+        if owner_id:
+            _db = SessionLocal()
+            try:
+                _o = _db.query(Scan).filter(Scan.id == owner_id).first()
+                stale = _o is None or _o.status not in ("pending", "running")
+            finally:
+                _db.close()
+        if stale:
+            logger.warning(f"[pipeline] clearing stale scan lock for target_id={target_id} (owner scan {owner_id} is not active)")
+            redis_client.delete(cx.lock_key(target_id), cx.owner_key(target_id))
+            have_lock = lock.acquire(blocking=False)
     if not have_lock:
         logger.warning(f"[pipeline] Scan already running for target_id={target_id}, retrying in 30s")
         raise self.retry(countdown=30, max_retries=20)
+    if scan_id:
+        redis_client.setex(cx.owner_key(target_id), 3600, str(scan_id))
+    guard = cx.ScanGuard(redis_client, scan_id, lock=lock)
+    guard.start()
+    checkpoint = guard.checkpoint
 
     db = SessionLocal()
     module_results = {}
@@ -124,6 +164,8 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         if scan_id:
             scan = db.query(Scan).filter(Scan.id == scan_id).first()
             if scan:
+                if scan.status == "cancelled":
+                    raise cx.ScanCancelled()
                 scan.status = "running"
                 scan.started_at = datetime.now(timezone.utc)
                 db.commit()
@@ -143,6 +185,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             # (subfinder/amass query CT logs, passive DNS, etc.) cannot find
             # anything for a target that's never been publicly indexed.
             # Skip straight to treating the target itself as the sole live host.
+            checkpoint()
             self.update_state(state="PROGRESS", meta={"stage": "subdomain_enumeration"})
             if scan:
                 scan.current_stage = "subdomain_enumeration"
@@ -152,6 +195,8 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             subdomains = [domain]
             stage_timings["subdomain"] = round(time.time()-stage_start,2)
             logger.info(f"[pipeline] Subdomain skipped for internal target {domain}")
+
+            checkpoint()
 
             self.update_state(state="PROGRESS", meta={"stage": "dns_resolution"})
             if scan:
@@ -181,6 +226,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             logger.info(f"[pipeline] DNS completed in {stage_timings['dns']}s ({len(live_hosts)} live hosts)")
         else:
             # Stage 1: Subdomain enumeration
+            checkpoint()
             self.update_state(state="PROGRESS", meta={"stage": "subdomain_enumeration"})
             if scan:
                 scan.current_stage = "subdomain_enumeration"
@@ -194,6 +240,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             logger.info(f"[pipeline] Subdomain completed in {stage_timings['subdomain']}s ({len(subdomains)} subdomains)")
 
             # Stage 2: DNS resolution
+            checkpoint()
             self.update_state(state="PROGRESS", meta={"stage": "dns_resolution"})
             if scan:
                 scan.current_stage = "dns_resolution"
@@ -208,6 +255,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             logger.info(f"[pipeline] DNS completed in {stage_timings['dns']}s ({len(live_hosts)} live hosts)")
 
         # Stage 2.5: WHOIS + ASN lookup
+        checkpoint()
         self.update_state(state="PROGRESS", meta={"stage": "whois_asn_lookup"})
         if scan:
             scan.current_stage = "whois_asn_lookup"
@@ -224,6 +272,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         logger.info(f"[pipeline] WHOIS/ASN completed in {stage_timings['whois_asn']}s")
 
         # Stage 3: Port scanning
+        checkpoint()
         self.update_state(state="PROGRESS", meta={"stage": "port_scanning"})
         if scan:
             scan.current_stage = "port_scanning"
@@ -241,6 +290,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         )
 
         # Stage 4: HTTP probing
+        checkpoint()
         self.update_state(state="PROGRESS", meta={"stage": "http_probing"})
         if scan:
             scan.current_stage = "http_probing"
@@ -285,6 +335,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         # nuclei abandon it as 'unresponsive').
         n_heavy = int(enable_dirbuster) + int(prof.run_nuclei) + int(prof.run_nuclei_network)
         heavy_rate = max(1, effective_rate(rate_limit) // max(1, n_heavy))
+        checkpoint()
         self.update_state(state="PROGRESS", meta={"stage": "web_analysis"})
         if scan:
             scan.current_stage = "web_analysis"
@@ -330,6 +381,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         )
         stage_timings.update(stage_dts)
         stage_timings["web_analysis_wall"] = round(time.time() - stage_start, 2)
+        checkpoint()                 # cancelled during web analysis: persist nothing from this scan
 
         skipped = f"skipped (profile: {prof.name})"
         module_results["profile"] = prof.name
@@ -428,6 +480,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             db.add(vuln)
         db.commit()
         # Stage 7: Save assets to DB with upsert + change detection
+        checkpoint()
         self.update_state(state="PROGRESS", meta={"stage": "saving_results"})
         if scan:
             scan.current_stage = "saving_results"
@@ -637,6 +690,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                 module_results["diff"] = f"failed: {e}"
 
         # Stage 8: Risk scoring
+        checkpoint()
         self.update_state(state="PROGRESS", meta={"stage": "risk_scoring"})
         if scan:
             scan.current_stage = "risk_scoring"
@@ -666,6 +720,10 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             log_action(db, "system", "scan_completed", target_id=target_id, scan_id=scan_id,
                        detail={"new_assets": new_count, "changed_assets": changed_count,
                                "disappeared_assets": disappeared_count})
+            try:
+                prebuild_report.delay(scan_id)      # so the first click on "Report" is instant
+            except Exception:  # noqa: BLE001
+                logger.warning("[pipeline] could not queue report pre-build", exc_info=True)
 
         logger.info(
             f"[pipeline] Total scan completed in "
@@ -683,6 +741,21 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             "module_results": module_results
         }
 
+    except cx.ScanCancelled:
+        logger.warning(f"[pipeline] scan_id={scan_id} cancelled")
+        try:
+            db.rollback()
+            if scan_id:
+                _c = db.query(Scan).filter(Scan.id == scan_id).first()
+                if _c is not None:
+                    _c.status = "cancelled"
+                    _c.current_stage = None
+                    _c.completed_at = datetime.now(timezone.utc)
+                    db.commit()
+        except Exception:  # noqa: BLE001
+            logger.exception("[pipeline] could not record cancellation")
+        return {"status": "cancelled", "scan_id": scan_id}
+
     except Exception as e:
         if scan:
             module_results["stage_timings"] = stage_timings
@@ -696,12 +769,34 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         raise
 
     finally:
+        guard.stop()
         db.close()
         if have_lock:
             try:
                 lock.release()
             except Exception:
                 pass
+            try:
+                redis_client.delete(cx.owner_key(target_id))
+            except Exception:  # noqa: BLE001
+                pass
+
+@celery_app.task(name="prebuild_report")
+def prebuild_report(scan_id: int):
+    """Render and cache a finished scan's PDF in the background (best effort)."""
+    from backend.db import SessionLocal
+    from backend.report_cache import get_or_build_pdf
+    import time
+    db = SessionLocal()
+    try:
+        t = time.time()
+        get_or_build_pdf(db, scan_id)
+        logger.info(f"[report] pre-built report for scan {scan_id} in {time.time() - t:.1f}s")
+    except Exception:  # noqa: BLE001
+        logger.warning(f"[report] pre-build failed for scan {scan_id}", exc_info=True)
+    finally:
+        db.close()
+
 
 @celery_app.task(name="check_scheduled_scans")
 def check_scheduled_scans():

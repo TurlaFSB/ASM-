@@ -205,3 +205,52 @@ def test_report_says_when_cve_list_was_capped(db):
     env.filters["clean_tech"] = reports.clean_technologies
     html = env.get_template("report.html").render(**ctx)
     assert "of 43" in html and "highest-risk shown" in html
+
+
+# ---------------------------------------------------------------- report cache
+def test_cache_signature_changes_with_the_scan_data(db, tmp_path, monkeypatch):
+    from backend import report_cache as rc
+    monkeypatch.setenv("ASM_REPORT_CACHE_DIR", str(tmp_path))
+    scan = db.query(Scan).get(db.scan_id)
+    sig = rc.report_signature(db, scan)
+    assert rc.report_signature(db, scan) == sig                       # stable
+    db.add(Vulnerability(target_id=1, scan_id=db.scan_id, template_id="t-new", severity="low", name="n", host="h"))
+    db.commit()
+    assert rc.report_signature(db, scan) != sig                       # new finding => new report
+
+
+def test_cache_builds_once_then_serves_and_prunes(db, tmp_path, monkeypatch):
+    from backend import report_cache as rc
+    monkeypatch.setenv("ASM_REPORT_CACHE_DIR", str(tmp_path))
+    calls = []
+    real = reports.generate_pdf_report
+    monkeypatch.setattr(reports, "generate_pdf_report", lambda d, s: calls.append(s) or real(d, s))
+    assert rc.cached_pdf(db, db.scan_id) is None
+    first = rc.get_or_build_pdf(db, db.scan_id)
+    assert first[:5] == b"%PDF-" and len(calls) == 1
+    assert rc.cached_pdf(db, db.scan_id) == first
+    assert rc.get_or_build_pdf(db, db.scan_id) == first and len(calls) == 1      # served from disk
+    db.add(Vulnerability(target_id=1, scan_id=db.scan_id, template_id="t2", severity="low", name="n2", host="h"))
+    db.commit()
+    assert rc.cached_pdf(db, db.scan_id) is None                       # stale after a change
+    rc.get_or_build_pdf(db, db.scan_id)
+    assert len(calls) == 2 and len(list(tmp_path.glob(f"scan_{db.scan_id}_*.pdf"))) == 1   # old one pruned
+
+
+def test_cache_unknown_scan(db, tmp_path, monkeypatch):
+    from backend import report_cache as rc
+    monkeypatch.setenv("ASM_REPORT_CACHE_DIR", str(tmp_path))
+    assert rc.cached_pdf(db, 9999) is None
+    with pytest.raises(ValueError):
+        rc.get_or_build_pdf(db, 9999)
+
+
+def test_isolated_build_falls_back_in_process_when_pool_broken(monkeypatch):
+    from concurrent.futures.process import BrokenProcessPool
+    from backend import report_runner as rr
+
+    class BrokenPool:
+        def submit(self, *a, **k): raise BrokenProcessPool("dead")
+    monkeypatch.setattr(rr, "_get_pool", lambda: BrokenPool())
+    monkeypatch.setattr(rr, "_build", lambda sid: b"%PDF-fallback")
+    assert rr.build_report_isolated(5) == b"%PDF-fallback"
