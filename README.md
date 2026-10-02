@@ -118,7 +118,7 @@ Each scan runs as one Celery task and reports progress per stage to the UI. Data
 
 ### Risk and reporting
 - Per-asset risk scoring: CVSS baseline, boosted for high-risk ports and admin surfaces, force-escalated to Critical when a matched CVE is in KEV
-- Client-ready **PDF reports**: executive summary with top actions, asset inventory, infrastructure, confirmed findings, inferred findings grouped per service, change detection, and remediation with SLA tiers
+- Client-ready **PDF reports**, pre-built in the background after each scan and cached, so downloads are instant: executive summary with top actions, asset inventory, infrastructure, confirmed findings, inferred findings grouped per service, change detection, and remediation with SLA tiers
 - CSV export for assets and vulnerabilities
 
 ### Operations
@@ -248,6 +248,7 @@ Set these in `.env.docker`. Only the first two are required.
 | `DIRBUSTER_MAX_SECONDS` | `900` | Upper bound for directory discovery per scan |
 | `NUCLEI_TIMEOUT` | `1800` | Upper bound for a nuclei run, in seconds |
 | `NUCLEI_CONCURRENCY` | `15` | Nuclei template concurrency |
+| `ASM_REPORT_CACHE_DIR` | `/app/scan_output/reports` | Where rendered PDF reports are cached |
 
 ---
 
