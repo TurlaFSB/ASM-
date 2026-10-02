@@ -8,7 +8,7 @@ export function ProfileBadge({ name }) {
   const Icon = PROFILE_ICONS[name] || Gauge;
   const color = PROFILE_COLORS[name] || "var(--text-secondary)";
   return (
-    <span className="profile-badge" style={{ color, borderColor: color }}>
+    <span className="profile-badge" style={{ color }}>
       <Icon size={11} /> {name}
     </span>
   );

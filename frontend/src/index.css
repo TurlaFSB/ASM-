@@ -367,14 +367,14 @@ tr:hover td {
   flex-shrink: 0;
 }
 
-.badge-completed { background: var(--green-dim);  color: var(--green);  border: 1px solid rgba(48,209,88,0.18); }
-.badge-running   { background: var(--blue-dim);   color: var(--blue);   border: 1px solid rgba(10,132,255,0.18); }
-.badge-pending   { background: var(--yellow-dim); color: var(--yellow); border: 1px solid rgba(255,214,10,0.18); }
-.badge-failed    { background: var(--red-dim);    color: var(--red);    border: 1px solid rgba(255,69,58,0.18); }
-.badge-new       { background: var(--green-dim);  color: var(--green);  border: 1px solid rgba(48,209,88,0.18); }
-.badge-changed   { background: var(--orange-dim); color: var(--orange); border: 1px solid rgba(255,159,10,0.18); }
-.badge-active    { background: var(--surface-3);  color: var(--text-secondary); border: 1px solid rgba(255,255,255,0.06); }
-.badge-cancelled { background: var(--surface-3);  color: var(--text-tertiary); border: 1px solid rgba(255,255,255,0.06); }
+.badge-completed { background: var(--green-dim);  color: var(--green); }
+.badge-running   { background: var(--blue-dim);   color: var(--blue); }
+.badge-pending   { background: var(--yellow-dim); color: var(--yellow); }
+.badge-failed    { background: var(--red-dim);    color: var(--red); }
+.badge-new       { background: var(--green-dim);  color: var(--green); }
+.badge-changed   { background: var(--orange-dim); color: var(--orange); }
+.badge-active    { background: var(--surface-3);  color: var(--text-secondary); }
+.badge-cancelled { background: var(--surface-3);  color: var(--text-tertiary); }
 .badge-cancelled::before { background: var(--text-tertiary); box-shadow: none; }
 .badge-running::before { animation: badge-pulse 1.6s ease-in-out infinite; }
 @keyframes badge-pulse {
@@ -863,97 +863,7 @@ tr:hover td {
   border-color: var(--red);
 }
 
-/* ── Design Upgrades ─────────────────────── */
-
-/* Active nav — left border indicator */
-.navbar-links a.active {
-  background: var(--accent-dim);
-  color: var(--accent);
-  font-weight: 600;
-  border-left: 3px solid var(--accent);
-  padding-left: 9px;
-}
-
-/* Stat cards — accent left border + hover */
-.stat-card {
-  border-left: 3px solid var(--accent);
-  transition: transform 0.15s ease, border-color 0.15s ease;
-}
-
-.stat-card:hover {
-  transform: translateY(-2px);
-  border-color: var(--accent);
-  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.15);
-}
-
-/* Table row hover */
-tbody tr {
-  transition: background 0.1s ease;
-}
-
-tbody tr:hover {
-  background: var(--surface-2);
-}
-
-/* Better page headers */
-.page-header h1, .dashboard h1 {
-  font-size: 24px;
-  font-weight: 700;
-  letter-spacing: -0.5px;
-  color: var(--text-primary);
-}
-
-/* Empty state styling */
-.empty {
-  text-align: center;
-  padding: 60px 20px;
-  color: var(--text-tertiary);
-  font-size: 14px;
-}
-
-/* Badge pulse for running status */
-.badge-running {
-  animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
-}
-
-/* Scrollbar styling */
-::-webkit-scrollbar {
-  width: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--black);
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--text-tertiary);
-}
-
-/* Card subtle glow on hover */
-.table-container:hover {
-  box-shadow: 0 0 0 1px var(--border);
-}
-
-/* Loading state */
-.loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 60vh;
-  color: var(--text-tertiary);
-  font-size: 14px;
-  letter-spacing: 0.05em;
-}
+/* (nav, stat cards, page headers, scrollbars and badge motion now live in design.css) */
 
 /* ── Form validation states ─────────────── */
 .form-field {
@@ -996,11 +906,11 @@ tbody tr:hover {
 }
 
 /* ── Risk badges (asset risk_level) ─────── */
-.badge-risk-critical { background: var(--red-dim);    color: var(--red);    border: 1px solid rgba(255,69,58,0.18); }
-.badge-risk-high      { background: var(--orange-dim); color: var(--orange); border: 1px solid rgba(255,159,10,0.18); }
-.badge-risk-medium    { background: var(--yellow-dim); color: var(--yellow); border: 1px solid rgba(255,214,10,0.18); }
-.badge-risk-low       { background: var(--green-dim);  color: var(--green);  border: 1px solid rgba(48,209,88,0.18); }
-.badge-risk-informational { background: var(--surface-3); color: var(--text-secondary); border: 1px solid rgba(255,255,255,0.06); }
+.badge-risk-critical { background: var(--red-dim);    color: var(--red); }
+.badge-risk-high      { background: var(--orange-dim); color: var(--orange); }
+.badge-risk-medium    { background: var(--yellow-dim); color: var(--yellow); }
+.badge-risk-low       { background: var(--green-dim);  color: var(--green); }
+.badge-risk-informational { background: var(--surface-3); color: var(--text-secondary); }
 
 /* ── Monospace for technical data ───────── */
 .mono {

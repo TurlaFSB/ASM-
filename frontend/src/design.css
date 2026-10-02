@@ -1,0 +1,377 @@
+/*
+  Design system layer. Loaded after index.css.
+
+  Direction: calm, native-feeling dark UI (think a system app, not a dashboard template).
+    - Neutral surfaces separated by hairlines, not shadows or gradients.
+    - Colour carries meaning only: severity and status use muted tints; purple appears for focus,
+      the active nav item and the single primary action on a page.
+    - One easing curve and two durations. Motion answers a person's action (expand, hover, press)
+      or reveals content as it scrolls into view. Nothing animates on its own.
+
+  Page-specific layout stays in index.css; anything that defines the look of a shared element lives here.
+*/
+
+/* ── Tokens ───────────────────────────────── */
+:root {
+  --black: #0b0b0d;                 /* canvas */
+  --surface: #121214;
+  --surface-2: #18181b;
+  --surface-3: #202024;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --border-strong: rgba(255, 255, 255, 0.16);
+
+  --text-primary: #f2f2f4;
+  --text-secondary: #a0a0a8;
+  --text-tertiary: #6b6b73;
+
+  --accent: #a78bfa;
+  --accent-dim: rgba(167, 139, 250, 0.12);
+  --accent-border: rgba(167, 139, 250, 0.3);
+  --accent-ink: #17122b;            /* text on an accent fill */
+
+  --green: #6bd49a;   --green-dim: rgba(107, 212, 154, 0.12);
+  --blue: #7ab4ff;    --blue-dim: rgba(122, 180, 255, 0.12);
+  --yellow: #f0cf63;  --yellow-dim: rgba(240, 207, 99, 0.12);
+  --red: #ff7b72;     --red-dim: rgba(255, 123, 114, 0.12);
+  --orange: #ffb454;  --orange-dim: rgba(255, 180, 84, 0.12);
+
+  --radius-sm: 8px;
+  --radius: 10px;
+  --radius-lg: 14px;
+
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);   /* decelerating: settles gently */
+  --dur-1: 140ms;                            /* hover, press, focus */
+  --dur-2: 280ms;                            /* expand, reveal */
+}
+
+/* ── Base ─────────────────────────────────── */
+html {
+  color-scheme: dark;
+  scroll-behavior: smooth;
+  scroll-padding-top: 88px;          /* anchors clear the sticky page header */
+}
+
+body {
+  font-feature-settings: "cv11", "ss03";   /* Inter: single-storey a, round quotes */
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+}
+
+::selection { background: rgba(167, 139, 250, 0.35); }
+
+:focus { outline: none; }
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+td, th, .vuln-count, .stat-card h3, .mono, .mono-dim { font-variant-numeric: tabular-nums; }
+
+/* Thin scrollbars that stay out of the way */
+* { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.16) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  background-clip: padding-box;
+  border: 3px solid transparent;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.28); background-clip: padding-box; }
+
+/* ── Navigation ───────────────────────────── */
+.navbar {
+  width: 232px;
+  padding: 28px 10px;
+  background: var(--black);
+  border-right: 1px solid var(--border);
+}
+.navbar-links { margin-top: 40px; gap: 1px; }
+.navbar-links a {
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  color: var(--text-secondary);
+  border-left: none;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+.navbar-links a:hover { background: rgba(255, 255, 255, 0.04); color: var(--text-primary); }
+.navbar-links a.active {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-primary);
+  font-weight: 500;
+  border-left: none;
+  padding-left: 12px;
+}
+.navbar-links a svg { color: var(--text-tertiary); transition: color var(--dur-1) var(--ease); }
+.navbar-links a:hover svg { color: var(--text-secondary); }
+.navbar-links a.active svg { color: var(--accent); }
+.main-content { margin-left: 232px; }
+
+/* ── Page header: translucent, gains a hairline once content scrolls under it ── */
+.page-header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  margin: -48px -52px 28px;
+  padding: 40px 52px 14px;
+  background: rgba(11, 11, 13, 0.72);
+  -webkit-backdrop-filter: saturate(1.6) blur(20px);
+  backdrop-filter: saturate(1.6) blur(20px);
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--dur-2) var(--ease);
+}
+html[data-scrolled="true"] .page-header { border-bottom-color: var(--border); }
+.page-header h1, .dashboard h1 {
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.022em;
+  line-height: 1.15;
+}
+.dashboard h1 { margin-bottom: 28px; }
+.page-header > svg { width: 20px; height: 20px; color: var(--text-tertiary); stroke-width: 1.75; }
+
+/* ── Surfaces ─────────────────────────────── */
+.table-container, .form-card, .recent-scans, .scan-card, .alert-card, .schedule-card, .vuln-stat, .stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.table-container:hover { box-shadow: none; }
+
+.stat-card {
+  border-left: 1px solid var(--border);
+  padding: 20px;
+  transition: border-color var(--dur-1) var(--ease);
+}
+.stat-card:hover { transform: none; box-shadow: none; border-color: var(--border-strong); }
+.stat-card svg { color: var(--text-tertiary); opacity: 1; stroke-width: 1.75; }
+.stat-card h3 { font-size: 28px; font-weight: 600; letter-spacing: -0.025em; }
+.stat-card p {
+  font-size: 12.5px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.vuln-stat { padding: 18px 20px; text-align: left; transition: border-color var(--dur-1) var(--ease), background var(--dur-1) var(--ease); }
+.vuln-stat:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.vuln-stat.active { border-color: var(--accent-border); background: var(--accent-dim); }
+.vuln-count { font-size: 30px; font-weight: 600; letter-spacing: -0.025em; margin-bottom: 4px; }
+.vuln-label { font-size: 12.5px; font-weight: 400; letter-spacing: 0; color: var(--text-secondary); text-transform: capitalize; }
+
+.alert-card, .scan-card { transition: border-color var(--dur-1) var(--ease), background var(--dur-1) var(--ease); }
+.alert-card:hover, .scan-card:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.alert-card.unread { border-left: 1px solid var(--border); box-shadow: inset 2px 0 0 var(--accent); }
+
+.empty, .loading { color: var(--text-tertiary); font-size: 13.5px; letter-spacing: 0; }
+.loading { display: flex; align-items: center; justify-content: center; min-height: 40vh; padding: 0; }
+.empty { padding: 56px 20px; }
+
+/* ── Tables ───────────────────────────────── */
+th {
+  background: transparent;
+  padding: 10px 16px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-tertiary);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 13px;
+  color: var(--text-secondary);
+  vertical-align: middle;
+}
+tbody tr { transition: background var(--dur-1) var(--ease); }
+tbody tr:hover, tr:hover td { background: rgba(255, 255, 255, 0.025); }
+tr:hover td { color: var(--text-primary); }
+.table-container table { background: none; }   /* drop the old scroll-shadow gradients */
+
+/* Frosted "scroll for more" control: neutral, not a purple pill */
+.scroll-hint {
+  background: rgba(24, 24, 27, 0.8);
+  border: 1px solid var(--border);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+.scroll-hint span { color: var(--text-secondary); letter-spacing: 0; }
+.scroll-hint-btn { color: var(--text-secondary); border-color: var(--border); background: rgba(255, 255, 255, 0.04); }
+.scroll-hint-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.1); transform: none; color: var(--text-primary); }
+.scroll-hint-btn:active:not(:disabled) { transform: scale(0.94); }
+
+/* ── Badges: tinted text on a faint fill. No outline, no glow. ── */
+.badge {
+  gap: 0;
+  padding: 2px 8px;
+  border: none;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.6;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  animation: none;
+}
+.badge::before { display: none; }
+.badge-running::before {            /* the only dot: something is in progress */
+  display: inline-block;
+  width: 6px; height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: none;
+  animation: badge-pulse 1.6s ease-in-out infinite;
+}
+.badge-completed, .badge-new   { background: var(--green-dim);  color: var(--green);  border: none; }
+.badge-running                 { background: var(--blue-dim);   color: var(--blue);   border: none; }
+.badge-pending                 { background: var(--yellow-dim); color: var(--yellow); border: none; }
+.badge-failed                  { background: var(--red-dim);    color: var(--red);    border: none; }
+.badge-changed                 { background: var(--orange-dim); color: var(--orange); border: none; }
+.badge-active, .badge-cancelled { background: rgba(255, 255, 255, 0.06); color: var(--text-secondary); border: none; }
+.badge-risk-critical { background: var(--red-dim);    color: var(--red);    border: none; }
+.badge-risk-high     { background: var(--orange-dim); color: var(--orange); border: none; }
+.badge-risk-medium   { background: var(--yellow-dim); color: var(--yellow); border: none; }
+.badge-risk-low      { background: var(--green-dim);  color: var(--green);  border: none; }
+.badge-risk-informational { background: rgba(255, 255, 255, 0.06); color: var(--text-secondary); border: none; }
+.badge-sev-info { background: rgba(255, 255, 255, 0.06); color: var(--text-secondary); }
+
+.profile-badge {
+  gap: 4px;
+  padding: 2px 8px;
+  border: none !important;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.cve-link { color: var(--accent); }
+
+/* ── Buttons: one primary per page, everything else quiet ── */
+.btn {
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease),
+              color var(--dur-1) var(--ease), transform var(--dur-1) var(--ease);
+}
+.btn:active:not(:disabled) { transform: scale(0.98); }
+.btn-primary { background: var(--accent); color: var(--accent-ink); }
+.btn-primary:hover { background: #b9a2fb; transform: none; }
+.btn-secondary { background: transparent; color: var(--text-primary); border: 1px solid var(--border-strong); }
+.btn-secondary:hover { background: rgba(255, 255, 255, 0.06); }
+.btn-success { background: var(--green-dim); color: var(--green); border: none; }
+.btn-success:hover { background: rgba(107, 212, 154, 0.2); }
+.btn-danger { background: var(--red-dim); color: var(--red); border: none; }
+.btn-danger:hover { background: rgba(255, 123, 114, 0.2); }
+.btn-sm { padding: 5px 10px; font-size: 12px; border-radius: 7px; }
+
+/* ── Inputs ───────────────────────────────── */
+.form-card input, .search-bar, .wordlist-select {
+  transition: border-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
+}
+.form-card input:focus, .search-bar:focus-within {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+.search-bar { border-radius: var(--radius); }
+
+/* ── Scan stage summary ───────────────────── */
+.stage-summary { margin-top: 8px; font-size: 12px; color: var(--text-secondary); }
+.stage-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.stage-ok { color: var(--text-secondary); }
+.stage-dim { color: var(--text-tertiary); }
+.stage-chip {
+  padding: 1px 7px; border-radius: 6px; font-size: 11.5px; font-weight: 500;
+  background: var(--orange-dim); color: var(--orange);
+}
+.stage-toggle {
+  display: inline-flex; align-items: center; gap: 2px; padding: 1px 4px 1px 2px; margin-left: 2px;
+  background: none; border: none; border-radius: 5px; cursor: pointer; font: inherit; color: var(--text-tertiary);
+  transition: color var(--dur-1) var(--ease);
+}
+.stage-toggle:hover { color: var(--text-primary); }
+.stage-chevron { transition: transform var(--dur-2) var(--ease); }
+.stage-chevron.open { transform: rotate(90deg); }
+.stage-detail {
+  display: grid; grid-template-columns: max-content 1fr; gap: 3px 16px;
+  margin: 8px 0 2px; padding-top: 8px; border-top: 1px solid var(--border-subtle);
+}
+.stage-detail dt { color: var(--text-tertiary); font-family: var(--font-mono); font-size: 11.5px; }
+.stage-detail dd { margin: 0; font-size: 11.5px; }
+.stage-detail .tone-ok { color: var(--text-secondary); }
+.stage-detail .tone-skipped { color: var(--text-tertiary); }
+.stage-detail .tone-attention { color: var(--orange); }
+
+/* ── Motion ───────────────────────────────── */
+
+/* Expand / collapse: animates real height (0fr -> 1fr), used for stage details and roll-ups */
+.collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows var(--dur-2) var(--ease), opacity var(--dur-2) var(--ease);
+}
+.collapse.open { grid-template-rows: 1fr; opacity: 1; }
+.collapse-inner { overflow: hidden; min-height: 0; }
+
+/* Scroll reveal (see motion.js): only content that starts below the fold is hidden, and only until
+   it first scrolls into view. Content already on screen at load never animates. */
+.reveal { transition: opacity var(--dur-2) var(--ease), transform var(--dur-2) var(--ease); }
+.reveal-pending { opacity: 0; transform: translateY(8px); }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+  .reveal-pending { opacity: 1; transform: none; }
+}
+
+/* ── Small screens: sidebar becomes a top bar ─ */
+@media (max-width: 860px) {
+  .navbar {
+    position: sticky;
+    width: 100%;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+  }
+  .navbar-brand span, .navbar-links a { font-size: 0; gap: 0; }
+  .navbar-brand img { width: 32px !important; height: 32px !important; }
+  .navbar-links { flex-direction: row; margin-top: 0; }
+  .navbar-links a { padding: 9px 10px; }
+  .navbar-footer { margin: 0 0 0 auto; padding: 0; border: none; position: static; }
+  .logout-btn { font-size: 0; gap: 0; padding: 9px 10px; }
+  .app { flex-direction: column; }
+  .main-content { margin-left: 0; padding: 24px 16px; }
+  .page-header { margin: -24px -16px 20px; padding: 20px 16px 12px; top: 56px; }
+}
+
+/* Scans: quiet running-stage text, no pill; dates and durations never wrap */
+.progress-stage {
+  background: none; border: 0; padding: 0; border-radius: 0;
+  color: var(--text-secondary); font-size: 12px; font-weight: 500;
+}
+.cell-nowrap { white-space: nowrap; }

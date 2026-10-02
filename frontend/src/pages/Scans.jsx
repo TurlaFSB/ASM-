@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
-import { Activity, X, Download } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Activity, X, Download, ChevronRight } from "lucide-react";
 import { getScans, getScanProgress, cancelScan, downloadScanReport } from "../api";
 import { ProfileBadge } from "../components/ProfilePicker";
+import Collapse from "../components/Collapse";
 
 const STAGE_LABELS = {
   subdomain_enumeration: "Subfinder + Amass",
@@ -44,27 +45,51 @@ function scanDuration(scan) {
   return end ? Math.round((end - new Date(scan.started_at)) / 1000) : null;
 }
 
-function moduleColor(status) {
+// ok | skipped | attention. Skipped is neutral: a profile that does not run a stage is not a problem.
+function stageTone(status) {
   const v = String(status || "").toLowerCase();
-  if (v.startsWith("ok") || v.startsWith("completed") || v.startsWith("resolved")) return "var(--green)";
-  if (v.startsWith("skipped") || v.startsWith("no ") || v === "empty") return "var(--text-secondary)";
-  if (v.startsWith("partial") || v.startsWith("timeout")) return "var(--orange)";
-  return "var(--red, #ef4444)";
+  if (v.startsWith("ok") || v.startsWith("completed") || v.startsWith("resolved")) return v.includes("low coverage") ? "attention" : "ok";
+  if (v.startsWith("skipped") || v.startsWith("no ") || v === "empty") return "skipped";
+  return "attention";
 }
 
-function ModuleChips({ results }) {
+// One quiet line instead of a chip per stage: only stages that need a look get a chip of their own.
+// "Details" opens the full list.
+function StageSummary({ results, open, onToggle }) {
   if (!results || typeof results !== "object") return null;
+  const stages = Object.entries(MODULE_LABELS)
+    .filter(([key]) => results[key] !== undefined)
+    .map(([key, label]) => ({ key, label, status: String(results[key]), tone: stageTone(results[key]) }));
+  if (!stages.length) return null;
+  const ok = stages.filter(s => s.tone === "ok").length;
+  const skipped = stages.filter(s => s.tone === "skipped").length;
+  const attention = stages.filter(s => s.tone === "attention");
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
-      {Object.entries(MODULE_LABELS).map(([key, label]) =>
-        results[key] === undefined ? null : (
-          <span key={key} title={`${label}: ${String(results[key])}`}
-            style={{ fontSize: 10, padding: "1px 6px", borderRadius: 8,
-                     border: `1px solid ${moduleColor(results[key])}`, color: moduleColor(results[key]) }}>
-            {label}
-          </span>
-        )
-      )}
+    <div className="stage-summary">
+      <div className="stage-line">
+        <span className={attention.length ? "" : "stage-ok"}>
+          {attention.length
+            ? `${ok} of ${stages.length - skipped} stages ok`
+            : `All ${ok} stages ok`}
+          {skipped > 0 && <span className="stage-dim">, {skipped} skipped</span>}
+        </span>
+        {attention.map(s => (
+          <span key={s.key} className="stage-chip" title={`${s.label}: ${s.status}`}>{s.label}</span>
+        ))}
+        <button type="button" className="stage-toggle" onClick={onToggle} aria-expanded={open}>
+          <ChevronRight size={12} className={"stage-chevron" + (open ? " open" : "")} /> Details
+        </button>
+      </div>
+      <Collapse open={open}>
+        <dl className="stage-detail">
+          {stages.map(s => (
+            <React.Fragment key={s.key}>
+              <dt>{s.label}</dt>
+              <dd className={"tone-" + s.tone}>{s.status}</dd>
+            </React.Fragment>
+          ))}
+        </dl>
+      </Collapse>
     </div>
   );
 }
@@ -74,6 +99,7 @@ export default function Scans() {
   const [loading, setLoading] = useState(true);
   const [downloadingId, setDownloadingId] = useState(null);
   const [stages, setStages] = useState({}); // { scanId: current_stage }
+  const [openDetails, setOpenDetails] = useState({}); // { scanId: true } stage lists that are expanded
 
   const fetchScans = () => {
     getScans()
@@ -140,7 +166,7 @@ export default function Scans() {
     <div className="page">
       <div className="page-header">
         <h1>Scans</h1>
-        <Activity size={24} />
+        <Activity size={20} />
       </div>
 
       <div className="table-container">
@@ -150,7 +176,7 @@ export default function Scans() {
               <th>ID</th>
               <th>Target</th>
               <th>Status</th>
-              <th>Assets Found</th>
+              <th>Assets found</th>
               <th>New</th>
               <th>Changed</th>
               <th>Started</th>
@@ -161,7 +187,7 @@ export default function Scans() {
           <tbody>
             {scans.map(scan => (
               <tr key={scan.id}>
-                <td style={{ fontFamily: "monospace", fontSize: 12 }}>
+                <td className="mono-dim">
                   #{scan.id}
                 </td>
                 <td style={{ color: "var(--text-primary)", fontWeight: 500 }}>
@@ -174,7 +200,10 @@ export default function Scans() {
                     </span>
                     <ProfileBadge name={scan.profile} />
                   </div>
-                  {scan.status !== "running" && <ModuleChips results={scan.module_results} />}
+                  {scan.status !== "running" && (
+                    <StageSummary results={scan.module_results} open={!!openDetails[scan.id]}
+                      onToggle={() => setOpenDetails(o => ({ ...o, [scan.id]: !o[scan.id] }))} />
+                  )}
                   {scan.status === "running" && stages[scan.id] && (
                     <>
                       <div className="progress-stage" style={{ marginTop: 6 }}>
@@ -187,12 +216,12 @@ export default function Scans() {
                   )}
                 </td>
                 <td>{scan.total_assets || 0}</td>
-                <td style={{ color: "var(--green)" }}>{scan.new_assets || 0}</td>
-                <td style={{ color: "var(--orange)" }}>{scan.changed_assets || 0}</td>
-                <td style={{ fontSize: 12 }} title={scan.completed_at ? `Completed ${new Date(scan.completed_at).toLocaleString()}` : ""}>
-                  {scan.started_at ? new Date(scan.started_at).toLocaleString() : "—"}
+                <td style={{ color: scan.new_assets ? "var(--green)" : "var(--text-tertiary)" }}>{scan.new_assets || "—"}</td>
+                <td style={{ color: scan.changed_assets ? "var(--orange)" : "var(--text-tertiary)" }}>{scan.changed_assets || "—"}</td>
+                <td className="cell-nowrap" style={{ fontSize: 12 }} title={scan.completed_at ? `Completed ${new Date(scan.completed_at).toLocaleString()}` : ""}>
+                  {scan.started_at ? new Date(scan.started_at).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : "—"}
                 </td>
-                <td className="mono-dim">{formatDuration(scanDuration(scan))}</td>
+                <td className="mono-dim cell-nowrap">{formatDuration(scanDuration(scan))}</td>
                 <td>
                   <div className="actions">
                   {(scan.status === "running" || scan.status === "pending") && (
@@ -205,12 +234,12 @@ export default function Scans() {
                   )}
                   {scan.status === "completed" && (
                     <button
-                      className="btn btn-sm btn-primary"
+                      className="btn btn-sm btn-secondary"
                       onClick={() => handleDownloadReport(scan.id)}
                       disabled={downloadingId === scan.id}
                     >
                       <Download size={14} />
-                      {downloadingId === scan.id ? "Generating..." : "Report"}
+                      {downloadingId === scan.id ? "Generating…" : "Report"}
                     </button>
                   )}
                   </div>
