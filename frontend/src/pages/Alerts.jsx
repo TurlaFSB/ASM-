@@ -26,7 +26,7 @@ export default function Alerts() {
   };
 
   const alertColor = (type) => {
-    if (type === "new_asset") return "green";
+    if (type === "new_asset" || type === "reappeared_asset") return "green";
     if (type === "changed_asset") return "orange";
     if (type === "disappeared_asset") return "red";
     if (type === "exploitable_finding") return "red";
@@ -35,6 +35,7 @@ export default function Alerts() {
 
   const alertLabel = (type) => {
     if (type === "new_asset") return "New Asset";
+    if (type === "reappeared_asset") return "Reappeared";
     if (type === "changed_asset") return "Changed";
     if (type === "disappeared_asset") return "Disappeared";
     if (type === "exploitable_finding") return "⚡ Exploitable";

@@ -30,7 +30,9 @@ RUN curl -sL https://github.com/projectdiscovery/nuclei/releases/download/v${NUC
     && chmod +x /usr/local/bin/nuclei /usr/local/bin/subfinder /usr/local/bin/httpx \
     && ln -sf /usr/local/bin/httpx /usr/local/bin/httpx-toolkit
 
-RUN nuclei -update-templates -silent || true
+# Fail the build loudly if templates did not download (a silent failure makes nuclei scan nothing)
+RUN nuclei -update-templates \
+    && test "$(find /root/nuclei-templates -name '*.yaml' | wc -l)" -gt 1000
 
 # Amass (Go binary release)
 ARG AMASS_VERSION=4.2.0

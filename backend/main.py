@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Depends, HTTPException
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from backend.config import settings
@@ -13,8 +14,16 @@ from backend.api.auth import router as auth_router
 from backend.api.schedules import router as schedules_router
 from backend.api.audit import router as audit_router
 from backend.auth import get_current_user
+from backend.security import SECURITY_HEADERS
+
+@asynccontextmanager
+async def lifespan(app):
+    Base.metadata.create_all(bind=engine)
+    yield
+
 
 app = FastAPI(
+    lifespan=lifespan,
     title="ASM Platform",
     description="Attack Surface Management Platform",
     version="0.1.0"
@@ -36,9 +45,13 @@ app.include_router(vulnerabilities_router)
 app.include_router(schedules_router)
 app.include_router(audit_router)
 
-@app.on_event("startup")
-async def startup():
-    Base.metadata.create_all(bind=engine)
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    for k, v in SECURITY_HEADERS.items():
+        response.headers.setdefault(k, v)
+    return response
+
 
 @app.get("/health")
 async def health_check():
@@ -48,45 +61,26 @@ async def health_check():
         "version": "0.1.0"
     }
 
+@app.get("/ready")
+def readiness(db: Session = Depends(get_db)):
+    """Dependency check for orchestrators: DB and Redis must both answer."""
+    import redis as _redis
+    from sqlalchemy import text
+    checks = {}
+    try:
+        db.execute(text("select 1")); checks["database"] = "ok"
+    except Exception:
+        checks["database"] = "down"
+    try:
+        _redis.Redis.from_url(settings.redis_url, socket_timeout=2).ping(); checks["redis"] = "ok"
+    except Exception:
+        checks["redis"] = "down"
+    if "down" in checks.values():
+        raise HTTPException(status_code=503, detail=checks)
+    return {"status": "ready", **checks}
+
+
 @app.get("/assets/")
 def list_assets(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     assets = db.query(Asset).order_by(Asset.created_at.desc()).all()
     return assets
-
-
-@app.get("/targets/{target_id}/history")
-def get_target_history(target_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    target = db.query(Target).filter(Target.id == target_id).first()
-    if not target:
-        raise HTTPException(status_code=404, detail="Target not found")
-
-    scans = (
-        db.query(Scan)
-        .filter(Scan.target_id == target_id, Scan.status == "completed")
-        .order_by(Scan.created_at.asc())
-        .all()
-    )
-
-    history = []
-    for scan in scans:
-        vuln_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
-        vulns = db.query(Vulnerability).filter(Vulnerability.scan_id == scan.id).all()
-        for v in vulns:
-            if v.severity in vuln_counts:
-                vuln_counts[v.severity] += 1
-
-        history.append({
-            "scan_id": scan.id,
-            "date": (scan.completed_at or scan.created_at).isoformat(),
-            "total_assets": scan.total_assets or 0,
-            "new_assets": scan.new_assets or 0,
-            "changed_assets": scan.changed_assets or 0,
-            "disappeared_assets": scan.disappeared_assets or 0,
-            "vuln_counts": vuln_counts,
-        })
-
-    return {
-        "target_id": target.id,
-        "domain": target.domain,
-        "history": history,
-    }

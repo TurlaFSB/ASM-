@@ -5,13 +5,49 @@ import { getScans, getScanProgress, cancelScan, downloadScanReport } from "../ap
 const STAGE_LABELS = {
   subdomain_enumeration: "Subfinder + Amass",
   dns_resolution: "DNS Resolution",
+  whois_asn_lookup: "WHOIS / ASN",
   port_scanning: "Nmap Port Scan",
   http_probing: "HTTPX Probing",
+  web_analysis: "Web analysis (WhatWeb, dirs, Nuclei, TLS, screenshots in parallel)",
+  tech_fingerprinting: "WhatWeb",
+  dir_discovery: "Directory Discovery",
   vuln_scanning: "Nuclei Scan",
+  tls_analysis: "TLS Analysis (sslyze)",
   screenshots: "EyeWitness",
   saving_results: "Saving Results",
   risk_scoring: "Risk Scoring",
 };
+
+const MODULE_LABELS = {
+  subfinder: "subfinder", amass: "amass", dns: "dns", whois_asn: "whois",
+  portscan: "nmap", httpprobe: "httpx", whatweb: "whatweb", dirbuster: "dirs",
+  vuln: "nuclei", sslyze: "tls", screenshot: "shots",
+};
+
+function moduleColor(status) {
+  const v = String(status || "").toLowerCase();
+  if (v.startsWith("ok") || v.startsWith("completed") || v.startsWith("resolved")) return "var(--green)";
+  if (v.startsWith("skipped") || v.startsWith("no ") || v === "empty") return "var(--text-secondary)";
+  if (v.startsWith("partial") || v.startsWith("timeout")) return "var(--orange)";
+  return "var(--red, #ef4444)";
+}
+
+function ModuleChips({ results }) {
+  if (!results || typeof results !== "object") return null;
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+      {Object.entries(MODULE_LABELS).map(([key, label]) =>
+        results[key] === undefined ? null : (
+          <span key={key} title={`${label}: ${String(results[key])}`}
+            style={{ fontSize: 10, padding: "1px 6px", borderRadius: 8,
+                     border: `1px solid ${moduleColor(results[key])}`, color: moduleColor(results[key]) }}>
+            {label}
+          </span>
+        )
+      )}
+    </div>
+  );
+}
 
 export default function Scans() {
   const [scans, setScans] = useState([]);
@@ -111,6 +147,7 @@ export default function Scans() {
                   <span className={"badge badge-" + scan.status}>
                     {scan.status}
                   </span>
+                  {scan.status !== "running" && <ModuleChips results={scan.module_results} />}
                   {scan.status === "running" && stages[scan.id] && (
                     <div className="progress-stage" style={{ marginTop: 6 }}>
                       {STAGE_LABELS[stages[scan.id]] || stages[scan.id]}

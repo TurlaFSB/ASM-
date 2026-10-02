@@ -10,7 +10,7 @@ Methodology (aligned to CVSS v3.1 severity bands, not arbitrary weights):
   this mirrors how Cortex Xpanse / Censys ASM score assets)
 - Modifiers (additive, capped):
     +5 per additional finding at or above High severity beyond the first (max +15)
-    +10 if a high-risk exposed port is open (DB/remote-admin ports)
+    +port exposure weights (SMB/RDP/DB/legacy remote services), summed, capped at +25
     +5 if HTTP title/status suggests an exposed admin/login surface
 - Final score clamped to [0, 100], bucketed into:
     Critical (80-100), High (60-79), Medium (35-59), Low (10-34), Informational (<10)
@@ -33,7 +33,16 @@ HIGH_RISK_PORTS = {
     3306: "MySQL", 5432: "PostgreSQL", 27017: "MongoDB", 6379: "Redis",
     1433: "MSSQL", 3389: "RDP", 5985: "WinRM", 5986: "WinRM (SSL)",
     23: "Telnet", 21: "FTP", 2049: "NFS", 1099: "Java RMI",
+    445: "SMB", 139: "NetBIOS", 135: "MS-RPC", 5900: "VNC", 111: "rpcbind",
+    6667: "IRC", 9200: "Elasticsearch", 11211: "Memcached", 2375: "Docker API",
 }
+# Exposure weight per port (internet/internal exposure of these services is a risk on its own)
+PORT_WEIGHTS = {
+    445: 15, 139: 10, 135: 10, 3389: 15, 5900: 15, 23: 15, 2375: 20, 6379: 15, 27017: 15,
+    11211: 15, 9200: 15, 3306: 10, 5432: 10, 1433: 10, 21: 10, 2049: 10, 1099: 10,
+    5985: 10, 5986: 10, 111: 5, 6667: 5,
+}
+PORT_BONUS_CAP = 25
 
 ADMIN_KEYWORDS = ("login", "admin", "panel", "dashboard", "signin", "wp-admin", "manager")
 
@@ -74,13 +83,9 @@ def score_asset(asset, vulns_for_asset: list) -> dict:
     multi_finding_bonus = min((high_or_above - 1) * 5, 15) if high_or_above > 1 else 0
 
     # Modifier: high-risk exposed ports
-    port_bonus = 0
     open_ports = asset.open_ports or []
-    for p in open_ports:
-        port_num = p.get("port") if isinstance(p, dict) else p
-        if port_num in HIGH_RISK_PORTS:
-            port_bonus = 10
-            break
+    risky = {(p.get("port") if isinstance(p, dict) else p) for p in open_ports}
+    port_bonus = min(sum(PORT_WEIGHTS.get(n, 0) for n in risky), PORT_BONUS_CAP)
 
     # Modifier: exposed admin/login surface
     admin_bonus = 0

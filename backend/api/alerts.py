@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from backend.db import get_db
 from backend.models.alert import Alert
@@ -8,8 +8,8 @@ router = APIRouter(prefix="/alerts", tags=["alerts"])
 
 @router.get("/")
 def list_alerts(
-    limit: int = 100,
-    offset: int = 0,
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     target_id: int = None,
     alert_type: str = None,
     db: Session = Depends(get_db),
@@ -24,7 +24,7 @@ def list_alerts(
     return alerts
 
 @router.get("/unread")
-def unread_alerts(limit: int = 100, offset: int = 0, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def unread_alerts(limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0), db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     alerts = db.query(Alert).filter(Alert.is_read == False).order_by(Alert.created_at.desc()).limit(limit).offset(offset).all()
     return alerts
 

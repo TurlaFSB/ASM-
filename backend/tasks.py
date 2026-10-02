@@ -14,8 +14,15 @@ def send_webhook_alerts(db, target_id, alerts):
     import requests
     from backend.models.target import Target
 
+    from backend.validators import validate_webhook_url
+
     target = db.query(Target).filter(Target.id == target_id).first()
     if not target or not target.webhook_url:
+        return
+    try:
+        validate_webhook_url(target.webhook_url)
+    except ValueError as e:
+        logger.warning(f"[webhook] blocked for target {target_id}: {e}")
         return
 
     for alert in alerts:
@@ -29,7 +36,7 @@ def send_webhook_alerts(db, target_id, alerts):
             "detail": alert.detail,
         }
         try:
-            resp = requests.post(target.webhook_url, json=payload, timeout=5)
+            resp = requests.post(target.webhook_url, json=payload, timeout=5, allow_redirects=False)
             if resp.ok:
                 alert.webhook_sent = True
         except requests.RequestException as e:
@@ -117,14 +124,10 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         stage_start = time.time()
 
         import ipaddress
+        from backend.validators import classify_target, INTERNAL_SUFFIXES
+
         def _is_internal_target(d):
-            try:
-                ipaddress.ip_address(d)
-                return True
-            except ValueError:
-                pass
-            internal_suffixes = (".local", ".internal", ".lan", ".corp", ".home")
-            return d.lower().endswith(internal_suffixes)
+            return classify_target(d) == "ip" or d.lower().endswith(INTERNAL_SUFFIXES)
 
         internal_target = _is_internal_target(domain)
 
@@ -238,16 +241,24 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         # -follow-redirects, so we don't need to force a scheme upfront.
         stage_start = time.time()
 
+        from backend.pipeline_utils import (
+            build_web_targets, tls_targets_from_urls, merge_http_info,
+            pipeline_trusted_for_removals,
+        )
         bare_hosts = [h["subdomain"] for h in live_hosts]
-        http_data = run_httpx(bare_hosts, rate_limit)
+        # Probe every web-looking port nmap found (not just 80/443)
+        web_targets = build_web_targets(port_data["hosts"], bare_hosts)
+        http_data = run_httpx(web_targets, rate_limit)
         module_results["httpprobe"] = http_data["module_status"]
 
         # Use CONFIRMED live URLs (with correct scheme) from HTTPX output for
         # downstream tools, instead of the original guessed http:// list.
         # Falls back to bare hostnames only if HTTPX found nothing, so
         # nuclei/eyewitness don't get an empty target list on partial failure.
-        confirmed_urls = [h["url"] for h in http_data["hosts"] if h.get("url")]
-        host_urls = confirmed_urls if confirmed_urls else bare_hosts
+        confirmed_urls = list(dict.fromkeys(h["url"] for h in http_data["hosts"] if h.get("url")))
+        # No confirmed web service -> web stages get nothing (bare hosts have no scheme
+        # and would make feroxbuster/nuclei/eyewitness error out).
+        host_urls = confirmed_urls
 
         stage_timings["httpx"] = round(time.time()-stage_start,2)
         logger.info(
@@ -255,59 +266,92 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             f"({len(http_data['hosts'])} live web services)"
         )
 
-        # Stage 4.5: WhatWeb technology fingerprinting
-        self.update_state(state="PROGRESS", meta={"stage": "tech_fingerprinting"})
+        # Stages 4.5-6: independent web-facing modules run CONCURRENTLY
+        # (whatweb, directory discovery, nuclei, sslyze, screenshots). Total time becomes
+        # the slowest module instead of the sum. They only read host_urls/TLS targets and
+        # never touch the DB, so this is thread-safe. ASM_PARALLEL_STAGES=false disables it.
+        import os as _os
+        from backend.pipeline_utils import run_stages_parallel, effective_rate
+        # nuclei and feroxbuster run at the same time against the same hosts: split the budget
+        # so combined load stays within the configured ceiling (overloading a host makes
+        # nuclei abandon it as 'unresponsive').
+        heavy_rate = max(1, effective_rate(rate_limit) // (3 if enable_dirbuster else 2))
+        self.update_state(state="PROGRESS", meta={"stage": "web_analysis"})
         if scan:
-            scan.current_stage = "tech_fingerprinting"
+            scan.current_stage = "web_analysis"
             db.commit()
         stage_start = time.time()
-        whatweb_data = run_whatweb(host_urls)
+        from backend.scanner.cve_match import run_cve_match
+
+        def _cve_cache():
+            try:
+                return redis.Redis.from_url(settings.redis_url, socket_timeout=2)
+            except Exception:  # noqa: BLE001
+                return None
+        from backend.scanner.vuln import network_tags_from_services
+        net_tags = network_tags_from_services(port_data["hosts"])
+        tls_targets = tls_targets_from_urls(confirmed_urls)
+        stage_results, stage_dts = run_stages_parallel(
+            jobs={
+                "whatweb": lambda: run_whatweb(host_urls),
+                "dirbuster": (lambda: run_dirbuster(host_urls, heavy_rate, wordlist, scan_id=scan_id))
+                             if enable_dirbuster else None,
+                "nuclei": lambda: run_nuclei(host_urls, heavy_rate),
+                "sslyze": lambda: run_sslyze(tls_targets),
+                "screenshot": lambda: run_eyewitness(host_urls),
+                "cve_match": lambda: run_cve_match(port_data["hosts"], cache=_cve_cache()),
+                "nuclei_network": (lambda: run_nuclei(
+                    sorted({h["subdomain"] for h in port_data["hosts"]}), heavy_rate, tags=net_tags))
+                    if net_tags else None,
+            },
+            defaults={
+                "whatweb": {"hosts": {}}, "dirbuster": {"hosts": {}},
+                "nuclei": {"findings": []}, "sslyze": {"findings": []},
+                "screenshot": {"screenshots": []}, "cve_match": {"findings": []},
+                "nuclei_network": {"findings": []},
+            },
+            parallel=_os.getenv("ASM_PARALLEL_STAGES", "true").lower() != "false",
+        )
+        stage_timings.update(stage_dts)
+        stage_timings["web_analysis_wall"] = round(time.time() - stage_start, 2)
+
+        whatweb_data = stage_results["whatweb"]
         module_results["whatweb"] = whatweb_data["module_status"]
         for entry in http_data["hosts"]:
             ww_result = whatweb_data["hosts"].get(entry.get("url", ""))
             if ww_result:
                 merged = set(entry.get("technologies", [])) | set(ww_result.get("technologies", []))
                 entry["technologies"] = sorted(merged)
-        stage_timings["whatweb"] = round(time.time()-stage_start,2)
-        logger.info(
-            f"[pipeline] WhatWeb completed in {stage_timings['whatweb']}s "
-            f"({len(whatweb_data['hosts'])} hosts fingerprinted)"
-        )
 
-
-        # Stage 4.7: Directory/content discovery
-        self.update_state(state="PROGRESS", meta={"stage": "dir_discovery"})
-        if scan:
-            scan.current_stage = "dir_discovery"
-            db.commit()
-        stage_start = time.time()
         if enable_dirbuster:
-            dirbuster_data = run_dirbuster(host_urls, rate_limit, wordlist, scan_id=scan_id)
+            dirbuster_data = stage_results["dirbuster"]
             module_results["dirbuster"] = dirbuster_data["module_status"]
-            stage_timings["dirbuster"] = round(time.time()-stage_start,2)
-            total_paths_found = sum(len(h.get("paths", [])) for h in dirbuster_data["hosts"].values())
-            logger.info(
-                f"[pipeline] Directory discovery completed in {stage_timings['dirbuster']}s "
-                f"({total_paths_found} paths found across {len(dirbuster_data['hosts'])} hosts)"
-            )
         else:
             dirbuster_data = {"hosts": {}, "module_status": "skipped"}
             module_results["dirbuster"] = "skipped"
-            logger.info("[pipeline] Directory discovery skipped (disabled by user)")
-        # Stage 5: Vulnerability scanning
-        self.update_state(state="PROGRESS", meta={"stage": "vuln_scanning"})
-        if scan:
-            scan.current_stage = "vuln_scanning"
-            db.commit()
-        stage_start = time.time()
 
-        vuln_data = run_nuclei(host_urls, rate_limit)
+        vuln_data = stage_results["nuclei"]
         module_results["vuln"] = vuln_data["module_status"]
-
-        stage_timings["nuclei"] = round(time.time()-stage_start,2)
+        net_data = stage_results.get("nuclei_network")
+        if net_data is not None:
+            module_results["nuclei_network"] = net_data["module_status"]
+            vuln_data["findings"] = list(vuln_data.get("findings", [])) + net_data.get("findings", [])
+        else:
+            module_results["nuclei_network"] = "skipped (no recognised network services)"
+        cve_data = stage_results["cve_match"]
+        module_results["cve_match"] = cve_data["module_status"]
+        # version-matched CVEs flow through the same save/score/KEV path as nuclei findings
+        vuln_data.setdefault("findings", [])
+        vuln_data["findings"] = list(vuln_data["findings"]) + cve_data.get("findings", [])
+        module_results["nuclei_templates"] = vuln_data.get("template_count")
+        sslyze_data = stage_results["sslyze"]
+        module_results["sslyze"] = sslyze_data["module_status"]
+        screenshot_data = stage_results["screenshot"]
+        module_results["screenshot"] = screenshot_data["module_status"]
         logger.info(
-            f"[pipeline] Nuclei completed in {stage_timings['nuclei']}s "
-            f"({len(vuln_data.get('findings', []))} findings)"
+            f"[pipeline] web analysis done in {stage_timings['web_analysis_wall']}s wall "
+            f"(per-module: {stage_dts}); nuclei findings={len(vuln_data.get('findings', []))}, "
+            f"sslyze findings={len(sslyze_data.get('findings', []))}"
         )
 
         # Save Nuclei findings to DB
@@ -344,14 +388,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
 
         db.commit()
 
-        # Stage 5.5: sslyze TLS/SSL analysis
-        self.update_state(state="PROGRESS", meta={"stage": "tls_analysis"})
-        if scan:
-            scan.current_stage = "tls_analysis"
-            db.commit()
-        stage_start = time.time()
-        sslyze_data = run_sslyze(bare_hosts)
-        module_results["sslyze"] = sslyze_data["module_status"]
+        # Save sslyze findings
         for finding in sslyze_data.get("findings", []):
             vuln = Vulnerability(
                 target_id=target_id,
@@ -369,46 +406,14 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             )
             db.add(vuln)
         db.commit()
-        stage_timings["sslyze"] = round(time.time()-stage_start,2)
-        logger.info(
-            f"[pipeline] sslyze completed in {stage_timings['sslyze']}s "
-            f"({len(sslyze_data.get('findings', []))} findings)"
-        )
-
-        # Stage 6: Screenshots
-        self.update_state(state="PROGRESS", meta={"stage": "screenshots"})
-        if scan:
-            scan.current_stage = "screenshots"
-            db.commit()
-        stage_start = time.time()
-
-        screenshot_data = run_eyewitness(host_urls)
-        module_results["screenshot"] = screenshot_data["module_status"]
-
-        stage_timings["eyewitness"] = round(time.time()-stage_start,2)
-        logger.info(
-            f"[pipeline] EyeWitness completed in {stage_timings['eyewitness']}s "
-            f"({len(screenshot_data.get('screenshots', []))} screenshots)"
-        )
-
         # Stage 7: Save assets to DB with upsert + change detection
         self.update_state(state="PROGRESS", meta={"stage": "saving_results"})
         if scan:
             scan.current_stage = "saving_results"
             db.commit()
 
-        http_lookup = {h["host"]: h for h in http_data["hosts"]}
-        # httpx sometimes returns the resolved IP in "host" instead of the
-        # hostname it was given (seen on internal/lab targets) -- build an
-        # IP-keyed fallback so lookups by subdomain don't silently miss.
-        http_lookup_by_ip = {}
-        for h in http_data["hosts"]:
-            try:
-                import ipaddress as _ipaddr
-                _ipaddr.ip_address(h["host"])
-                http_lookup_by_ip[h["host"]] = h
-            except ValueError:
-                pass
+        # One merged record per host across ALL its web ports (union of technologies)
+        http_merged = merge_http_info(http_data["hosts"])
         port_lookup = {h["subdomain"]: h["ports"] for h in port_data["hosts"]}
 
         new_count = 0
@@ -425,8 +430,12 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
 
         created_alerts = []
 
+        removals_trusted = pipeline_trusted_for_removals(module_results, internal_target)
+        if not removals_trusted:
+            logger.warning("[pipeline] discovery not fully successful -- skipping 'disappeared' detection")
+
         for existing_asset in existing_assets:
-            if existing_asset.subdomain not in found_subdomains:
+            if removals_trusted and existing_asset.subdomain not in found_subdomains:
                 existing_asset.status = "disappeared"
                 disappeared_count += 1
                 alert = Alert(
@@ -443,8 +452,15 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         for host in live_hosts:
             subdomain = host["subdomain"]
             ip = host["ip"]
-            ports = port_lookup.get(subdomain, [])
-            http_info = http_lookup.get(subdomain) or http_lookup_by_ip.get(ip, {})
+            if subdomain in port_lookup:
+                ports = port_lookup[subdomain]
+            else:
+                # nmap failed/timed out for this host: keep last known ports instead of
+                # recording "no open ports" (which would raise a false changed_asset).
+                prev = db.query(Asset).filter(Asset.target_id == target_id,
+                                              Asset.subdomain == subdomain).first()
+                ports = (prev.open_ports or []) if prev else []
+            http_info = http_merged.get(subdomain) or http_merged.get(ip) or {}
             technologies = http_info.get("technologies", [])
             http_status = http_info.get("status_code")
             http_title = http_info.get("title", "")
@@ -493,6 +509,16 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                     db.add(alert)
                     created_alerts.append(alert)
                 else:
+                    if existing.status == "disappeared":
+                        alert = Alert(
+                            target_id=target_id, scan_id=scan_id, alert_type="reappeared_asset",
+                            asset_subdomain=subdomain, asset_ip=ip,
+                            detail={"reason": "Asset seen again after being marked disappeared"},
+                        )
+                        db.add(alert)
+                        created_alerts.append(alert)
+                    # unchanged since last scan: no longer "new"/"changed"/"disappeared"
+                    existing.status = "active"
                     existing.last_seen = datetime.now(timezone.utc)
                     scanned_assets_this_run.append(existing)
             else:
@@ -652,8 +678,20 @@ def check_scheduled_scans():
 
         for sched in due:
             target = db.query(Target).filter(Target.id == sched.target_id).first()
-            if not target or not target.authorized or not target.is_active:
-                # Skip and push next_run forward so we don't spin on a dead/unauthorized target
+            skip = (not target or not target.authorized or not target.is_active)
+            if not skip:
+                from backend.validators import validate_target
+                try:
+                    validate_target(target.domain)
+                except ValueError as e:
+                    logger.warning(f"[scheduler] target {target.id} failed validation: {e}")
+                    skip = True
+            if not skip and db.query(Scan).filter(
+                    Scan.target_id == target.id, Scan.status.in_(["pending", "running"])).first():
+                logger.info(f"[scheduler] scan already active for target {target.id}, skipping this tick")
+                skip = True
+            if skip:
+                # Push next_run forward so we don't spin on a dead/unauthorized/busy target
                 itr = croniter(sched.cron_expression, now)
                 sched.next_run_at = itr.get_next(datetime)
                 continue
@@ -667,12 +705,14 @@ def check_scheduled_scans():
             db.commit()
             db.refresh(db_scan)
 
-            run_scan.delay(
+            task = run_scan.delay(
                 target_id=target.id,
                 domain=target.domain,
                 rate_limit=target.rate_limit,
                 scan_id=db_scan.id
             )
+            db_scan.celery_task_id = task.id
+            db.commit()
 
             sched.last_run_at = now
             itr = croniter(sched.cron_expression, now)

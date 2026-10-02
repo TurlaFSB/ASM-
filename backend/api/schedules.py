@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 from typing import Optional
 from datetime import datetime, timezone
 from croniter import croniter
@@ -47,8 +47,7 @@ class ScheduleResponse(BaseModel):
     next_run_at: Optional[datetime]
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 def compute_next_run(cron_expr: str) -> datetime:
     base = datetime.now(timezone.utc)

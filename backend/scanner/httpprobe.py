@@ -52,6 +52,7 @@ def run_httpx(hosts: List[str], rate_limit: int = 10) -> Dict:
                 data = json.loads(line)
                 result["hosts"].append({
                     "url": data.get("url", ""),
+                    "input": data.get("input", ""),
                     "host": data.get("host", ""),
                     "status_code": data.get("status_code", None),
                     "title": data.get("title", ""),
