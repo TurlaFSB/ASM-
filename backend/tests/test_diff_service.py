@@ -200,3 +200,21 @@ def test_rebuild_recomputes_newest_scan_and_refuses_older(db):
     assert again["events"] == 1 and db.query(ChangeEvent).filter_by(status="confirmed").count() == 1
     with pytest.raises(ValueError):
         rebuild_scan_changes(db, s1)
+
+
+def test_reappearing_finding_is_labelled_not_hidden(db):
+    run_scan(db, [80], findings=[("ssh-weak", "low")])
+    run_scan(db, [80])                               # missing once: pending
+    gone, _ = run_scan(db, [80])                     # missing twice: removal confirmed
+    back, summ = run_scan(db, [80], findings=[("ssh-weak", "low")])
+    assert summ["events"] == 1                       # still reported
+    ev = db.query(ChangeEvent).filter_by(scan_id=back.id, change_type="added").one()
+    assert f"scan {gone.id}" in ev.summary and ev.after["reappeared_after_scan"] == gone.id
+    assert ev.severity == "low"                      # severity untouched
+
+
+def test_genuinely_new_finding_has_no_reappeared_label(db):
+    run_scan(db, [80])
+    s, _ = run_scan(db, [80], findings=[("smb-x", "high")])
+    ev = db.query(ChangeEvent).filter_by(scan_id=s.id, change_type="added").one()
+    assert "reappeared" not in ev.summary

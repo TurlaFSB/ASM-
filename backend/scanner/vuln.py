@@ -77,6 +77,9 @@ NUCLEI_AUTOSCAN = os.getenv("NUCLEI_AUTOSCAN", "true").lower() != "false"
 # templates silently never run. Raise it, and report when it still happens.
 NUCLEI_MAX_HOST_ERROR = os.getenv("NUCLEI_MAX_HOST_ERROR", "100")
 NUCLEI_CONCURRENCY = os.getenv("NUCLEI_CONCURRENCY", "15")
+# Service-tag (network) pass: many parallel handshakes against one daemon (e.g. old OpenSSH with
+# MaxStartups) can get dropped, which makes whole template families flap between scans.
+NUCLEI_NETWORK_CONCURRENCY = os.getenv("NUCLEI_NETWORK_CONCURRENCY", "4")
 
 # info-severity results are kept only when they are attack-surface exposures; pure
 # technology/WAF/version detections are already captured by httpx/whatweb/nmap.
@@ -128,9 +131,9 @@ def build_nuclei_cmd(targets_path: str, rate_limit: int, tags=None, severity: st
         "nuclei", "-nc",              # NOT -silent: warnings (e.g. host skipped) must reach stderr
         "-l", targets_path,
         "-rate-limit", str(rate_limit),
-        "-c", NUCLEI_CONCURRENCY,
+        "-c", NUCLEI_NETWORK_CONCURRENCY if tags else NUCLEI_CONCURRENCY,
         "-mhe", NUCLEI_MAX_HOST_ERROR,
-        "-retries", "1",
+        "-retries", "2" if tags else "1",
         "-ni",                        # no interactsh/OAST
         "-duc",                       # no update check at scan time
         "-timeout", "10",
