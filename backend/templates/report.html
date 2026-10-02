@@ -143,8 +143,10 @@
     margin: 0 0 4px 0;
     padding-bottom: 8px;
     border-bottom: 2.5px solid #0b0f1a;
-    page-break-before: always;
+    page-break-after: avoid;
+    margin-top: 26px;
   }
+  h2.section.break { page-break-before: always; margin-top: 0; }
   h2.section .section-num {
     color: #dc2626;
     margin-right: 6px;
@@ -183,14 +185,32 @@
     letter-spacing: 0.4px;
     text-transform: uppercase;
   }
+  .badge { white-space: nowrap; }
   .badge.critical { background: #b91c1c; }
   .badge.high { background: #ea580c; }
   .badge.medium { background: #ca8a04; }
   .badge.low { background: #16a34a; }
-  .badge.informational { background: #475569; }
+  .badge.informational, .badge.info { background: #475569; }
+  .vuln-card.info { border-left-color: #94a3b8; }
+  .flag { display:inline-block; font-size:7.5px; font-weight:700; letter-spacing:.4px; text-transform:uppercase; padding:1px 6px; border-radius:3px; margin-left:4px; border:1px solid; }
+  .flag.unverified { color:#92400e; border-color:#f59e0b; background:#fffbeb; }
+  .flag.kev { color:#991b1b; border-color:#ef4444; background:#fef2f2; }
+  .flag.exploit { color:#7c2d12; border-color:#f97316; background:#fff7ed; }
+  .pill { display:inline-block; font-size:8px; font-weight:700; padding:1px 7px; border-radius:10px; text-transform:uppercase; letter-spacing:.3px; }
+  .pill.ok { background:#dcfce7; color:#166534; } .pill.warn { background:#fef3c7; color:#92400e; }
+  .pill.skip { background:#e5e7eb; color:#4b5563; } .pill.fail { background:#fee2e2; color:#991b1b; }
+  .kv { width:100%; border-collapse:collapse; margin-top:8px; font-size:9.5px; }
+  .kv td { padding:5px 8px; border-bottom:1px solid #eef0f3; vertical-align:top; }
+  .kv td:first-child { width:24%; color:#6b7280; font-weight:600; }
+  .note { background:#f8fafc; border-left:3px solid #94a3b8; padding:8px 12px; margin:10px 0; font-size:9.5px; color:#374151; }
+  .note.warn { background:#fffbeb; border-left-color:#f59e0b; }
+  .vuln-desc, td, .vuln-name { overflow-wrap: anywhere; }
+  tr { page-break-inside: avoid; }
+  .mono { font-family: monospace; }
 
   /* ---------- SUMMARY BOXES ---------- */
   .summary-grid { display: flex; gap: 12px; margin: 16px 0 20px 0; }
+  .summary-box.info { border-top-color:#94a3b8; }
   .summary-box {
     flex: 1;
     border: 1px solid #e5e7eb;
@@ -290,7 +310,7 @@
     <div class="meta-row">
       <div class="meta-item">
         <div class="label">Scan Date</div>
-        <div class="value">{{ scan.started_at.strftime('%d %B %Y') if scan.started_at else 'N/A' }}</div>
+        <div class="value">{{ scan.started_at.strftime('%d %B %Y') if scan.started_at else 'N/A' }} <span style="font-size:8px;color:#64748b;">UTC</span></div>
       </div>
       <div class="meta-item">
         <div class="label">Duration</div>
@@ -311,7 +331,7 @@
       <p>This assessment covers external attack surface enumeration, service fingerprinting, and vulnerability
       detection across all discovered assets for <strong>{{ target.domain }}</strong>. Findings are classified
       by severity in accordance with industry-standard CVSS scoring, and prioritized remediation guidance is
-      provided in Section 05 of this report.</p>
+      provided in Section 08 of this report. Scan profile: <strong>{{ profile.label }}</strong> ({{ report_id }}).</p>
     </div>
 
     <div class="stat-row">
@@ -320,6 +340,7 @@
       <div class="stat-chip medium"><div class="n">{{ severity_counts.medium }}</div><div class="l">Medium</div></div>
       <div class="stat-chip low"><div class="n">{{ severity_counts.low }}</div><div class="l">Low</div></div>
     </div>
+    {% if rating_basis %}<div style="font-size:8px;color:#fbbf24;margin-top:10px;">{{ rating_basis }}</div>{% endif %}
   </div>
 
   <div class="risk-strip {{ risk_rating.lower() }}">
@@ -334,21 +355,23 @@
   </div>
 </div>
 
-<!-- ================= EXECUTIVE SUMMARY ================= -->
+
+<!-- ================= 01 EXECUTIVE SUMMARY ================= -->
 <h2 class="section"><span class="section-num">01</span>Executive Summary</h2>
 <p class="section-intro">
-  This report presents the findings of an automated attack surface assessment conducted against
-  <strong>{{ target.domain }}</strong> on {{ scan.started_at.strftime('%d %B %Y') if scan.started_at else 'N/A' }}.
-  The assessment enumerated internet-facing assets, identified running services and technologies,
-  and evaluated each asset against a database of known vulnerabilities and misconfigurations.
+  This report presents the results of an automated attack surface assessment of
+  <strong>{{ target.domain }}</strong>, run on {{ scan.started_at.strftime('%d %B %Y') if scan.started_at else 'N/A' }}
+  with the <strong>{{ profile.label }}</strong> scan profile. It enumerated reachable assets, identified services and
+  technologies, and evaluated them against known vulnerabilities and misconfigurations.
 </p>
 
 <div class="summary-grid">
-  <div class="summary-box"><div class="num">{{ assets|length }}</div><div class="lbl">Total Assets</div></div>
+  <div class="summary-box"><div class="num">{{ assets|length }}</div><div class="lbl">Assets</div></div>
   <div class="summary-box critical"><div class="num">{{ severity_counts.critical }}</div><div class="lbl">Critical</div></div>
   <div class="summary-box high"><div class="num">{{ severity_counts.high }}</div><div class="lbl">High</div></div>
   <div class="summary-box medium"><div class="num">{{ severity_counts.medium }}</div><div class="lbl">Medium</div></div>
   <div class="summary-box low"><div class="num">{{ severity_counts.low }}</div><div class="lbl">Low</div></div>
+  <div class="summary-box info"><div class="num">{{ severity_counts.info }}</div><div class="lbl">Info</div></div>
 </div>
 
 <h3>Key Findings</h3>
@@ -356,206 +379,224 @@
   {% for f in key_findings %}<li>{{ f }}</li>{% endfor %}
 </ul>
 
-<!-- ================= ASSET INVENTORY ================= -->
-<h2 class="section"><span class="section-num">02</span>Asset Inventory</h2>
-<p class="section-intro">The following assets were discovered and enumerated during subdomain enumeration, DNS resolution, and HTTP probing.</p>
+{% set unv = unverified_counts.critical + unverified_counts.high + unverified_counts.medium + unverified_counts.low %}
+{% if unv %}
+<div class="note warn">
+  <strong>Confirmed vs. unverified.</strong>
+  {{ unv }} finding(s) are marked <span class="flag unverified">Unverified</span>: they were inferred by matching a detected
+  software version to published CVEs, without exploiting anything. Vendors and distributions often backport fixes without changing
+  the version string, so these need manual confirmation. Confirmed findings by severity:
+  {{ confirmed_counts.critical }} critical, {{ confirmed_counts.high }} high, {{ confirmed_counts.medium }} medium, {{ confirmed_counts.low }} low.
+</div>
+{% endif %}
+
+<!-- ================= 02 SCOPE & COVERAGE ================= -->
+<h2 class="section break"><span class="section-num">02</span>Scope &amp; Coverage</h2>
+<table class="kv">
+  <tr><td>Report ID</td><td class="mono">{{ report_id }} (scan #{{ scan.id }})</td></tr>
+  <tr><td>Target</td><td class="mono">{{ target.domain }}</td></tr>
+  <tr><td>Authorized by</td><td>{{ target.authorized_by or '—' }}{% if target.authorized_at %} on {{ target.authorized_at.strftime('%d %B %Y') }}{% endif %}</td></tr>
+  {% if target.scope_note %}<tr><td>Scope note</td><td>{{ target.scope_note }}</td></tr>{% endif %}
+  <tr><td>Scan profile</td><td><strong>{{ profile.label }}</strong> ({{ profile.estimate }}). {{ profile.description }}</td></tr>
+  <tr><td>Window (UTC)</td><td>{{ scan.started_at.strftime('%d %b %Y %H:%M') if scan.started_at else '—' }} to {{ scan.completed_at.strftime('%d %b %Y %H:%M') if scan.completed_at else '—' }} ({{ duration or 'N/A' }})</td></tr>
+  <tr><td>Stages in profile</td><td>{{ stages|join(' · ') }}</td></tr>
+  {% if scan.module_results and scan.module_results.nuclei_templates %}<tr><td>Detection templates</td><td>{{ scan.module_results.nuclei_templates }} nuclei templates</td></tr>{% endif %}
+</table>
+
+{% if coverage %}
+<h3>Stage results</h3>
+<table>
+  <thead><tr><th style="width:42%">Stage</th><th style="width:14%">Result</th><th>Detail</th></tr></thead>
+  <tbody>
+  {% for m in coverage %}
+  <tr>
+    <td>{{ m.label }}</td>
+    <td><span class="pill {{ m.state }}">{{ {'ok':'OK','warn':'Partial','skip':'Skipped','fail':'Failed'}[m.state] }}</span></td>
+    <td style="color:#6b7280;">{{ m.status if m.state != 'ok' else '' }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if limitations %}
+<div class="note warn"><strong>Limitations of this scan</strong>
+  <ul style="margin:4px 0 0 16px; padding:0;">{% for l in limitations %}<li>{{ l }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+<div class="note">
+  This is an automated, non-intrusive assessment. Absence of a finding does not prove absence of a vulnerability, and
+  results reflect the target's state at the time of the scan. Findings should be validated before remediation work is scheduled.
+</div>
+
+<!-- ================= 03 ASSET INVENTORY ================= -->
+<h2 class="section break"><span class="section-num">03</span>Asset Inventory</h2>
+<p class="section-intro">Assets observed during this scan, ordered by risk score.</p>
 
 {% if assets %}
 <table style="table-layout: fixed;">
 <colgroup>
-  <col style="width: 15%;">
-  <col style="width: 11%;">
-  <col style="width: 7%;">
-  <col style="width: 15%;">
-  <col style="width: 17%;">
-  <col style="width: 35%;">
+  <col style="width: 17%;"><col style="width: 13%;"><col style="width: 6%;"><col style="width: 11%;">
+  <col style="width: 15%;"><col style="width: 38%;">
 </colgroup>
-<thead><tr><th>Subdomain</th><th>IP Address</th><th>HTTP Status</th><th>Page Title</th><th>Technologies</th><th>Open Ports</th></tr></thead>
+<thead><tr><th>Host</th><th>IP address</th><th>HTTP</th><th>Risk</th><th>Technologies</th><th>Open ports &amp; services</th></tr></thead>
 <tbody>
 {% for a in assets %}
 <tr>
-  <td style="font-family:monospace;">{{ a.subdomain }}</td>
-  <td style="font-family:monospace;">{{ a.ip or '—' }}</td>
+  <td class="mono">{{ a.subdomain }}{% if a.http_title %}<div style="font-family:inherit;font-size:8px;color:#6b7280;margin-top:2px;">{{ a.http_title }}</div>{% endif %}</td>
+  <td class="mono" style="white-space:nowrap;">{{ a.ip or '—' }}</td>
   <td>{{ a.http_status or '—' }}</td>
-  <td>{{ a.http_title or '—' }}</td>
+  <td>{% if a.risk_level %}<span class="badge {{ a.risk_level.lower() }}">{{ a.risk_level }}</span><div style="font-size:8px;color:#6b7280;margin-top:2px;">{{ a.risk_score|round|int }}/100</div>{% else %}—{% endif %}</td>
   <td>{{ a.technologies|join(', ') if a.technologies else '—' }}</td>
-  <td style="word-wrap: break-word; overflow-wrap: break-word; vertical-align: top;">
+  <td>
     {% if a.open_ports %}
     {% for p in a.open_ports %}
       <div style="font-size:8px; line-height:1.5; {% if not loop.last %}border-bottom:1px solid #eef0f3; padding-bottom:3px; margin-bottom:3px;{% endif %}">
-        <span style="font-family:monospace; font-weight:600; color:#0b0f1a;">{{ p.port }}/{{ p.protocol }}</span>
-        <span style="color:#6b7280;"> — {{ p.service or 'unknown' }}</span>
-        {% if p.product %}<br><span style="color:#374151;">{{ p.product }}{% if p.version %} {{ p.version }}{% endif %}</span>{% endif %}
+        <span class="mono" style="font-weight:600; color:#0b0f1a;">{{ p.port }}/{{ p.protocol or 'tcp' }}</span>
+        <span style="color:#6b7280;"> {{ p.service or 'unknown' }}</span>
+        {% if p.product %}<span style="color:#374151;"> · {{ p.product }}{% if p.version %} {{ p.version }}{% endif %}</span>{% endif %}
       </div>
     {% endfor %}
-    {% else %}<span style="color:#9ca3af;">—</span>{% endif %}
+    {% else %}<span style="color:#9ca3af;">No open ports detected</span>{% endif %}
   </td>
 </tr>
 {% endfor %}
 </tbody>
 </table>
 {% else %}
-<div class="empty-state">No assets discovered in this scan cycle.</div>
+<div class="empty-state">No assets were observed in this scan.</div>
 {% endif %}
 
-<!-- ================= INFRASTRUCTURE ================= -->
-<h2 class="section"><span class="section-num">03</span>Infrastructure</h2>
-<p class="section-intro">WHOIS/ASN registration data, fingerprinted technology stack, and TLS/SSL configuration findings for the target's infrastructure.</p>
+{% if paths %}
+<h3>Discovered Content ({{ paths|length }})</h3>
+<p class="section-intro">Paths found by directory discovery. Items matching admin, backup or configuration patterns are marked.</p>
+<table>
+  <thead><tr><th style="width:26%">Host</th><th>Path</th><th style="width:9%">Status</th><th style="width:11%">Size</th><th style="width:16%"></th></tr></thead>
+  <tbody>
+  {% for p in paths %}
+  <tr>
+    <td class="mono">{{ p.host }}</td>
+    <td class="mono">{{ p.path }}{% if p.redirect %}<div style="font-size:8px;color:#6b7280;">→ {{ p.redirect }}</div>{% endif %}</td>
+    <td>{{ p.status or '—' }}</td>
+    <td>{{ p.length if p.length is not none else '—' }}</td>
+    <td>{% if p in sensitive_paths %}<span class="flag kev" style="margin-left:0;">Sensitive</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
 
-<h3 style="font-size:11px; font-weight:600; color:#0b0f1a; margin:14px 0 8px;">WHOIS &amp; ASN</h3>
-{% if whois_data %}
-<table style="table-layout: fixed;">
-<colgroup>
-  <col style="width: 25%;">
-  <col style="width: 25%;">
-  <col style="width: 25%;">
-  <col style="width: 25%;">
-</colgroup>
-<thead><tr><th>Registrar</th><th>Registration Window</th><th>Name Servers</th><th>ASN</th></tr></thead>
-<tbody>
-<tr>
-  <td>{{ whois_data.domain_whois.registrar if whois_data.domain_whois else '—' }}</td>
-  <td style="font-family:monospace; font-size:8px;">
-    {% if whois_data.domain_whois %}
-      {{ whois_data.domain_whois.creation_date[:10] if whois_data.domain_whois.creation_date else '—' }} &rarr; {{ whois_data.domain_whois.expiration_date[:10] if whois_data.domain_whois.expiration_date else '—' }}
-    {% else %}—{% endif %}
-  </td>
-  <td style="font-family:monospace; font-size:8px;">{{ whois_data.domain_whois.name_servers|join(', ') if whois_data.domain_whois and whois_data.domain_whois.name_servers else '—' }}</td>
-  <td>{{ whois_data.asn.asn_description if whois_data.asn else '—' }}</td>
-</tr>
-</tbody>
+<!-- ================= 04 INFRASTRUCTURE ================= -->
+<h2 class="section"><span class="section-num">04</span>Infrastructure</h2>
+{% set dw = whois_data.domain_whois if whois_data else none %}
+{% set asn = whois_data.asn if whois_data else none %}
+{% if dw or asn %}
+<table class="kv">
+  {% if dw %}
+  <tr><td>Registrar</td><td>{{ dw.registrar or '—' }}</td></tr>
+  <tr><td>Registration</td><td>{{ dw.creation_date[:10] if dw.creation_date else '—' }} → {{ dw.expiration_date[:10] if dw.expiration_date else '—' }}</td></tr>
+  <tr><td>Name servers</td><td class="mono">{{ dw.name_servers|join(', ') if dw.name_servers else '—' }}</td></tr>
+  {% endif %}
+  {% if asn %}<tr><td>ASN</td><td>{{ asn.asn_description or '—' }}</td></tr>{% endif %}
 </table>
 {% else %}
-<div class="empty-state">No WHOIS data available.</div>
+<div class="empty-state">No WHOIS/ASN data: this target is an IP address or internal host, which has no public registration record.</div>
 {% endif %}
 
-<h3 style="font-size:11px; font-weight:600; color:#0b0f1a; margin:16px 0 8px;">Technology Stack</h3>
-{% if technologies %}
-<p style="font-size:9px; line-height:1.8;">
-  {% for t in technologies %}<span class="tag-chip">{{ t }}</span>{% endfor %}
-</p>
-{% else %}
-<div class="empty-state">No technologies detected.</div>
-{% endif %}
+<h3>Technology Stack</h3>
+{% if technologies %}<div>{% for t in technologies %}<span class="tag-chip">{{ t }}</span>{% endfor %}</div>
+{% else %}<div class="empty-state">No technologies were fingerprinted.</div>{% endif %}
 
-<h3 style="font-size:11px; font-weight:600; color:#0b0f1a; margin:16px 0 8px;">TLS &amp; SSL Findings</h3>
+<h3>TLS &amp; SSL Findings</h3>
 {% if tls_findings %}
-<table style="table-layout: fixed;">
-<colgroup>
-  <col style="width: 20%;">
-  <col style="width: 40%;">
-  <col style="width: 25%;">
-  <col style="width: 15%;">
-</colgroup>
-<thead><tr><th>Host</th><th>Finding</th><th>Description</th><th>Severity</th></tr></thead>
-<tbody>
-{% for f in tls_findings %}
-<tr>
-  <td style="font-family:monospace;">{{ f.host }}</td>
-  <td>{{ f.name }}</td>
-  <td style="font-size:8px; color:#6b7280;">{{ f.description or '—' }}</td>
-  <td><span class="badge {{ f.severity.lower() }}">{{ f.severity }}</span></td>
-</tr>
-{% endfor %}
-</tbody>
+<table>
+  <thead><tr><th style="width:22%">Host</th><th style="width:28%">Issue</th><th>Detail</th><th style="width:10%">Severity</th></tr></thead>
+  <tbody>
+  {% for f in tls_findings %}
+  <tr><td class="mono">{{ f.host }}</td><td>{{ f.name }}</td><td style="font-size:8px;color:#6b7280;">{{ f.description or '—' }}</td><td><span class="badge {{ f.severity }}">{{ f.severity }}</span></td></tr>
+  {% endfor %}
+  </tbody>
 </table>
 {% else %}
-<div class="empty-state">No TLS misconfigurations found.</div>
+<div class="empty-state">{% if scan.module_results and scan.module_results.sslyze and not scan.module_results.sslyze.startswith('ok') %}TLS was not assessed ({{ scan.module_results.sslyze }}).{% else %}No TLS misconfigurations found.{% endif %}</div>
 {% endif %}
 
-<!-- ================= VULNERABILITY FINDINGS ================= -->
-<h2 class="section"><span class="section-num">04</span>Vulnerability Findings</h2>
-<p class="section-intro">Findings below are ordered by severity. Each finding includes the affected host, matched detection template, and CVE reference where applicable.</p>
-
+<!-- ================= 05 VULNERABILITY FINDINGS ================= -->
+<h2 class="section break"><span class="section-num">05</span>Vulnerability Findings</h2>
+<p class="section-intro">
+  Ordered by severity, then by active exploitation (CISA KEV), then CVSS. <span class="flag kev" style="margin-left:0;">KEV</span> = known to be exploited in the wild;
+  <span class="flag unverified" style="margin-left:0;">Unverified</span> = inferred from software version, not confirmed.
+</p>
 {% if vulnerabilities %}
   {% for v in vulnerabilities %}
-  <div class="vuln-card {{ v.severity.lower() }}">
+  <div class="vuln-card {{ v.severity }}">
     <div class="vuln-header">
-      <div class="vuln-name">{{ v.name }}</div>
-      <span class="badge {{ v.severity.lower() }}">{{ v.severity }}</span>
+      <div class="vuln-name">{{ v.name }}{% if v.kev %}<span class="flag kev">KEV</span>{% endif %}{% if v.exploitable %}<span class="flag exploit">Exploitable</span>{% endif %}{% if v.unverified %}<span class="flag unverified">Unverified</span>{% endif %}</div>
+      <span class="badge {{ v.severity }}">{{ v.severity }}</span>
     </div>
     <div class="vuln-meta">
-      <strong>Host:</strong> {{ v.host }}
-      &nbsp;&nbsp;|&nbsp;&nbsp;
-      <strong>Template ID:</strong> {{ v.template_id or '—' }}
-      &nbsp;&nbsp;|&nbsp;&nbsp;
-      <strong>CVE:</strong>
-      {% if v.cve_id %}<a href="https://nvd.nist.gov/vuln/detail/{{ v.cve_id }}">{{ v.cve_id }}</a>{% else %}—{% endif %}
+      <strong>Host:</strong> {{ v.host or '—' }}
+      &nbsp;|&nbsp; <strong>CVE:</strong> {% if v.cve_id %}<a href="https://nvd.nist.gov/vuln/detail/{{ v.cve_id }}">{{ v.cve_id }}</a>{% else %}—{% endif %}
+      {% if v.cvss is not none %}&nbsp;|&nbsp; <strong>CVSS:</strong> {{ '%.1f'|format(v.cvss) }}{% endif %}
+      {% if v.template_id %}&nbsp;|&nbsp; <strong>Template:</strong> {{ v.template_id }}{% endif %}
     </div>
-    {% if v.description %}
-    <div class="vuln-desc">{{ v.description }}</div>
-    {% endif %}
-    {% if v.tags %}
-    <div style="margin-top:8px;">
-      {% for t in v.tags %}<span class="tag-chip">{{ t }}</span>{% endfor %}
-    </div>
-    {% endif %}
+    {% if v.description %}<div class="vuln-desc">{{ v.description }}</div>{% endif %}
+    {% if v.severity != 'info' %}<div class="vuln-desc" style="color:#1f2430;"><strong>Recommended action:</strong> {{ v.guidance }}</div>{% endif %}
+    {% if v.tags %}<div style="margin-top:6px;">{% for t in v.tags if t not in ('version-match','unverified','kev') %}<span class="tag-chip">{{ t }}</span>{% endfor %}</div>{% endif %}
   </div>
   {% endfor %}
 {% else %}
-<div class="empty-state">No vulnerabilities identified in this scan cycle.</div>
+  <div class="empty-state">No vulnerabilities were identified in this scan.</div>
 {% endif %}
 
-<!-- ================= CHANGE DETECTION ================= -->
-<h2 class="section"><span class="section-num">05</span>Change Detection</h2>
-<p class="section-intro">Comparison against the previous scan cycle for this target, identifying new, modified, and disappeared assets.</p>
+<!-- ================= 06 CHANGE DETECTION ================= -->
+<h2 class="section"><span class="section-num">06</span>Change Detection</h2>
+<p class="section-intro">Differences from the previous scan of this target.</p>
 
-<h3>New Assets ({{ new_assets|length }})</h3>
-{% if new_assets %}
+{% macro change_table(title, rows, show_lines) %}
+<h3>{{ title }} ({{ rows|length }})</h3>
+{% if rows %}
 <table>
-<thead><tr><th>Subdomain</th><th>IP Address</th><th>Detected</th></tr></thead>
-<tbody>
-{% for a in new_assets %}<tr><td style="font-family:monospace;">{{ a.asset_subdomain }}</td><td style="font-family:monospace;">{{ a.asset_ip or '—' }}</td><td>{{ a.created_at.strftime('%d %b %Y, %H:%M') }}</td></tr>{% endfor %}
-</tbody>
+  <thead><tr><th style="width:24%">Host</th><th style="width:16%">IP</th><th>{{ 'What changed' if show_lines else 'Detected (UTC)' }}</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr><td class="mono">{{ r.subdomain }}</td><td class="mono">{{ r.ip or '—' }}</td>
+    <td>{% if show_lines %}{% for l in r.lines %}<div>{{ l }}</div>{% endfor %}{% else %}{{ r.at.strftime('%d %b %Y, %H:%M') if r.at else '—' }}{% endif %}</td></tr>
+  {% endfor %}
+  </tbody>
 </table>
-{% else %}<div class="empty-state">No new assets since previous scan.</div>{% endif %}
+{% else %}<div class="empty-state">None.</div>{% endif %}
+{% endmacro %}
+{{ change_table('New Assets', new_assets, false) }}
+{{ change_table('Changed Assets', changed_assets, true) }}
+{{ change_table('Disappeared Assets', disappeared_assets, true) }}
+{% if reappeared_assets %}{{ change_table('Reappeared Assets', reappeared_assets, true) }}{% endif %}
 
-<h3>Changed Assets ({{ changed_assets|length }})</h3>
-{% if changed_assets %}
-<table>
-<thead><tr><th>Subdomain</th><th>Change Detail</th></tr></thead>
-<tbody>
-{% for a in changed_assets %}<tr><td style="font-family:monospace;">{{ a.asset_subdomain }}</td><td>{{ a.detail }}</td></tr>{% endfor %}
-</tbody>
-</table>
-{% else %}<div class="empty-state">No changed assets since previous scan.</div>{% endif %}
-
-<h3>Disappeared Assets ({{ disappeared_assets|length }})</h3>
-{% if disappeared_assets %}
-<table>
-<thead><tr><th>Subdomain</th><th>Last Known IP</th></tr></thead>
-<tbody>
-{% for a in disappeared_assets %}<tr><td style="font-family:monospace;">{{ a.asset_subdomain }}</td><td style="font-family:monospace;">{{ a.asset_ip or '—' }}</td></tr>{% endfor %}
-</tbody>
-</table>
-{% else %}<div class="empty-state">No assets have disappeared since previous scan.</div>{% endif %}
-
-<!-- ================= RECOMMENDATIONS ================= -->
-<h2 class="section"><span class="section-num">06</span>Recommendations</h2>
-
+<!-- ================= 07 REMEDIATION PRIORITIES ================= -->
+<h2 class="section break"><span class="section-num">07</span>Remediation Priorities</h2>
 {% if severity_counts.critical > 0 %}
-<div class="callout">
-  <strong>Critical findings require immediate remediation.</strong>
-  The vulnerabilities listed below pose an immediate risk to the organization and should be patched or mitigated within 24–48 hours.
+<div class="critical-banner" style="background:#fef2f2;border-left:4px solid #b91c1c;padding:10px 14px;margin:10px 0;font-size:9.5px;color:#7f1d1d;">
+  <strong>Immediate action required.</strong> Critical findings should be patched or mitigated within {{ sla.critical }}.
 </div>
 {% endif %}
-
-{% if recommendations %}
+{% if priorities %}
 <table>
-<thead><tr><th>CVE</th><th>Vulnerability</th><th>Severity</th><th>Remediation Guidance</th></tr></thead>
-<tbody>
-{% for r in recommendations %}
-<tr>
-  <td><a href="https://nvd.nist.gov/vuln/detail/{{ r.cve_id }}">{{ r.cve_id }}</a></td>
-  <td>{{ r.name }}</td>
-  <td><span class="badge {{ r.severity.lower() }}">{{ r.severity }}</span></td>
-  <td>{{ r.guidance }}</td>
-</tr>
-{% endfor %}
-</tbody>
+  <thead><tr><th style="width:12%">Severity</th><th style="width:25%">Finding</th><th style="width:18%">Affected</th><th>Action</th><th style="width:12%">Target SLA</th></tr></thead>
+  <tbody>
+  {% for r in priorities %}
+  <tr>
+    <td><span class="badge {{ r.severity }}">{{ r.severity }}</span></td>
+    <td>{{ r.name }}{% if r.cve_id %}<div><a href="https://nvd.nist.gov/vuln/detail/{{ r.cve_id }}">{{ r.cve_id }}</a></div>{% endif %}
+        {% if r.kev %}<span class="flag kev" style="margin-left:0;">KEV</span>{% endif %}{% if r.unverified %}<span class="flag unverified" style="margin-left:0;">Unverified</span>{% endif %}</td>
+    <td class="mono" style="font-size:8px;">{% for h in r.hosts %}<div>{{ h }}</div>{% endfor %}</td>
+    <td>{{ r.guidance }}</td>
+    <td>{{ sla[r.severity] }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
 </table>
 {% else %}
-<div class="empty-state">No CVE-referenced findings requiring patch guidance in this scan cycle.</div>
+<div class="empty-state">No findings above informational severity; no remediation actions are required.</div>
 {% endif %}
 
 </body>
