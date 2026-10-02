@@ -331,7 +331,7 @@
       <p>This assessment covers external attack surface enumeration, service fingerprinting, and vulnerability
       detection across all discovered assets for <strong>{{ target.domain }}</strong>. Findings are classified
       by severity in accordance with industry-standard CVSS scoring, and prioritized remediation guidance is
-      provided in Section 08 of this report. Scan profile: <strong>{{ profile.label }}</strong> ({{ report_id }}).</p>
+      provided in Section 07 of this report. Scan profile: <strong>{{ profile.label }}</strong> ({{ report_id }}).</p>
     </div>
 
     <div class="stat-row">
@@ -340,7 +340,10 @@
       <div class="stat-chip medium"><div class="n">{{ severity_counts.medium }}</div><div class="l">Medium</div></div>
       <div class="stat-chip low"><div class="n">{{ severity_counts.low }}</div><div class="l">Low</div></div>
     </div>
-    {% if rating_basis %}<div style="font-size:8px;color:#fbbf24;margin-top:10px;">{{ rating_basis }}</div>{% endif %}
+    {% set _inf = unverified_counts.critical + unverified_counts.high + unverified_counts.medium + unverified_counts.low %}
+    {% set _all = severity_counts.critical + severity_counts.high + severity_counts.medium + severity_counts.low %}
+    {% if _all %}<div style="font-size:8px;color:#9ca3af;margin-top:10px;">{{ _all - _inf }} confirmed &middot; {{ _inf }} inferred from software versions (unverified)</div>{% endif %}
+    {% if rating_basis %}<div style="font-size:8px;color:#fbbf24;margin-top:4px;">{{ rating_basis }}</div>{% endif %}
   </div>
 
   <div class="risk-strip {{ risk_rating.lower() }}">
@@ -436,10 +439,10 @@
 {% if assets %}
 <table style="table-layout: fixed;">
 <colgroup>
-  <col style="width: 17%;"><col style="width: 13%;"><col style="width: 6%;"><col style="width: 11%;">
-  <col style="width: 15%;"><col style="width: 38%;">
+  <col style="width: 15%;"><col style="width: 14%;"><col style="width: 7%;"><col style="width: 10%;">
+  <col style="width: 18%;"><col style="width: 36%;">
 </colgroup>
-<thead><tr><th>Host</th><th>IP address</th><th>HTTP</th><th>Risk</th><th>Technologies</th><th>Open ports &amp; services</th></tr></thead>
+<thead><tr><th>Host</th><th>IP address</th><th style="white-space:nowrap;">HTTP</th><th>Risk</th><th style="word-break:normal;">Technologies</th><th>Open ports &amp; services</th></tr></thead>
 <tbody>
 {% for a in assets %}
 <tr>
@@ -447,7 +450,7 @@
   <td class="mono" style="white-space:nowrap;">{{ a.ip or '—' }}</td>
   <td>{{ a.http_status or '—' }}</td>
   <td>{% if a.risk_level %}<span class="badge {{ a.risk_level.lower() }}">{{ a.risk_level }}</span><div style="font-size:8px;color:#6b7280;margin-top:2px;">{{ a.risk_score|round|int }}/100</div>{% else %}—{% endif %}</td>
-  <td>{{ a.technologies|join(', ') if a.technologies else '—' }}</td>
+  <td style="font-size:8.5px;">{{ (a.technologies|clean_tech)|join(', ') if a.technologies else '—' }}</td>
   <td>
     {% if a.open_ports %}
     {% for p in a.open_ports %}
@@ -527,8 +530,8 @@
   Ordered by severity, then by active exploitation (CISA KEV), then CVSS. <span class="flag kev" style="margin-left:0;">KEV</span> = known to be exploited in the wild;
   <span class="flag unverified" style="margin-left:0;">Unverified</span> = inferred from software version, not confirmed.
 </p>
-{% if vulnerabilities %}
-  {% for v in vulnerabilities %}
+{% if confirmed_vulns %}
+  {% for v in confirmed_vulns %}
   <div class="vuln-card {{ v.severity }}">
     <div class="vuln-header">
       <div class="vuln-name">{{ v.name }}{% if v.kev %}<span class="flag kev">KEV</span>{% endif %}{% if v.exploitable %}<span class="flag exploit">Exploitable</span>{% endif %}{% if v.unverified %}<span class="flag unverified">Unverified</span>{% endif %}</div>
@@ -545,8 +548,44 @@
     {% if v.tags %}<div style="margin-top:6px;">{% for t in v.tags if t not in ('version-match','unverified','kev') %}<span class="tag-chip">{{ t }}</span>{% endfor %}</div>{% endif %}
   </div>
   {% endfor %}
-{% else %}
+{% elif not inferred_groups %}
   <div class="empty-state">No vulnerabilities were identified in this scan.</div>
+{% else %}
+  <div class="empty-state">No confirmed findings or misconfigurations. See version-inferred findings below.</div>
+{% endif %}
+
+{% if inferred_groups %}
+<h3 style="margin-top:22px;">Version-inferred vulnerabilities <span class="flag unverified" style="margin-left:6px;">Unverified</span></h3>
+<p class="section-intro">
+  Matched from detected software versions against NVD. Nothing was exploited. Vendors and distributions often backport
+  fixes without changing the version string, so confirm patch levels before acting. Grouped per service; KEV = known exploited in the wild.
+</p>
+{% for g in inferred_groups %}
+<div class="vuln-card {{ g.severity }}" style="page-break-inside:auto;">
+  <div class="vuln-header">
+    <div class="vuln-name">{{ g.component }}{% if g.kev_count %}<span class="flag kev">{{ g.kev_count }} KEV</span>{% endif %}</div>
+    <span class="badge {{ g.severity }}">{{ g.severity }}</span>
+  </div>
+  <div class="vuln-meta"><strong>Host:</strong> {{ g.host or '—' }} &nbsp;|&nbsp; <strong>{{ g.count }}</strong> matching CVE(s)
+    &nbsp;|&nbsp; {% for k, n in g.by_sev %}{{ n }} {{ k }}{% if not loop.last %}, {% endif %}{% endfor %}
+    &nbsp;|&nbsp; <strong>Max CVSS:</strong> {{ '%.1f'|format(g.max_cvss) }}</div>
+  <table style="margin-top:8px;table-layout:fixed;">
+    <colgroup><col style="width:17%"><col style="width:9%"><col style="width:12%"><col></colgroup>
+    <thead><tr><th>CVE</th><th style="white-space:nowrap;">CVSS</th><th>Severity</th><th>Summary</th></tr></thead>
+    <tbody>
+    {% for r in g.rows %}
+    <tr>
+      <td class="mono" style="font-size:8px;">{% if r.cve_id %}<a href="https://nvd.nist.gov/vuln/detail/{{ r.cve_id }}">{{ r.cve_id }}</a>{% else %}—{% endif %}{% if r.kev %}<span class="flag kev" style="margin-left:3px;">KEV</span>{% endif %}</td>
+      <td>{{ '%.1f'|format(r.cvss) if r.cvss is not none else '—' }}</td>
+      <td><span class="badge {{ r.severity }}">{{ r.severity }}</span></td>
+      <td style="font-size:8.5px;">{{ r.summary }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div class="vuln-desc" style="color:#1f2430;"><strong>Recommended action:</strong> {{ g.guidance }}</div>
+</div>
+{% endfor %}
 {% endif %}
 
 <!-- ================= 06 CHANGE DETECTION ================= -->
@@ -579,7 +618,7 @@
   <strong>Immediate action required.</strong> Critical findings should be patched or mitigated within {{ sla.critical }}.
 </div>
 {% endif %}
-{% if priorities %}
+{% if priorities or inferred_groups %}
 <table>
   <thead><tr><th style="width:12%">Severity</th><th style="width:25%">Finding</th><th style="width:18%">Affected</th><th>Action</th><th style="width:12%">Target SLA</th></tr></thead>
   <tbody>
@@ -591,6 +630,16 @@
     <td class="mono" style="font-size:8px;">{% for h in r.hosts %}<div>{{ h }}</div>{% endfor %}</td>
     <td>{{ r.guidance }}</td>
     <td>{{ sla[r.severity] }}</td>
+  </tr>
+  {% endfor %}
+  {% for g in inferred_groups %}
+  <tr>
+    <td><span class="badge {{ g.severity }}">{{ g.severity }}</span></td>
+    <td>Verify and patch {{ g.component }}<div style="font-size:8px;color:#6b7280;">{{ g.count }} inferred CVE(s)</div>
+        {% if g.kev_count %}<span class="flag kev" style="margin-left:0;">{{ g.kev_count }} KEV</span>{% endif %}<span class="flag unverified" style="margin-left:0;">Unverified</span></td>
+    <td class="mono" style="font-size:8px;">{{ g.host }}</td>
+    <td>{{ g.guidance }}</td>
+    <td>Verify within {{ g.verify_sla }}</td>
   </tr>
   {% endfor %}
   </tbody>

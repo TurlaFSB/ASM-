@@ -22,6 +22,7 @@ from backend.models.vulnerability import Vulnerability
 from backend.models.alert import Alert
 from backend.models.discovered_path import DiscoveredPath
 from backend.scan_profiles import get_profile
+from backend.tech_utils import clean_technologies
 from backend.path_flags import is_sensitive_path
 
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
@@ -130,6 +131,53 @@ def _sort_key(v: Dict):
     return (sev, not v["kev"], not v["exploitable"], v["unverified"], -(v["cvss"] or 0), v["host"] or "")
 
 
+COMPONENT_RE = re.compile(r"^\[version match\]\s+(.*?):\s+CVE-\d{4}-\d{4,}")
+SENT_END_RE = re.compile(r"(?<=[.!?])\s")
+
+
+def _component(v: Dict) -> str:
+    m = COMPONENT_RE.match(v.get("name") or "")
+    return m.group(1).strip() if m else (v.get("name") or "Unknown component")
+
+
+def _short_summary(desc: str, limit: int = 170) -> str:
+    """First sentence of an NVD description, without our own 'Matched by service version' tail."""
+    desc = (desc or "").split(" Matched by service version")[0].strip()
+    first = SENT_END_RE.split(desc, maxsplit=1)[0]
+    return first if len(first) <= limit else first[:limit].rstrip() + " …"
+
+
+def group_inferred(vulns: List[Dict]) -> List[Dict]:
+    """Version-matched (unverified) CVEs collapse into one block per component and host, so a
+    service with 20 CVEs is one table and one remediation action, not 20 near-identical cards."""
+    groups: Dict[tuple, Dict] = {}
+    for v in vulns:
+        comp = _component(v)
+        g = groups.setdefault((comp, v["host"]), {"component": comp, "host": v["host"], "rows": []})
+        g["rows"].append({"cve_id": v["cve_id"], "cvss": v["cvss"], "severity": v["severity"],
+                          "kev": v["kev"], "summary": _short_summary(v["description"])})
+    out = []
+    for g in groups.values():
+        g["rows"].sort(key=lambda r: (SEVERITY_ORDER.index(r["severity"]) if r["severity"] in SEVERITY_ORDER else 99,
+                                      not r["kev"], -(r["cvss"] or 0)))
+        g["severity"] = g["rows"][0]["severity"]
+        g["count"] = len(g["rows"])
+        g["kev_count"] = sum(1 for r in g["rows"] if r["kev"])
+        g["max_cvss"] = max((r["cvss"] or 0) for r in g["rows"])
+        by_sev = {}
+        for r in g["rows"]:
+            by_sev[r["severity"]] = by_sev.get(r["severity"], 0) + 1
+        g["by_sev"] = [(k, by_sev[k]) for k in SEVERITY_ORDER if k in by_sev]
+        g["guidance"] = (f"Confirm the installed version and distribution patch level for {g['component']} "
+                         "(vendors often backport fixes without changing the version string), then apply vendor "
+                         "updates." + (f" Start with the {g['kev_count']} CVE(s) marked KEV." if g["kev_count"] else ""))
+        g["verify_sla"] = "48 hours" if g["kev_count"] else ("7 days" if g["severity"] in ("critical", "high") else "30 days")
+        out.append(g)
+    out.sort(key=lambda g: (SEVERITY_ORDER.index(g["severity"]) if g["severity"] in SEVERITY_ORDER else 99,
+                            -g["kev_count"], -g["max_cvss"], g["component"]))
+    return out
+
+
 def describe_change(detail) -> List[str]:
     """Turn an alert's detail dict into readable bullet lines (never a raw dict repr)."""
     if not isinstance(detail, dict):
@@ -140,7 +188,8 @@ def describe_change(detail) -> List[str]:
         out.append("Ports opened: " + ", ".join(str(p) for p in sorted(np_ - op)))
     if op - np_:
         out.append("Ports closed: " + ", ".join(str(p) for p in sorted(op - np_)))
-    ot, nt = set(detail.get("old_technologies") or []), set(detail.get("new_technologies") or [])
+    ot = set(clean_technologies(detail.get("old_technologies")))
+    nt = set(clean_technologies(detail.get("new_technologies")))
     if nt - ot:
         out.append("Technologies added: " + ", ".join(sorted(nt - ot)))
     if ot - nt:
@@ -220,9 +269,13 @@ def build_report_context(db: Session, scan_id: int):
                 limitations.append(lim)
     profile = get_profile(scan.profile or mr.get("profile"))
 
-    # Remediation priorities: one row per distinct finding, hosts aggregated
+    confirmed_vulns = [v for v in vulns if not v["unverified"]]
+    inferred_groups = group_inferred([v for v in vulns if v["unverified"] and v["severity"] != "info"])
+
+    # Remediation priorities: one row per distinct confirmed finding (hosts aggregated) plus one
+    # row per inferred component, so the list stays actionable instead of repeating itself.
     grouped: Dict[tuple, Dict] = {}
-    for v in vulns:
+    for v in confirmed_vulns:
         if v["severity"] == "info":
             continue
         key = (v["name"], v["cve_id"])
@@ -263,12 +316,13 @@ def build_report_context(db: Session, scan_id: int):
     if top in severity_counts and severity_counts[top] and confirmed_counts[top] == 0:
         rating_basis = "Based solely on findings inferred from software versions; verification may lower this rating."
 
-    technologies = sorted({t for a in assets for t in (a.technologies or [])})
+    technologies = sorted({t for a in assets for t in clean_technologies(a.technologies)})
 
     return {
         "report_id": f"ASM-{scan.id:05d}",
         "target": target, "scan": scan, "profile": profile, "duration": duration,
         "assets": assets, "vulnerabilities": vulns,
+        "confirmed_vulns": confirmed_vulns, "inferred_groups": inferred_groups,
         "severity_counts": severity_counts, "confirmed_counts": confirmed_counts,
         "unverified_counts": unverified_counts,
         "risk_rating": rating, "rating_basis": rating_basis, "key_findings": key_findings,
@@ -294,5 +348,6 @@ def generate_pdf_report(db: Session, scan_id: int) -> bytes:
     context = build_report_context(db, scan_id)
     env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)),
                       autoescape=select_autoescape(["html", "xml"], default=True))
+    env.filters["clean_tech"] = clean_technologies
     html_content = env.get_template("report.html").render(**context)
     return HTML(string=html_content, url_fetcher=_deny_fetch).write_pdf()

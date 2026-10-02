@@ -93,10 +93,12 @@ def test_invalid_cve_id_is_never_linked(db):
 
 
 def test_priorities_dedupe_by_finding_and_aggregate_hosts(db):
-    db.add(Vulnerability(target_id=1, scan_id=db.scan_id, template_id="t", name="vm-crit", severity="critical",
-                         host="10.0.0.5:21", cve_id="CVE-2015-3306", tags=["version-match"])); db.commit()
+    for host in ("10.0.0.5:21", "10.0.0.6:21"):
+        db.add(Vulnerability(target_id=1, scan_id=db.scan_id, template_id="t", name="ftp-anon", severity="critical",
+                             host=host, cve_id="CVE-2015-3306", tags=["misconfig"]))
+    db.commit()
     ctx = reports.build_report_context(db, db.scan_id)
-    rows = [p for p in ctx["priorities"] if p["name"] == "vm-crit"]
+    rows = [p for p in ctx["priorities"] if p["name"] == "ftp-anon"]
     assert len(rows) == 1 and len(rows[0]["hosts"]) == 2
     assert all(p["severity"] != "info" for p in ctx["priorities"])
 
@@ -151,3 +153,29 @@ def test_pdf_generates(db):
 def test_unknown_scan_raises(db):
     with pytest.raises(ValueError):
         reports.build_report_context(db, 9999)
+
+
+def test_inferred_cves_group_per_component_and_shrink_remediation(db):
+    for i, (cve, sev, tags) in enumerate([("CVE-2021-40438", "critical", ["version-match", "kev"]),
+                                           ("CVE-2017-3167", "critical", ["version-match"]),
+                                           ("CVE-2019-0001", "high", ["version-match"])]):
+        db.add(Vulnerability(target_id=1, scan_id=db.scan_id, template_id=f"nvd-{cve}", severity=sev,
+                             name=f"[version match] Apache httpd 2.4.7: {cve}", host="10.0.0.5", cve_id=cve,
+                             cvss_score=9.0 - i, tags=tags,
+                             description="Crafted request does bad things. Matched by service version (cpe:2.3:a:x). Unverified."))
+    db.commit()
+    ctx = reports.build_report_context(db, db.scan_id)
+    groups = [g for g in ctx["inferred_groups"] if g["component"] == "Apache httpd 2.4.7"]
+    assert len(groups) == 1 and groups[0]["count"] == 3 and groups[0]["kev_count"] == 1
+    assert groups[0]["rows"][0]["cve_id"] == "CVE-2021-40438"              # KEV first
+    assert groups[0]["rows"][0]["summary"] == "Crafted request does bad things."
+    assert groups[0]["verify_sla"] == "48 hours"
+    assert all(v["name"].startswith("[version match]") is False for v in ctx["confirmed_vulns"])
+    assert not any(p["name"].startswith("[version match]") for p in ctx["priorities"])
+
+
+def test_clean_technologies_drops_noise_and_duplicates():
+    from backend.tech_utils import clean_technologies
+    raw = ["Apache", "Apache HTTP Server:2.4.7", "Cookies", "HTTPServer", "HttpOnly", "Index-Of", "Java",
+           "Jetty", "Jetty:8.1.7", "X-Frame-Options", "Ubuntu"]
+    assert clean_technologies(raw) == ["Apache:2.4.7", "Java", "Jetty:8.1.7", "Ubuntu"]
