@@ -69,6 +69,7 @@ DEFAULT_SCAN_PROFILE = ASM_TAGS
 
 
 NUCLEI_TIMEOUT = int(os.getenv("NUCLEI_TIMEOUT", "1800"))
+NUCLEI_SEVERITY = os.getenv("NUCLEI_SEVERITY", "low,medium,high,critical")
 
 
 def _read_findings(path: str) -> List[Dict]:
@@ -117,12 +118,29 @@ def _summarize(result: Dict) -> None:
     result["severity_counts"] = counts
 
 
+TEMPLATE_DIRS = ("~/nuclei-templates", "~/.local/nuclei-templates")
+
+
+def template_count() -> int:
+    """Number of nuclei template files installed (0 means nuclei would silently run nothing)."""
+    for d in TEMPLATE_DIRS:
+        root = os.path.expanduser(d)
+        if os.path.isdir(root):
+            n = 0
+            for _, _, files in os.walk(root):
+                n += sum(1 for f in files if f.endswith((".yaml", ".yml")))
+            if n:
+                return n
+    return 0
+
+
 def check_template_freshness(max_age_days: int = 7) -> str:
     """
     Check whether local Nuclei templates are reasonably fresh.
     Templates should be updated outside the scan pipeline.
     """
-    template_dir = os.path.expanduser("~/.local/nuclei-templates")
+    template_dir = next((os.path.expanduser(d) for d in TEMPLATE_DIRS
+                         if os.path.isdir(os.path.expanduser(d))), os.path.expanduser(TEMPLATE_DIRS[0]))
 
     if not os.path.isdir(template_dir):
         return "templates_not_found"
@@ -166,6 +184,15 @@ def run_nuclei(hosts: List[str], rate_limit: int = 50) -> Dict:
     if not hosts:
         result["module_status"] = "no hosts provided"
         return result
+
+    n_templates = template_count()
+    result["template_count"] = n_templates
+    if n_templates == 0:
+        logger.error("[nuclei] NO TEMPLATES INSTALLED -- refusing to report an empty scan as success. "
+                     "Rebuild the image or run: nuclei -update-templates")
+        result["module_status"] = "failed: no nuclei templates installed"
+        return result
+    logger.info(f"[nuclei] templates installed: {n_templates}")
 
     tmp_path = None
     targets_path = None
@@ -213,7 +240,7 @@ def run_nuclei(hosts: List[str], rate_limit: int = 50) -> Dict:
                 "-timeout",
                 "10",
                 "-severity",
-                "critical,high,medium",
+                NUCLEI_SEVERITY,
 
                 "-tags",
                 ",".join(DEFAULT_SCAN_PROFILE),
@@ -244,6 +271,8 @@ def run_nuclei(hosts: List[str], rate_limit: int = 50) -> Dict:
 
         if result["total"] == 0:
             result["module_status"] = "empty"
+            tail = (nuclei_result.stderr or "").strip()[-600:]
+            logger.warning(f"[nuclei] 0 findings with {n_templates} templates; stderr tail: {tail!r}")
 
         duration = time.time() - start
 

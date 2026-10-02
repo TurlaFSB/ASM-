@@ -315,6 +315,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
 
         vuln_data = stage_results["nuclei"]
         module_results["vuln"] = vuln_data["module_status"]
+        module_results["nuclei_templates"] = vuln_data.get("template_count")
         sslyze_data = stage_results["sslyze"]
         module_results["sslyze"] = sslyze_data["module_status"]
         screenshot_data = stage_results["screenshot"]

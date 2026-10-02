@@ -22,3 +22,23 @@ def test_read_findings_and_summary(tmp_path):
 
 def test_read_findings_missing_file():
     assert _read_findings("/nonexistent") == []
+
+
+def test_template_count(tmp_path, monkeypatch):
+    import backend.scanner.vuln as v
+    d = tmp_path / "nt" / "http"
+    d.mkdir(parents=True)
+    (d / "a.yaml").write_text("id: a")
+    (d / "b.yml").write_text("id: b")
+    (d / "readme.md").write_text("x")
+    monkeypatch.setattr(v, "TEMPLATE_DIRS", (str(tmp_path / "nt"),))
+    assert v.template_count() == 2
+    monkeypatch.setattr(v, "TEMPLATE_DIRS", (str(tmp_path / "missing"),))
+    assert v.template_count() == 0
+
+
+def test_run_nuclei_refuses_when_no_templates(monkeypatch):
+    import backend.scanner.vuln as v
+    monkeypatch.setattr(v, "template_count", lambda: 0)
+    r = v.run_nuclei(["http://x"], 10)
+    assert r["module_status"].startswith("failed: no nuclei templates")
