@@ -24,6 +24,11 @@ def main(argv) -> int:
         summary = rebuild_scan_changes(db, scan)
         print(f"scan {scan.id}: {summary['events']} changes, {summary['pending']} pending, "
               f"baseline scan {summary.get('baseline_scan_id')}")
+        from backend.models.change_event import ChangeEvent
+        rows = (db.query(ChangeEvent).filter(ChangeEvent.scan_id == scan.id)
+                .order_by(ChangeEvent.severity, ChangeEvent.category, ChangeEvent.id).all())
+        for r in rows:
+            print(f"  [{r.status:9}] {r.severity:8} {r.category:10} {r.change_type:8} {r.summary[:110]}")
         return 0
     finally:
         db.close()
