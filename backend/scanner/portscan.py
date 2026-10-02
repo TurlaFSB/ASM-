@@ -37,6 +37,8 @@ def parse_nmap_xml(xml_output: str) -> List[Dict]:
                             "service": service.get("name") if service is not None else "unknown",
                             "version": service.get("version", "") if service is not None else "",
                             "product": service.get("product", "") if service is not None else "",
+                            "extrainfo": service.get("extrainfo", "") if service is not None else "",
+                            "cpe": [c.text for c in service.findall("cpe") if c.text] if service is not None else [],
                         }
                     )
 

@@ -278,6 +278,13 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             scan.current_stage = "web_analysis"
             db.commit()
         stage_start = time.time()
+        from backend.scanner.cve_match import run_cve_match
+
+        def _cve_cache():
+            try:
+                return redis.Redis.from_url(settings.redis_url, socket_timeout=2)
+            except Exception:  # noqa: BLE001
+                return None
         tls_targets = tls_targets_from_urls(confirmed_urls)
         stage_results, stage_dts = run_stages_parallel(
             jobs={
@@ -287,11 +294,12 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                 "nuclei": lambda: run_nuclei(host_urls, heavy_rate),
                 "sslyze": lambda: run_sslyze(tls_targets),
                 "screenshot": lambda: run_eyewitness(host_urls),
+                "cve_match": lambda: run_cve_match(port_data["hosts"], cache=_cve_cache()),
             },
             defaults={
                 "whatweb": {"hosts": {}}, "dirbuster": {"hosts": {}},
                 "nuclei": {"findings": []}, "sslyze": {"findings": []},
-                "screenshot": {"screenshots": []},
+                "screenshot": {"screenshots": []}, "cve_match": {"findings": []},
             },
             parallel=_os.getenv("ASM_PARALLEL_STAGES", "true").lower() != "false",
         )
@@ -315,6 +323,11 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
 
         vuln_data = stage_results["nuclei"]
         module_results["vuln"] = vuln_data["module_status"]
+        cve_data = stage_results["cve_match"]
+        module_results["cve_match"] = cve_data["module_status"]
+        # version-matched CVEs flow through the same save/score/KEV path as nuclei findings
+        vuln_data.setdefault("findings", [])
+        vuln_data["findings"] = list(vuln_data["findings"]) + cve_data.get("findings", [])
         module_results["nuclei_templates"] = vuln_data.get("template_count")
         sslyze_data = stage_results["sslyze"]
         module_results["sslyze"] = sslyze_data["module_status"]
@@ -481,6 +494,16 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                     db.add(alert)
                     created_alerts.append(alert)
                 else:
+                    if existing.status == "disappeared":
+                        alert = Alert(
+                            target_id=target_id, scan_id=scan_id, alert_type="reappeared_asset",
+                            asset_subdomain=subdomain, asset_ip=ip,
+                            detail={"reason": "Asset seen again after being marked disappeared"},
+                        )
+                        db.add(alert)
+                        created_alerts.append(alert)
+                    # unchanged since last scan: no longer "new"/"changed"/"disappeared"
+                    existing.status = "active"
                     existing.last_seen = datetime.now(timezone.utc)
                     scanned_assets_this_run.append(existing)
             else:

@@ -73,7 +73,7 @@ def pipeline_trusted_for_removals(module_results: Dict, internal_target: bool) -
 
 
 def run_stages_parallel(jobs: Dict[str, Optional[callable]], defaults: Dict[str, Dict],
-                        max_workers: int = 5, parallel: bool = True):
+                        max_workers: int = 6, parallel: bool = True):
     """Run independent scanner stages concurrently (they only read the confirmed web
     targets and never touch the DB). A crashing stage degrades to its default result with
     a failed status instead of killing the scan. Returns (results, timings)."""

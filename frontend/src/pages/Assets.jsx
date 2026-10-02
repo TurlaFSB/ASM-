@@ -87,7 +87,10 @@ export default function Assets() {
                 <td className="wrap">{asset.technologies?.join(", ") || "—"}</td>
                 <td>
                   {asset.open_ports?.length > 0
-                    ? asset.open_ports.map(p => p.port).join(", ")
+                    ? asset.open_ports.map(p => (
+                        <span key={p.port} title={[p.service, p.product, p.version].filter(Boolean).join(" ") || "unknown service"}
+                              style={{ marginRight: 6 }}>{p.port}</span>
+                      ))
                     : "—"}
                 </td>
                 <td>
