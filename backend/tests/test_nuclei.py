@@ -42,3 +42,23 @@ def test_run_nuclei_refuses_when_no_templates(monkeypatch):
     monkeypatch.setattr(v, "template_count", lambda: 0)
     r = v.run_nuclei(["http://x"], 10)
     assert r["module_status"].startswith("failed: no nuclei templates")
+
+
+def test_build_cmd_not_silent_and_autoscan(monkeypatch):
+    import backend.scanner.vuln as v
+    monkeypatch.setattr(v, "NUCLEI_AUTOSCAN", True)
+    cmd = v.build_nuclei_cmd("t.txt", "o.jsonl", 50)
+    assert "-silent" not in cmd and "-as" in cmd and "-tags" not in cmd
+    assert cmd[cmd.index("-mhe") + 1] == "100" and cmd[cmd.index("-rate-limit") + 1] == "50"
+    monkeypatch.setattr(v, "NUCLEI_AUTOSCAN", False)
+    cmd = v.build_nuclei_cmd("t.txt", "o.jsonl", 50)
+    assert "-as" not in cmd and "-tags" in cmd
+
+
+def test_info_findings_filtered_by_tag():
+    from backend.scanner.vuln import keep_finding
+    assert keep_finding({"severity": "high", "tags": ["cve"]})
+    assert keep_finding({"severity": "info", "tags": ["panel", "phpmyadmin"]})
+    assert keep_finding({"severity": "info", "tags": "exposure,misc"})
+    assert not keep_finding({"severity": "info", "tags": ["tech", "apache"]})
+    assert not keep_finding({"severity": "info", "tags": []})

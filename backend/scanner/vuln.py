@@ -69,7 +69,47 @@ DEFAULT_SCAN_PROFILE = ASM_TAGS
 
 
 NUCLEI_TIMEOUT = int(os.getenv("NUCLEI_TIMEOUT", "1800"))
-NUCLEI_SEVERITY = os.getenv("NUCLEI_SEVERITY", "low,medium,high,critical")
+NUCLEI_SEVERITY = os.getenv("NUCLEI_SEVERITY", "info,low,medium,high,critical")
+# Automatic scan: nuclei fingerprints each target (Wappalyzer) and runs only the templates
+# relevant to the detected technologies. Set NUCLEI_AUTOSCAN=false to use the fixed tag profile.
+NUCLEI_AUTOSCAN = os.getenv("NUCLEI_AUTOSCAN", "true").lower() != "false"
+# Default is 30: a small/slow host that drops 30 requests is abandoned and its remaining
+# templates silently never run. Raise it, and report when it still happens.
+NUCLEI_MAX_HOST_ERROR = os.getenv("NUCLEI_MAX_HOST_ERROR", "100")
+NUCLEI_CONCURRENCY = os.getenv("NUCLEI_CONCURRENCY", "15")
+
+# info-severity results are kept only when they are attack-surface exposures; pure
+# technology/WAF/version detections are already captured by httpx/whatweb/nmap.
+INFO_KEEP_TAGS = {"panel", "exposure", "misconfig", "takeover", "default-login", "config", "files"}
+
+
+def keep_finding(f: Dict) -> bool:
+    if (f.get("severity") or "").lower() != "info":
+        return True
+    tags = f.get("tags") or []
+    if isinstance(tags, str):
+        tags = [t.strip() for t in tags.split(",")]
+    return bool({str(t).lower() for t in tags} & INFO_KEEP_TAGS)
+
+
+def build_nuclei_cmd(targets_path: str, out_path: str, rate_limit: int):
+    cmd = [
+        "nuclei", "-nc",              # NOT -silent: warnings (e.g. host skipped) must reach stderr
+        "-l", targets_path,
+        "-rate-limit", str(rate_limit),
+        "-c", NUCLEI_CONCURRENCY,
+        "-mhe", NUCLEI_MAX_HOST_ERROR,
+        "-retries", "1",
+        "-ni",                        # no interactsh/OAST
+        "-duc",                       # no update check at scan time
+        "-timeout", "10",
+        "-severity", NUCLEI_SEVERITY,
+    ]
+    cmd += ["-as"] if NUCLEI_AUTOSCAN else ["-tags", ",".join(DEFAULT_SCAN_PROFILE)]
+    cmd += ["-jsonl-export", out_path]
+    return cmd
+
+
 
 
 def _read_findings(path: str) -> List[Dict]:
@@ -223,31 +263,7 @@ def run_nuclei(hosts: List[str], rate_limit: int = 50) -> Dict:
         )
 
         nuclei_result = _run_with_process_group_cleanup(
-            [
-                "nuclei",
-                "-silent",
-
-                "-l",
-                targets_path,
-                "-rate-limit",
-                str(rate_limit),
-
-                "-retries",
-                "1",
-                "-ni",   # no interactsh/OAST: avoids slow startup and outbound callbacks
-                "-duc",  # no update check at scan time
-
-                "-timeout",
-                "10",
-                "-severity",
-                NUCLEI_SEVERITY,
-
-                "-tags",
-                ",".join(DEFAULT_SCAN_PROFILE),
-
-                "-jsonl-export",
-                tmp_path,
-            ],
+            build_nuclei_cmd(targets_path, tmp_path, rate_limit),
             timeout=NUCLEI_TIMEOUT,
         )
 
@@ -266,10 +282,15 @@ def run_nuclei(hosts: List[str], rate_limit: int = 50) -> Dict:
             result["module_status"] = "failed"
             return result
 
-        result["findings"] = _read_findings(tmp_path)
+        result["findings"] = [f for f in _read_findings(tmp_path) if keep_finding(f)]
         _summarize(result)
+        stderr_txt = nuclei_result.stderr or ""
+        skipped_hosts = "unresponsive" in stderr_txt
+        if skipped_hosts:
+            logger.warning("[nuclei] host(s) skipped as unresponsive -- results are INCOMPLETE")
+            result["module_status"] = "partial (host skipped as unresponsive; lower the scan rate)"
 
-        if result["total"] == 0:
+        if result["total"] == 0 and not skipped_hosts:
             result["module_status"] = "empty"
             tail = (nuclei_result.stderr or "").strip()[-600:]
             logger.warning(f"[nuclei] 0 findings with {n_templates} templates; stderr tail: {tail!r}")
@@ -286,7 +307,7 @@ def run_nuclei(hosts: List[str], rate_limit: int = 50) -> Dict:
 
     except subprocess.TimeoutExpired:
         duration = time.time() - start
-        result["findings"] = _read_findings(tmp_path)  # keep what was found before the cap
+        result["findings"] = [f for f in _read_findings(tmp_path) if keep_finding(f)]  # keep what was found before the cap
         _summarize(result)
         logger.error(
             f"[nuclei] hosts_in={len(hosts)} status=timeout after {NUCLEI_TIMEOUT}s "

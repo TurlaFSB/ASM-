@@ -272,7 +272,10 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         # never touch the DB, so this is thread-safe. ASM_PARALLEL_STAGES=false disables it.
         import os as _os
         from backend.pipeline_utils import run_stages_parallel, effective_rate
-        heavy_rate = effective_rate(rate_limit)
+        # nuclei and feroxbuster run at the same time against the same hosts: split the budget
+        # so combined load stays within the configured ceiling (overloading a host makes
+        # nuclei abandon it as 'unresponsive').
+        heavy_rate = max(1, effective_rate(rate_limit) // (2 if enable_dirbuster else 1))
         self.update_state(state="PROGRESS", meta={"stage": "web_analysis"})
         if scan:
             scan.current_stage = "web_analysis"
