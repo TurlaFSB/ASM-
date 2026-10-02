@@ -221,3 +221,11 @@ def test_schema_mismatch_is_treated_as_no_baseline():
     old = _snap()
     old["schema"] = 0
     assert diff_snapshots(old, _snap())["baseline"] is True
+
+
+def test_shell_history_and_dotfiles_are_sensitive():
+    from backend.path_flags import is_sensitive_path
+    for p in ("/.bash_history", "/.bashrc", "/.profile", "/.mysql_history", "/.netrc"):
+        assert is_sensitive_path(p, 200), p
+    assert not is_sensitive_path("/.cache", 301)
+    assert not is_sensitive_path("/index.html", 200)
