@@ -98,3 +98,24 @@ def test_port_exposure_scoring_tiers():
     assert score_asset(A([80]), [])["risk_score"] == 0
     ms3 = score_asset(A([21, 22, 80, 111, 139, 445, 3306, 6667]), [])
     assert ms3["risk_score"] == 25 and ms3["risk_level"] == "Low"
+
+
+def test_cpe_candidates_normalise_build_suffix():
+    from backend.scanner.cve_match import cpe_candidates
+    c = cpe_candidates("cpe:2.3:a:eclipse:jetty:8.1.7.v20120910:*:*:*:*:*:*:*")
+    assert c == ["cpe:2.3:a:eclipse:jetty:8.1.7.v20120910:*:*:*:*:*:*:*",
+                 "cpe:2.3:a:eclipse:jetty:8.1.7:*:*:*:*:*:*:*"]
+    assert len(cpe_candidates("cpe:2.3:a:proftpd:proftpd:1.3.5:*:*:*:*:*:*:*")) == 1
+
+
+def test_fallback_candidate_used_when_exact_returns_nothing():
+    class Sess(FakeSession):
+        def get(self, url, params=None, headers=None, timeout=None):
+            self.calls.append(params["cpeName"])
+            empty = {"vulnerabilities": []}
+            return FakeResp(NVD if params["cpeName"].endswith("8.1.7:*:*:*:*:*:*:*") else empty)
+    s = Sess()
+    h = [{"subdomain": "h", "ip": "h", "ports": [{"port": 8080, "product": "Jetty",
+          "version": "8.1.7.v20120910", "cpe": ["cpe:/a:eclipse:jetty:8.1.7.v20120910"]}]}]
+    r = run_cve_match(h, session=s, sleep=lambda x: None)
+    assert len(s.calls) == 2 and len(r["findings"]) == 1

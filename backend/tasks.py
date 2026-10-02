@@ -275,7 +275,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         # nuclei and feroxbuster run at the same time against the same hosts: split the budget
         # so combined load stays within the configured ceiling (overloading a host makes
         # nuclei abandon it as 'unresponsive').
-        heavy_rate = max(1, effective_rate(rate_limit) // (2 if enable_dirbuster else 1))
+        heavy_rate = max(1, effective_rate(rate_limit) // (3 if enable_dirbuster else 2))
         self.update_state(state="PROGRESS", meta={"stage": "web_analysis"})
         if scan:
             scan.current_stage = "web_analysis"
@@ -288,6 +288,8 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                 return redis.Redis.from_url(settings.redis_url, socket_timeout=2)
             except Exception:  # noqa: BLE001
                 return None
+        from backend.scanner.vuln import network_tags_from_services
+        net_tags = network_tags_from_services(port_data["hosts"])
         tls_targets = tls_targets_from_urls(confirmed_urls)
         stage_results, stage_dts = run_stages_parallel(
             jobs={
@@ -298,11 +300,15 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                 "sslyze": lambda: run_sslyze(tls_targets),
                 "screenshot": lambda: run_eyewitness(host_urls),
                 "cve_match": lambda: run_cve_match(port_data["hosts"], cache=_cve_cache()),
+                "nuclei_network": (lambda: run_nuclei(
+                    sorted({h["subdomain"] for h in port_data["hosts"]}), heavy_rate, tags=net_tags))
+                    if net_tags else None,
             },
             defaults={
                 "whatweb": {"hosts": {}}, "dirbuster": {"hosts": {}},
                 "nuclei": {"findings": []}, "sslyze": {"findings": []},
                 "screenshot": {"screenshots": []}, "cve_match": {"findings": []},
+                "nuclei_network": {"findings": []},
             },
             parallel=_os.getenv("ASM_PARALLEL_STAGES", "true").lower() != "false",
         )
@@ -326,6 +332,12 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
 
         vuln_data = stage_results["nuclei"]
         module_results["vuln"] = vuln_data["module_status"]
+        net_data = stage_results.get("nuclei_network")
+        if net_data is not None:
+            module_results["nuclei_network"] = net_data["module_status"]
+            vuln_data["findings"] = list(vuln_data.get("findings", [])) + net_data.get("findings", [])
+        else:
+            module_results["nuclei_network"] = "skipped (no recognised network services)"
         cve_data = stage_results["cve_match"]
         module_results["cve_match"] = cve_data["module_status"]
         # version-matched CVEs flow through the same save/score/KEV path as nuclei findings

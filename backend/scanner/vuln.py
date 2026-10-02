@@ -83,6 +83,28 @@ NUCLEI_CONCURRENCY = os.getenv("NUCLEI_CONCURRENCY", "15")
 INFO_KEEP_TAGS = {"panel", "exposure", "misconfig", "takeover", "default-login", "config", "files"}
 
 
+# nmap service name -> nuclei tags. Lets nuclei run service-specific checks (e.g. the
+# UnrealIRCd backdoor, ProFTPD mod_copy, Samba, MySQL) that web-only scanning never reaches.
+SERVICE_TAGS = {
+    "ftp": ["ftp"], "ssh": ["ssh"], "mysql": ["mysql"], "irc": ["irc", "unrealircd"],
+    "netbios-ssn": ["smb", "samba"], "microsoft-ds": ["smb", "samba"], "smb": ["smb", "samba"],
+    "rpcbind": ["rpc"], "ipp": ["cups"], "postgresql": ["postgres"], "redis": ["redis"],
+    "mongodb": ["mongodb"], "vnc": ["vnc"], "telnet": ["telnet"], "smtp": ["smtp"],
+    "snmp": ["snmp"], "ldap": ["ldap"], "ms-wbt-server": ["rdp"], "memcached": ["memcached"],
+    "nfs": ["nfs"], "domain": ["dns"],
+}
+
+
+def network_tags_from_services(port_hosts: List[Dict]) -> List[str]:
+    tags = set()
+    for h in port_hosts:
+        for p in h.get("ports", []):
+            svc = (p.get("service") or "").lower()
+            if svc in SERVICE_TAGS:
+                tags.update(SERVICE_TAGS[svc])
+    return sorted(tags)
+
+
 def keep_finding(f: Dict) -> bool:
     if (f.get("severity") or "").lower() != "info":
         return True
@@ -92,7 +114,7 @@ def keep_finding(f: Dict) -> bool:
     return bool({str(t).lower() for t in tags} & INFO_KEEP_TAGS)
 
 
-def build_nuclei_cmd(targets_path: str, out_path: str, rate_limit: int):
+def build_nuclei_cmd(targets_path: str, out_path: str, rate_limit: int, tags=None):
     cmd = [
         "nuclei", "-nc",              # NOT -silent: warnings (e.g. host skipped) must reach stderr
         "-l", targets_path,
@@ -105,7 +127,10 @@ def build_nuclei_cmd(targets_path: str, out_path: str, rate_limit: int):
         "-timeout", "10",
         "-severity", NUCLEI_SEVERITY,
     ]
-    cmd += ["-as"] if NUCLEI_AUTOSCAN else ["-tags", ",".join(DEFAULT_SCAN_PROFILE)]
+    if tags:                      # explicit service tags (network-service pass)
+        cmd += ["-tags", ",".join(tags)]
+    else:
+        cmd += ["-as"] if NUCLEI_AUTOSCAN else ["-tags", ",".join(DEFAULT_SCAN_PROFILE)]
     cmd += ["-jsonl-export", out_path]
     return cmd
 
@@ -199,7 +224,7 @@ def check_template_freshness(max_age_days: int = 7) -> str:
     return "fresh"
 
 
-def run_nuclei(hosts: List[str], rate_limit: int = 50) -> Dict:
+def run_nuclei(hosts: List[str], rate_limit: int = 50, tags=None) -> Dict:
     """
     Run Nuclei against a list of confirmed HTTP endpoints.
     Returns structured vulnerability data.
@@ -263,7 +288,7 @@ def run_nuclei(hosts: List[str], rate_limit: int = 50) -> Dict:
         )
 
         nuclei_result = _run_with_process_group_cleanup(
-            build_nuclei_cmd(targets_path, tmp_path, rate_limit),
+            build_nuclei_cmd(targets_path, tmp_path, rate_limit, tags),
             timeout=NUCLEI_TIMEOUT,
         )
 

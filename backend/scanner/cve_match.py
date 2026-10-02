@@ -11,6 +11,7 @@ named "[version match]". Treat them as leads to verify, not proof.
 import json
 import logging
 import os
+import re
 import time
 from typing import Callable, Dict, List, Optional
 
@@ -34,6 +35,21 @@ def cpe22_to_23(cpe: str) -> Optional[str]:
     if part not in ("a", "o"):
         return None
     return f"cpe:2.3:{part}:{vendor}:{product}:{version}:*:*:*:*:*:*:*"
+
+
+_BUILD_SUFFIX = re.compile(r"\.v\d{8}$|\.(?:final|release|ga)$", re.IGNORECASE)
+
+
+def cpe_candidates(cpe23: str) -> List[str]:
+    """Exact CPE first, then a normalised variant. nmap reports build-qualified versions
+    (Jetty '8.1.7.v20120910') but NVD indexes the base version ('8.1.7')."""
+    parts = cpe23.split(":")
+    out = [cpe23]
+    if len(parts) > 5:
+        base = _BUILD_SUFFIX.sub("", parts[5])
+        if base != parts[5]:
+            out.append(":".join(parts[:5] + [base] + parts[6:]))
+    return out
 
 
 def severity_from_cvss(score: Optional[float]) -> str:
@@ -131,7 +147,11 @@ def run_cve_match(port_hosts: List[Dict], min_cvss: Optional[float] = None, max_
                     skipped_budget += 1
                     continue
                 try:
-                    cves, _ = _lookup(cpe23, session, cache, api_key, sleep, last_call)
+                    cves = []
+                    for cand in cpe_candidates(cpe23):
+                        cves, _ = _lookup(cand, session, cache, api_key, sleep, last_call)
+                        if cves:
+                            break
                 except Exception as e:  # noqa: BLE001
                     errors += 1
                     logger.warning(f"[cve_match] lookup failed for {cpe23}: {e}")

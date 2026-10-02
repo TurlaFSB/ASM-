@@ -62,3 +62,14 @@ def test_info_findings_filtered_by_tag():
     assert keep_finding({"severity": "info", "tags": "exposure,misc"})
     assert not keep_finding({"severity": "info", "tags": ["tech", "apache"]})
     assert not keep_finding({"severity": "info", "tags": []})
+
+
+def test_network_tags_from_services_and_cmd():
+    import backend.scanner.vuln as v
+    hosts = [{"subdomain": "h", "ports": [
+        {"port": 21, "service": "ftp"}, {"port": 6667, "service": "irc"},
+        {"port": 445, "service": "netbios-ssn"}, {"port": 80, "service": "http"}]}]
+    assert v.network_tags_from_services(hosts) == ["ftp", "irc", "samba", "smb", "unrealircd"]
+    assert v.network_tags_from_services([{"subdomain": "h", "ports": [{"port": 80, "service": "http"}]}]) == []
+    cmd = v.build_nuclei_cmd("t", "o", 5, tags=["ftp", "irc"])
+    assert cmd[cmd.index("-tags") + 1] == "ftp,irc" and "-as" not in cmd
