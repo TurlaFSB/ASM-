@@ -135,10 +135,10 @@ Each scan runs as one Celery task and reports progress per stage to the UI. Data
 | Profile | Ports | Directory discovery | Nuclei (web) | Typical duration |
 |---|---|---|---|---|
 | **Quick** | Top 100 | none | high, critical | ~2 min |
-| **Standard** (default) | Top 1000 | curated core list | medium and above | ~6-10 min |
+| **Standard** (default) | Top 1000 plus common web/admin ports | curated core list | medium and above | ~6-10 min |
 | **Deep** | All 65535 | core list plus extensions and `common.txt` | medium and above, long budget | ~20-30 min |
 
-Durations are measured on a small lab host and vary with target size. Services on ports outside a profile's range are not seen by that profile; use Deep for full-range coverage.
+Durations are measured on a small lab host and vary with target size. Standard adds about 30 common web, admin and database ports that are outside nmap's top 1000. Services on other ports are not seen by Quick or Standard; use Deep for full-range coverage. Service version detection gets deeper with each profile, which improves CVE matching.
 
 ---
 
@@ -365,7 +365,7 @@ docker exec asm_postgres pg_restore -U asm_user -d asm_db --clean --if-exists -v
 | Dark-web mention monitoring via licensed intelligence APIs | Planned |
 | Screenshot perceptual-hash diffing | Planned |
 | Report delivery: scheduled PDF, Slack/email notifications for high and critical changes | Planned |
-| CI pipeline, container hardening (non-root, pinned dependencies) | Planned |
+| Container hardening (non-root, pinned dependencies) | Planned |
 
 ---
 
@@ -373,8 +373,8 @@ docker exec asm_postgres pg_restore -U asm_user -d asm_db --clean --if-exists -v
 
 - **Single operator model.** There is no self-service registration or multi-user management; the admin account is script-created.
 - **Discovered paths are stored per host, not per port.** The same path on two ports of one host is merged. Tracked on the roadmap.
-- **CVE matching is version-based.** It depends on the version a service reports. Services without a banner version produce no matches, and matches are marked *inferred* until verified.
-- **Profile blind spots.** Quick and Standard do not see services outside the top 100/1000 ports.
+- **CVE matching is version-based.** At most 15 CVEs are kept per service (highest risk first); the report says when a list was capped. It depends on the version a service reports. Services without a banner version produce no matches, and matches are marked *inferred* until verified.
+- **Profile blind spots.** Quick and Standard do not see services outside their port lists (top 100, and top 1000 plus a curated extras list).
 - **Time-boxed stages.** Nuclei and directory discovery stop at their time budget; collected results are kept and the stage is reported as `partial`.
 - **TLS findings are not de-duplicated across scans**; recurring issues add rows on every scan.
 - **Legacy alerts** are derived from asset state and are not yet unified with change events.

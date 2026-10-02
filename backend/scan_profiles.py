@@ -25,6 +25,7 @@ class ScanProfile:
     # Port scan: "100" / "1000" (nmap --top-ports) or "all" (-p-)
     nmap_ports: str = "1000"
     nmap_host_timeout: int = 600  # seconds, per host
+    nmap_version_intensity: int = 2   # nmap -sV probe depth, 0 (light) to 9 (try everything)
 
     # Web analysis stages
     run_whatweb: bool = True
@@ -87,10 +88,11 @@ PROFILES: Dict[str, ScanProfile] = {
     "standard": ScanProfile(
         name="standard",
         label="Standard",
-        description="Balanced: top 1000 ports, tech fingerprinting, TLS, screenshots, curated directory discovery, medium+ web findings.",
+        description="Balanced: top 1000 ports plus common web/admin ports, tech fingerprinting, TLS, screenshots, curated directory discovery, medium+ web findings.",
         estimate="~6-10 min",
-        nmap_ports="1000",
+        nmap_ports="1000+",
         nmap_host_timeout=600,
+        nmap_version_intensity=5,
         nuclei_severity="medium,high,critical",
         run_dirbuster=True,
         wordlist="core",
@@ -104,6 +106,7 @@ PROFILES: Dict[str, ScanProfile] = {
         estimate="~20-30 min",
         nmap_ports="all",
         nmap_host_timeout=1800,
+        nmap_version_intensity=7,
         run_dirbuster=True,
         wordlist="medium",
         dirbuster_cap=900,
