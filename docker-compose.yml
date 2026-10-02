@@ -70,6 +70,7 @@ services:
     command: ["bash", "-c", "tr -d '\\r' < /app/backend/start-dev.sh > /tmp/start-dev.sh && exec bash /tmp/start-dev.sh"]
     extra_hosts:
       - "ms3.local:${LAB_MS3_IP:-192.0.2.1}"
+      - "host.docker.internal:host-gateway"     # reach a local Ollama on the host
 
   celery_worker:
     build:
@@ -93,6 +94,7 @@ services:
       - ./scan_output:/app/scan_output
     extra_hosts:
       - "ms3.local:${LAB_MS3_IP:-192.0.2.1}"
+      - "host.docker.internal:host-gateway"     # reach a local Ollama on the host
 
   celery_beat:
     build:
