@@ -12,6 +12,8 @@ class DiscoveredPath(Base):
 
     # Discovery result
     path = Column(String, nullable=False, index=True)      # e.g. "/admin", "/backup.zip"
+    # TCP port of the web service the path was found on (NULL on rows saved before port tracking)
+    port = Column(Integer, nullable=True)
     status_code = Column(Integer, nullable=True)
     content_length = Column(Integer, nullable=True)
     redirect_location = Column(String, nullable=True)      # where it redirects to, if 3xx

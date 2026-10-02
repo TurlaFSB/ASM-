@@ -34,9 +34,9 @@ def asset_paths(asset_id: int, scan_id: int = Query(None), db: Session = Depends
         scan_id = latest[0]
     rows = q.filter(DiscoveredPath.scan_id == scan_id).all()
     paths = [{
-        "path": r.path, "status_code": r.status_code, "content_length": r.content_length,
+        "path": r.path, "port": r.port, "status_code": r.status_code, "content_length": r.content_length,
         "redirect_location": r.redirect_location,
         "sensitive": is_sensitive_path(r.path, r.status_code),
     } for r in rows]
-    paths.sort(key=lambda p: (not p["sensitive"], p["path"]))
+    paths.sort(key=lambda p: (not p["sensitive"], p["port"] or 0, p["path"]))
     return {"scan_id": scan_id, "paths": paths}

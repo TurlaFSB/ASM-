@@ -360,7 +360,7 @@ docker exec asm_postgres pg_restore -U asm_user -d asm_db --clean --if-exists -v
 |---|---|
 | Historical diff engine, change events API | Done |
 | Changes page in the UI; alerts and webhooks driven by change events | Planned |
-| Per-port path tracking (paths keyed by host and port) | Planned |
+| Per-port path tracking (paths keyed by host and port) | Done |
 | AI-assisted triage: severity, summary and recommended action per change, with guardrails | Planned |
 | Leak and breach collectors (HIBP, GitHub code search, paste sites) | Planned |
 | Dark-web mention monitoring via licensed intelligence APIs | Planned |
@@ -373,7 +373,6 @@ docker exec asm_postgres pg_restore -U asm_user -d asm_db --clean --if-exists -v
 ## Known limitations
 
 - **Single operator model.** There is no self-service registration or multi-user management; the admin account is script-created.
-- **Discovered paths are stored per host, not per port.** The same path on two ports of one host is merged. Tracked on the roadmap.
 - **CVE matching is version-based.** At most 15 CVEs are kept per service (highest risk first); the report says when a list was capped. It depends on the version a service reports. Services without a banner version produce no matches, and matches are marked *inferred* until verified.
 - **Profile blind spots.** Quick and Standard do not see services outside their port lists (top 100, and top 1000 plus a curated extras list).
 - **Time-boxed stages.** Nuclei and directory discovery stop at their time budget; collected results are kept and the stage is reported as `partial`.

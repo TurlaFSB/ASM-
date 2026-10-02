@@ -73,7 +73,7 @@ def test_second_scan_records_events_against_previous(db):
     s1, _ = run_scan(db, [80])
     s2, summ = run_scan(db, [80, 3306], paths=[("/admin", 200)], findings=[("smb-x", "critical")])
     ev = db.query(ChangeEvent).filter_by(scan_id=s2.id, status="confirmed").all()
-    assert {(e.category, e.subject) for e in ev} == {("port", "3306/tcp"), ("path", "/admin"),
+    assert {(e.category, e.subject) for e in ev} == {("port", "3306/tcp"), ("path", "0|/admin"),
                                                      ("finding", "smb-x|10.0.0.5:445")}
     assert all(e.baseline_scan_id == s1.id for e in ev)
     assert summ["events"] == 3 and summ["by_severity"]["critical"] == 1

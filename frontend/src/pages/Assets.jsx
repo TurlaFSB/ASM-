@@ -30,10 +30,11 @@ function PathsPanel({ data }) {
       <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 6 }}>
         {data.paths.length} path(s) from scan #{data.scan_id}; sensitive-looking ones first
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 60px 80px 90px", gap: "6px 12px", fontSize: 12, alignItems: "center" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 56px 60px 80px 90px", gap: "6px 12px", fontSize: 12, alignItems: "center" }}>
         {data.paths.map(p => (
-          <React.Fragment key={`${p.path}-${p.status_code}`}>
+          <React.Fragment key={`${p.port}-${p.path}-${p.status_code}`}>
             <span className="mono">{p.path}{p.redirect_location ? <span style={{ color: "var(--text-secondary)" }}> → {p.redirect_location}</span> : null}</span>
+            <span className="mono" style={{ color: "var(--text-secondary)" }}>{p.port ? `:${p.port}` : ""}</span>
             <span style={{ color: p.status_code >= 400 ? "var(--orange)" : "var(--green)" }}>{p.status_code ?? "—"}</span>
             <span style={{ color: "var(--text-secondary)" }}>{p.content_length != null ? `${p.content_length} B` : "—"}</span>
             <span>{p.sensitive ? <span className="badge badge-sev-high">sensitive</span> : null}</span>

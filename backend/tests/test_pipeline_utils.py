@@ -72,3 +72,12 @@ def test_effective_rate():
     assert effective_rate(100, "50") == 1000          # capped
     assert effective_rate(10, "garbage") == 10
     assert effective_rate(10, "0.1") == 10            # never below configured limit
+
+
+def test_host_port_from_url():
+    from backend.pipeline_utils import host_port_from_url
+    assert host_port_from_url("http://10.0.0.5") == ("10.0.0.5", 80)
+    assert host_port_from_url("https://example.com/") == ("example.com", 443)
+    assert host_port_from_url("http://10.0.0.5:8080/x") == ("10.0.0.5", 8080)
+    assert host_port_from_url("http://[::1]:8443") == ("::1", 8443)
+    assert host_port_from_url("10.0.0.5:8180") == ("10.0.0.5", 8180)

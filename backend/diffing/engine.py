@@ -18,7 +18,7 @@ import hashlib
 import re
 from typing import Dict, List, Optional, Set
 
-from backend.diffing.snapshot import FULL, SCHEMA_VERSION
+from backend.diffing.snapshot import FULL, SCHEMA_VERSION, split_path_key
 from backend.path_flags import is_sensitive_path, REACHABLE
 
 SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"]
@@ -186,29 +186,35 @@ def _diff_http(old, new, common, ev):
                              before={"value": o["http_title"]}, after={"value": n["http_title"]}))
 
 
+def _path_where(host: str, key: str, rec: Dict) -> str:
+    port = rec.get("port") or split_path_key(key)[0]
+    return f"{host}:{port}" if port else host
+
+
 def _diff_paths(old, new, common, ev, skipped):
     add_ok, rm_ok = _can_add(old, new, "paths"), _can_remove(old, new, "paths")
     for a in sorted(common):
         op, np_ = old["paths"].get(a, {}), new["paths"].get(a, {})
         if add_ok:
-            for p in sorted(set(np_) - set(op)):
-                st = np_[p].get("status")
+            for k in sorted(set(np_) - set(op)):
+                st, p = np_[k].get("status"), split_path_key(k)[1]
                 sev = "high" if is_sensitive_path(p, st) else ("low" if st in REACHABLE else "info")
-                ev.append(_event("path", "added", "paths", a, p, sev,
-                                 f"New path {p} on {a} (HTTP {st})", after=np_[p]))
-            for p in sorted(set(np_) & set(op)):
-                os_, ns = op[p].get("status"), np_[p].get("status")
+                ev.append(_event("path", "added", "paths", a, k, sev,
+                                 f"New path {p} on {_path_where(a, k, np_[k])} (HTTP {st})", after=np_[k]))
+            for k in sorted(set(np_) & set(op)):
+                os_, ns, p = op[k].get("status"), np_[k].get("status"), split_path_key(k)[1]
                 opened = ns in REACHABLE and os_ not in REACHABLE
                 unlocked = ns == 200 and os_ in (401, 403)          # access control removed
                 if os_ != ns and (opened or unlocked):
                     sev = "high" if is_sensitive_path(p, ns) else "low"
-                    ev.append(_event("path", "modified", "paths", a, p, sev,
-                                     f"Path {p} on {a} became accessible: HTTP {os_} -> {ns}",
-                                     before=op[p], after=np_[p]))
+                    ev.append(_event("path", "modified", "paths", a, k, sev,
+                                     f"Path {p} on {_path_where(a, k, np_[k])} became accessible: HTTP {os_} -> {ns}",
+                                     before=op[k], after=np_[k]))
         if rm_ok:
-            for p in sorted(set(op) - set(np_)):
-                ev.append(_event("path", "removed", "paths", a, p, "info",
-                                 f"Path {p} on {a} no longer found", before=op[p]))
+            for k in sorted(set(op) - set(np_)):
+                p = split_path_key(k)[1]
+                ev.append(_event("path", "removed", "paths", a, k, "info",
+                                 f"Path {p} on {_path_where(a, k, op[k])} no longer found", before=op[k]))
     if not rm_ok:
         skipped.append({"section": "paths", "reason": "directory discovery was partial or skipped; removals not evaluated"})
 

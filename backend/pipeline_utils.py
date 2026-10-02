@@ -127,3 +127,11 @@ def merge_known_ports(previous, current):
 def merge_known_technologies(previous, current):
     """Same idea for technologies when a profile skips the tech-fingerprinting stage."""
     return sorted(set(previous or []) | set(current or []))
+
+
+def host_port_from_url(url: str):
+    """('host', port) for a probed web URL; the port defaults from the scheme (80/443)."""
+    from urllib.parse import urlsplit
+    u = urlsplit(url if "://" in url else f"http://{url}")
+    port = u.port or (443 if u.scheme == "https" else 80)
+    return (u.hostname or ""), port

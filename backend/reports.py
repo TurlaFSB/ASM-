@@ -208,9 +208,9 @@ def _paths_view(db: Session, scan_id: int, assets: Dict[int, Asset]) -> List[Dic
     out = []
     for p in rows:
         a = assets.get(p.asset_id) or db.get(Asset, p.asset_id)
-        out.append({"host": a.subdomain if a else "—", "path": p.path, "status": p.status_code,
+        out.append({"host": a.subdomain if a else "—", "port": p.port, "path": p.path, "status": p.status_code,
                     "length": p.content_length, "redirect": p.redirect_location})
-    out.sort(key=lambda r: (r["host"], r["path"]))
+    out.sort(key=lambda r: (r["host"], r["port"] or 0, r["path"]))
     return out
 
 

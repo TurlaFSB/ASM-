@@ -492,7 +492,7 @@
   <tbody>
   {% for p in paths %}
   <tr>
-    <td class="mono">{{ p.host }}</td>
+    <td class="mono">{{ p.host }}{% if p.port %}:{{ p.port }}{% endif %}</td>
     <td class="mono">{{ p.path }}{% if p.redirect %}<div style="font-size:8px;color:#6b7280;">→ {{ p.redirect }}</div>{% endif %}</td>
     <td>{{ p.status or '—' }}</td>
     <td>{{ p.length if p.length is not none else '—' }}</td>

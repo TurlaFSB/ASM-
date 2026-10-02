@@ -14,7 +14,9 @@ from typing import Dict, List, Optional
 from backend.scan_profiles import get_profile
 from backend.tech_utils import clean_technologies
 
-SCHEMA_VERSION = 1
+# v2: discovered paths are keyed per host AND port ("80|/admin"); v1 snapshots are treated as a
+# fresh baseline by the diff engine, so the first scan after the upgrade reports no phantom changes.
+SCHEMA_VERSION = 2
 
 # coverage levels: "full" = additions AND removals are trustworthy; "additive" = only additions
 # (e.g. directory discovery that hit its time limit); None = the section says nothing.
@@ -76,6 +78,16 @@ def finding_key(f: Dict) -> str:
     return f"{f.get('template_id') or ''}|{f.get('host') or ''}"
 
 
+def path_key(port, path: str) -> str:
+    """Subject of a discovered path: the same path on two ports of one host is two different things."""
+    return f"{port or 0}|{path}"
+
+
+def split_path_key(key: str):
+    port, _, path = str(key).partition("|")
+    return (int(port) if port.isdigit() and int(port) else None), path
+
+
 def _port_key(p: Dict) -> str:
     return f"{p.get('port')}/{p.get('protocol') or 'tcp'}"
 
@@ -83,7 +95,7 @@ def _port_key(p: Dict) -> str:
 def build_snapshot(profile: str, module_results: Dict, assets: List[Dict],
                    paths: List[Dict], findings: List[Dict]) -> Dict:
     """assets: [{subdomain, ip, open_ports, technologies, http_status, http_title}]
-    paths:  [{subdomain, path, status_code}]   findings: [{template_id, host, name, severity, ...}]"""
+    paths:  [{subdomain, path, port, status_code}]   findings: [{template_id, host, name, severity, ...}]"""
     snap_assets: Dict[str, Dict] = {}
     for a in assets:
         snap_assets[a["subdomain"]] = {
@@ -98,7 +110,8 @@ def build_snapshot(profile: str, module_results: Dict, assets: List[Dict],
 
     snap_paths: Dict[str, Dict] = {}
     for p in paths:
-        snap_paths.setdefault(p["subdomain"], {})[p["path"]] = {"status": p.get("status_code")}
+        snap_paths.setdefault(p["subdomain"], {})[path_key(p.get("port"), p["path"])] = {
+            "status": p.get("status_code"), "port": p.get("port"), "path": p["path"]}
 
     snap_findings: Dict[str, Dict] = {}
     for f in findings:

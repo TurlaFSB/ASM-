@@ -648,13 +648,14 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         # correct asset by subdomain -- look up fresh from the DB now that
         # all assets (new and existing) have real ids after the commit above.
         if dirbuster_data["hosts"]:
+            from backend.pipeline_utils import host_port_from_url
             asset_lookup = {
                 a.subdomain: a.id
                 for a in db.query(Asset).filter(Asset.target_id == target_id).all()
             }
             paths_saved = 0
             for url, host_result in dirbuster_data["hosts"].items():
-                subdomain = url.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0]
+                subdomain, web_port = host_port_from_url(url)
                 asset_id = asset_lookup.get(subdomain)
                 if not asset_id:
                     continue
@@ -663,6 +664,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                         asset_id=asset_id,
                         scan_id=scan_id,
                         path=p.get("path") or "/",
+                        port=web_port,
                         status_code=p.get("status_code"),
                         content_length=p.get("content_length"),
                         redirect_location=p.get("redirect_location"),

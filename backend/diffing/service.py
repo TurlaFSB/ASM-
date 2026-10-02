@@ -30,7 +30,8 @@ def snapshot_from_db(db: Session, scan: Scan, module_results: Optional[Dict] = N
     asset_dicts = [{"subdomain": a.subdomain, "ip": a.ip, "open_ports": a.open_ports,
                     "technologies": a.technologies, "http_status": a.http_status,
                     "http_title": a.http_title} for a in assets]
-    paths = [{"subdomain": by_id[p.asset_id], "path": p.path, "status_code": p.status_code}
+    paths = [{"subdomain": by_id[p.asset_id], "path": p.path, "port": p.port,
+              "status_code": p.status_code}
              for p in db.query(DiscoveredPath).filter(DiscoveredPath.scan_id == scan.id).all()
              if p.asset_id in by_id]
     findings = [{"template_id": v.template_id, "host": v.host, "name": v.name, "severity": v.severity,
@@ -112,6 +113,14 @@ def record_scan_changes(db: Session, scan: Scan, module_results: Optional[Dict] 
                             [_row_to_dict(r) for r in existing_pending])
 
     _label_reappeared(db, scan, snap["profile"], result["events"])
+
+    if result["baseline"]:
+        # Fresh baseline (first scan, or the snapshot schema changed): pending removals recorded
+        # against the old shape can never be resolved, so close them instead of leaving them open.
+        for row in existing_pending:
+            row.status = "superseded"
+            row.resolved_by_scan_id = scan.id
+        existing_pending, pending_by_fp = [], {}
 
     def _add(e: Dict, status: str):
         db.add(ChangeEvent(

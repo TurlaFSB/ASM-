@@ -147,7 +147,7 @@ def test_partial_dirscan_can_add_but_never_remove_paths():
     s1 = _snap(paths=[("/a", 200), ("/b", 200)])
     s2 = _snap(paths=[("/a", 200), ("/new", 200)], mr=partial)
     r = diff_snapshots(s1, s2)
-    assert _kinds(r) == [("path", "added", "/new")] and r["pending"] == []
+    assert _kinds(r) == [("path", "added", "0|/new")] and r["pending"] == []
 
 
 def test_partial_baseline_does_not_report_old_paths_as_new():
@@ -194,9 +194,9 @@ def test_sensitive_new_path_is_high_and_becoming_reachable_is_flagged():
     s2 = _snap(paths=[("/admin", 200), ("/phpmyadmin", 301), ("/icons/a.gif", 200)])
     r = diff_snapshots(s1, s2)
     by = {e["subject"]: e for e in r["events"]}
-    assert by["/phpmyadmin"]["severity"] == "info"          # 301 is not directly reachable content
-    assert by["/icons/a.gif"]["severity"] == "low"
-    assert by["/admin"]["change_type"] == "modified" and by["/admin"]["severity"] == "high"   # 403 -> 200, sensitive
+    assert by["0|/phpmyadmin"]["severity"] == "info"          # 301 is not directly reachable content
+    assert by["0|/icons/a.gif"]["severity"] == "low"
+    assert by["0|/admin"]["change_type"] == "modified" and by["0|/admin"]["severity"] == "high"   # 403 -> 200, sensitive
     s3 = _snap(paths=[("/backup.zip", 200)])
     assert diff_snapshots(_snap(paths=[]), s3)["events"][0]["severity"] == "high"
 
@@ -229,3 +229,50 @@ def test_shell_history_and_dotfiles_are_sensitive():
         assert is_sensitive_path(p, 200), p
     assert not is_sensitive_path("/.cache", 301)
     assert not is_sensitive_path("/index.html", 200)
+
+
+# ---- port-aware paths (schema v2) ----
+
+def _psnap(paths):
+    return build_snapshot("standard", OK_MR, [_asset()],
+                          [{"subdomain": "10.0.0.5", "port": pt, "path": p, "status_code": s} for pt, p, s in paths], [])
+
+
+def test_same_path_on_two_ports_is_two_paths():
+    old = _psnap([(80, "/admin", 200)])
+    new = _psnap([(80, "/admin", 200), (8080, "/admin", 200)])
+    ev = diff_snapshots(old, new)["events"]
+    assert [(e["change_type"], e["subject"]) for e in ev] == [("added", "8080|/admin")]
+    assert ev[0]["summary"] == "New path /admin on 10.0.0.5:8080 (HTTP 200)"
+    assert ev[0]["severity"] == "high"          # severity judged on the real path, not the key
+
+
+def test_path_removed_on_one_port_only_names_that_port():
+    old = _psnap([(80, "/flag", 200), (8080, "/flag", 200)])
+    new = _psnap([(80, "/flag", 200)])
+    r = diff_snapshots(old, new)
+    assert r["events"] == [] and len(r["pending"]) == 1
+    assert r["pending"][0]["summary"] == "Path /flag on 10.0.0.5:8080 no longer found"
+
+
+def test_status_change_is_tracked_per_port():
+    old = _psnap([(80, "/admin", 403), (8080, "/admin", 403)])
+    new = _psnap([(80, "/admin", 403), (8080, "/admin", 200)])
+    ev = diff_snapshots(old, new)["events"]
+    assert [(e["change_type"], e["subject"]) for e in ev] == [("modified", "8080|/admin")]
+    assert "10.0.0.5:8080" in ev[0]["summary"]
+
+
+def test_portless_legacy_rows_still_work():
+    snap = _psnap([(None, "/x", 200)])
+    assert "0|/x" in snap["paths"]["10.0.0.5"]
+    ev = diff_snapshots(_psnap([]), snap)["events"]
+    assert ev[0]["summary"] == "New path /x on 10.0.0.5 (HTTP 200)"
+
+
+def test_schema_v1_baseline_is_treated_as_fresh_baseline():
+    old = _psnap([(80, "/a", 200)])
+    old["schema"] = 1
+    new = _psnap([(80, "/b", 200)])
+    r = diff_snapshots(old, new)
+    assert r["baseline"] and r["events"] == [] and r["pending"] == []
