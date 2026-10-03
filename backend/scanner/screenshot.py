@@ -3,6 +3,7 @@ import logging
 import os
 import tempfile
 import time
+import uuid
 from typing import Dict, List
 
 from backend.scanner.subdomain import _run_with_process_group_cleanup
@@ -34,6 +35,12 @@ def run_eyewitness(hosts: List[str]) -> Dict:
 
     os.makedirs(SCREENSHOT_DIR, exist_ok=True)
 
+    # EyeWitness deletes and recreates its output directory, which a mounted volume root does not allow
+    # ("Device or resource busy"). Give every run its own new sub-directory instead. It also keeps this
+    # run's screenshots apart from earlier runs, so only the pictures taken now are attributed to this scan.
+    run_dir = os.path.join(SCREENSHOT_DIR, f"run-{uuid.uuid4().hex[:12]}")
+    result["output_dir"] = run_dir
+
     tmp_path = None
     start = time.time()
 
@@ -55,7 +62,7 @@ def run_eyewitness(hosts: List[str]) -> Dict:
                 tmp_path,
                 "--no-prompt",
                 "-d",
-                SCREENSHOT_DIR,
+                run_dir,
                 "--timeout",
                 "15",
             ],
@@ -79,7 +86,7 @@ def run_eyewitness(hosts: List[str]) -> Dict:
             return result
 
         # Collect screenshots
-        for root, _, files in os.walk(SCREENSHOT_DIR):
+        for root, _, files in os.walk(run_dir):
             for file in files:
                 if file.endswith(".png"):
                     result["screenshots"].append(

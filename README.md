@@ -268,7 +268,7 @@ ASM performs active scanning, so its own security matters.
 | | |
 |---|---|
 | Docker | Engine 24+ and Compose v2 |
-| RAM | 4 GB+ available to Docker |
+| RAM | 4 GB minimum available to Docker; 8 GB recommended for domains with many subdomains (a full scan runs several heavy tools) |
 | Disk | 15-20 GB+ free. Scan artifacts accumulate, and a full disk makes Redis fail writes and scans crash |
 | Ports | `3000`, `8000`, `5432`, `6379` free on the host |
 
@@ -519,6 +519,7 @@ docker run --rm -v asm_screenshots_data:/data -v "$PWD/backups":/out busybox:1.3
 | Scanner tool "not found" | Binary missing from the image | `docker exec asm_celery_worker which <tool>`; fix the Dockerfile |
 | Worker ignores code changes | No auto-reload on the worker | `docker compose restart celery_worker` |
 | Frontend changes not visible | Static bundle served by nginx | Rebuild the `frontend` image and hard-refresh |
+| Worker exits with code 137 mid-scan (`OOMKilled`) | Docker ran out of memory on a target with many subdomains | Give Docker more memory (Docker Desktop: Settings, Resources), set `ASM_PARALLEL_STAGES=false` to lower the peak, and lower `NUCLEI_CONCURRENCY`. A scan left `running` by a lost worker is failed automatically within about 10 minutes |
 | Services on unusual ports are missing | Quick/Standard scan only the top 100/1000 ports | Run a Deep scan |
 
 ---
@@ -550,7 +551,7 @@ Infostealer exposure counts: free OSINT lookup by [Hudson Rock](https://www.huds
 | Exposure monitoring: GitHub code, breach records, lookalike domains, ransomware listings, infostealer counts | Done |
 | Tamper-evident signed scan history | Done |
 | Light and dark themes, accessibility checks | Done |
-| Container hardening: non-root production overlay, read-only filesystem, dropped capabilities | Built; verification on a Docker host in progress. The frontend nginx image still runs its master process as root |
+| Container hardening: non-root production overlay, read-only filesystem, dropped capabilities | Done and verified on a Docker host (non-root, read-only root, only `NET_RAW` on the worker, SYN scans, PDF reports, seals, backup round trip). The frontend nginx image still runs its master process as root |
 | Dark-web mention monitoring via licensed intelligence APIs | Planned |
 | Screenshot perceptual-hash diffing | Planned |
 | Report delivery: scheduled PDF, Slack/email notifications for high and critical changes | Planned |
