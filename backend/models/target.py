@@ -20,6 +20,7 @@ class Target(Base):
     webhook_format = Column(String, nullable=False, default="json", server_default="json")  # json | slack | discord
     webhook_secret = Column(String, nullable=True)  # HMAC-SHA256 signing key for the json format
     alert_min_severity = Column(String, nullable=False, default="medium", server_default="medium")
+    exposure_sources = Column(JSONB, nullable=True)  # enabled leak/breach collectors, e.g. ["github_code"]; NULL/[] = off
     
     # Rate limiting per target
     rate_limit = Column(Integer, default=10)

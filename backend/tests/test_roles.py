@@ -50,6 +50,9 @@ MUTATIONS = [
     ("patch", "/schedules/1/toggle", None),
     ("delete", "/schedules/1", None),
     ("get", "/audit/", None),
+    ("put", "/exposure/targets/{t}/sources", {"sources": ["xposedornot"]}),
+    ("post", "/exposure/targets/{t}/run", None),
+    ("patch", "/exposure/findings/1", {"status": "dismissed"}),
 ]
 
 

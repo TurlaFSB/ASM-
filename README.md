@@ -185,6 +185,24 @@ It writes a JSON report, prints whether `adjust` mode is worth enabling (the gat
 
 ---
 
+## Exposure monitoring (leaks, breaches, mentions)
+
+Looks for things about a target that live OUTSIDE its own infrastructure. Every source is free and switched off per target until you turn it on.
+
+| Source | What it finds | Needs |
+|---|---|---|
+| GitHub public code | Public files that mention the domain next to passwords, keys or tokens | a free GitHub token in `ASM_GITHUB_TOKEN` (no scopes) |
+| XposedOrNot | Public breach records for the domain's own service | nothing |
+
+How it behaves:
+- **Masked evidence only.** Credential-like text is detected in memory and only a masked trace is stored (rule name, at most 4 leading characters of long values, and the length). A full secret or password is never written to the database, API or logs.
+- **Polite by design.** Each source has a minimum interval per target (GitHub 6 hours, XposedOrNot 24 hours), requests are paced, "run now" cannot hammer a source, and a rate-limited run keeps everything already found.
+- **Alerts reuse your settings.** New, escalated or reappeared findings at or above the target's alert severity create in-app alerts and one webhook message (`exposure.new`).
+- **Findings are tracked.** A finding that stops being returned is marked resolved after 3 runs in a row; one you dismiss never alerts again.
+- **Control from the API:** `GET /exposure/sources`, `PUT /exposure/targets/{id}/sources`, `POST /exposure/targets/{id}/run`, `GET /exposure/findings`, `PATCH /exposure/findings/{id}` (dismiss or reopen), `GET /exposure/runs`.
+
+A mention is not proof of a leak: a public file that names your domain may be documentation. Review before you rotate anything.
+
 ## Security posture
 
 ASM performs active scanning, so its own security matters.

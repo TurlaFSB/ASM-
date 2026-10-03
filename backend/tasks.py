@@ -27,6 +27,8 @@ celery_app.conf.update(
     broker_connection_retry_on_startup=True,
     beat_schedule={
         "reap-stuck-scans": {"task": "reap_stuck_scans", "schedule": 600.0},
+        # Hourly is only the polling rhythm: each source enforces its own minimum interval per target.
+        "exposure-sweep": {"task": "exposure_sweep", "schedule": 3600.0},
         "check-scheduled-scans-every-minute": {
             "task": "check_scheduled_scans",
             "schedule": 60.0,
@@ -758,6 +760,42 @@ def reap_stuck_scans_task():
         return reap_stuck_scans(_db, redis.Redis.from_url(settings.redis_url))
     finally:
         _db.close()
+
+
+@celery_app.task(name="run_exposure_checks")
+def run_exposure_checks(target_id: int, sources: list = None, force: bool = False):
+    """Run the target's enabled leak/breach collectors. Collector errors are recorded, never raised."""
+    from backend.db import SessionLocal
+    from backend.models.target import Target
+    from backend.exposure.runner import run_collectors
+    db = SessionLocal()
+    try:
+        target = db.query(Target).filter(Target.id == target_id).first()
+        if target is None:
+            return {}
+        res = run_collectors(db, target, sources=sources, force=force)
+        logger.info(f"[exposure] target {target_id}: {res}")
+        return res
+    finally:
+        db.close()
+
+
+@celery_app.task(name="exposure_sweep")
+def exposure_sweep():
+    """Queue a check for every active target that has at least one collector switched on, spread out over time."""
+    from backend.db import SessionLocal
+    from backend.models.target import Target
+    from backend.exposure.runner import enabled_sources
+    db = SessionLocal()
+    try:
+        queued = 0
+        for t in db.query(Target).filter(Target.is_active == True, Target.exposure_sources.isnot(None)).order_by(Target.id).all():  # noqa: E712
+            if enabled_sources(t):
+                run_exposure_checks.apply_async(args=[t.id], countdown=queued * 30)
+                queued += 1
+        return {"queued": queued}
+    finally:
+        db.close()
 
 
 @celery_app.task(name="check_scheduled_scans")

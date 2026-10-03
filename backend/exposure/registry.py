@@ -1,0 +1,15 @@
+from typing import Dict, List
+
+from backend.exposure.github_code import GitHubCodeCollector
+from backend.exposure.xposedornot import XposedOrNotCollector
+
+_COLLECTORS = [GitHubCodeCollector(), XposedOrNotCollector()]
+REGISTRY: Dict[str, object] = {c.name: c for c in _COLLECTORS}
+
+
+def all_sources() -> List[object]:
+    return list(REGISTRY.values())
+
+
+def get(name: str):
+    return REGISTRY.get(name)

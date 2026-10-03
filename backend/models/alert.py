@@ -8,7 +8,7 @@ class Alert(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     target_id = Column(Integer, ForeignKey("targets.id"), nullable=False, index=True)
-    scan_id = Column(Integer, ForeignKey("scans.id"), nullable=False, index=True)
+    scan_id = Column(Integer, ForeignKey("scans.id"), nullable=True, index=True)  # NULL for exposure alerts (not tied to a scan)
 
     # Alerts are generated from confirmed ChangeEvents (alert_type = "<category>_<change_type>",
     # or "changes_summary" when a scan exceeded the per-scan cap). Rows written before change-event
