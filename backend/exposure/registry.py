@@ -1,9 +1,10 @@
 from typing import Dict, List
 
 from backend.exposure.github_code import GitHubCodeCollector
+from backend.exposure.lookalikes import LookalikeCollector
 from backend.exposure.xposedornot import XposedOrNotCollector
 
-_COLLECTORS = [GitHubCodeCollector(), XposedOrNotCollector()]
+_COLLECTORS = [GitHubCodeCollector(), XposedOrNotCollector(), LookalikeCollector()]
 REGISTRY: Dict[str, object] = {c.name: c for c in _COLLECTORS}
 
 

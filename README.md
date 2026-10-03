@@ -194,9 +194,11 @@ Looks for things about a target that live OUTSIDE its own infrastructure. Every 
 |---|---|---|
 | GitHub public code | Public files that mention the domain next to passwords, keys or tokens | a free GitHub token in `ASM_GITHUB_TOKEN` (no scopes) |
 | XposedOrNot | Public breach records for the domain's own service | nothing |
+| Lookalike domains | Registered typosquats, character swaps (including look-alike letters from other alphabets) and login-style names such as `acme-login.com` | nothing: plain DNS lookups, no third party |
 
 How it behaves:
 - **Masked evidence only.** Credential-like text is detected in memory and only a masked trace is stored (rule name, at most 4 leading characters of long values, and the length). A full secret or password is never written to the database, API or logs.
+- **Lookalike checks are local.** Candidate names are generated on the platform and checked with ordinary DNS (a few hundred lookups, rate-bounded). A name is reported only if it resolves; one that points at your own servers or name servers is marked info. Domains registered without any DNS records cannot be seen this way, and many hits are parked domains, so review before acting.
 - **Polite by design.** Each source has a minimum interval per target (GitHub 6 hours, XposedOrNot 24 hours), requests are paced, "run now" cannot hammer a source, and a rate-limited run keeps everything already found.
 - **Alerts reuse your settings.** New, escalated or reappeared findings at or above the target's alert severity create in-app alerts and one webhook message (`exposure.new`).
 - **Findings are tracked.** A finding that stops being returned is marked resolved after 3 runs in a row; one you dismiss never alerts again.

@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.exposure import registry
-from backend.exposure.base import CollectorError, Finding, RateLimited, SEVERITIES, fingerprint
+from backend.exposure.base import CollectorError, Finding, NotApplicable, RateLimited, SEVERITIES, fingerprint
 from backend.exposure.http import HttpClient
 from backend.exposure.notify import notify_exposure
 from backend.models.exposure import CollectorRun, ExposureFinding
@@ -46,19 +46,19 @@ def _close_stale(db: Session, target_id: int, source: str, now: datetime) -> Non
 
 def _too_soon(db: Session, target_id: int, collector, force: bool, now: datetime) -> Optional[str]:
     last = (db.query(CollectorRun).filter(CollectorRun.target_id == target_id, CollectorRun.source == collector.name,
-                                          CollectorRun.status.in_(("ok", "failed", "rate_limited")))
+                                          CollectorRun.status.in_(("ok", "failed", "rate_limited", "skipped")))
             .order_by(CollectorRun.started_at.desc()).first())
     if last is None:
         return None
     age = (now - _aware(last.started_at)).total_seconds()
     if force:
         return "too_soon" if age < MIN_FORCE_GAP_SECONDS else None
-    wait = collector.min_interval_seconds if last.status == "ok" else min(collector.min_interval_seconds, RETRY_AFTER_FAILURE_SECONDS)
+    wait = collector.min_interval_seconds if last.status in ("ok", "skipped") else min(collector.min_interval_seconds, RETRY_AFTER_FAILURE_SECONDS)
     return "too_soon" if age < wait else None
 
 
 def _upsert(db: Session, target: Target, source: str, findings: List[Finding],
-            now: datetime) -> Tuple[List[Tuple[ExposureFinding, str]], int]:
+            now: datetime, complete: bool = True) -> Tuple[List[Tuple[ExposureFinding, str]], int]:
     findings = sorted(findings, key=lambda f: (_rank(f.severity), f.key))[:MAX_FINDINGS_PER_RUN]
     existing = {f.fingerprint: f for f in db.query(ExposureFinding).filter(
         ExposureFinding.target_id == target.id, ExposureFinding.source == source).all()}
@@ -90,7 +90,7 @@ def _upsert(db: Session, target: Target, source: str, findings: List[Finding],
         if reason:
             notify.append((row, reason))
     for fp, row in existing.items():
-        if fp not in seen and row.status == "open":
+        if complete and fp not in seen and row.status == "open":
             row.missed_runs = (row.missed_runs or 0) + 1
             if row.missed_runs >= RESOLVE_AFTER_MISSES:
                 row.status = "resolved"
@@ -130,12 +130,15 @@ def run_collectors(db: Session, target: Target, sources: Optional[List[str]] = N
             continue
         try:
             found = collector.collect(target.domain, http, sleep)
-            fresh, count = _upsert(db, target, name, found, now)
+            fresh, count = _upsert(db, target, name, found, now, complete=getattr(found, "complete", True))
             run.status, run.found, run.new = "ok", count, len(fresh)
             to_notify.extend(fresh)
         except RateLimited:
             db.rollback()
             run.status, run.error = "rate_limited", "rate limited"
+        except NotApplicable as e:
+            db.rollback()
+            run.status, run.error = "skipped", e.label[:80]
         except CollectorError as e:
             db.rollback()
             run.status, run.error = "failed", e.label[:80]

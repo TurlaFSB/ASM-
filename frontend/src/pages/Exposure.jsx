@@ -10,7 +10,7 @@ import { useToast } from "../components/toastContext";
 
 const STATUS = [["open", "Open"], ["dismissed", "Dismissed"], ["resolved", "Resolved"]];
 const IMPORTANCE = [["important", "Medium and above"], ["all", "Everything"]];
-const SOURCE_LABEL = { github_code: "GitHub public code", xposedornot: "Breach records" };
+const SOURCE_LABEL = { github_code: "GitHub public code", xposedornot: "Breach records", lookalike_domains: "Lookalike domain" };
 
 function timeAgo(iso) {
   if (!iso) return "";
@@ -42,6 +42,7 @@ function RunChip({ source, run }) {
   if (!source.configured) return <span className="stage-chip">Needs ASM_GITHUB_TOKEN</span>;
   if (!run) return <span className="muted-note">Not checked yet</span>;
   if (run.status === "ok") return <span className="muted-note">Checked {timeAgo(run.finished_at || run.started_at)}, {run.found} found</span>;
+  if (run.status === "skipped") return <span className="muted-note">Not applicable: {run.error || "skipped"}</span>;
   if (run.status === "running") return <span className="badge badge-running">running</span>;
   if (run.status === "rate_limited") return <span className="muted-note">Rate limited {timeAgo(run.started_at)}; retries within the hour</span>;
   return <span className="muted-note" style={{ color: "var(--red)" }}>Failed {timeAgo(run.started_at)}{run.error ? `: ${run.error}` : ""}</span>;
@@ -50,6 +51,7 @@ function RunChip({ source, run }) {
 function FindingCard({ f, canEdit, onStatus }) {
   const rules = f.evidence?.rules || [];
   const data = f.evidence?.exposed_data || [];
+  const lk = f.kind === "lookalike" ? f.evidence : null;
   return (
     <div className={"finding-card" + (f.status !== "open" ? " dim" : "")}>
       <div className="finding-head">
@@ -65,6 +67,14 @@ function FindingCard({ f, canEdit, onStatus }) {
       )}
       {data.length > 0 && (
         <div className="finding-evidence" aria-label="Exposed data">{data.map((d, i) => <code key={i}>{d}</code>)}</div>
+      )}
+      {lk && (
+        <div className="finding-evidence" aria-label="DNS evidence">
+          <code>{lk.technique}</code>
+          {lk.a?.slice(0, 3).map((x, i) => <code key={"a" + i}>A {x}</code>)}
+          {lk.mx?.slice(0, 2).map((x, i) => <code key={"m" + i}>MX {x}</code>)}
+          {lk.same_infrastructure && <code>same infrastructure as your domain</code>}
+        </div>
       )}
       <div className="finding-foot">
         <span className="muted-note">

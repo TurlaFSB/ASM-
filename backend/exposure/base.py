@@ -16,6 +16,19 @@ class CollectorError(Exception):
         self.label = label
 
 
+class NotApplicable(CollectorError):
+    """The source cannot work for this kind of target (for example an IP address). Not a failure."""
+
+
+class Findings(list):
+    """A list of findings plus whether the source looked at EVERYTHING it meant to. An incomplete run must
+    not be used to conclude that older findings have disappeared."""
+
+    def __init__(self, items=(), complete: bool = True):
+        super().__init__(items)
+        self.complete = complete
+
+
 class RateLimited(CollectorError):
     def __init__(self, retry_after: Optional[int] = None):
         super().__init__("rate limited")
