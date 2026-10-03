@@ -192,10 +192,13 @@ ASM performs active scanning, so its own security matters.
 - **Authorization gate enforced at the API.** A target cannot be created without `authorized: true`, and a scan cannot start against an unauthorized or deactivated target. This is re-checked at trigger time.
 - **No hardcoded credentials.** The admin account is created interactively; passwords are hashed with bcrypt.
 - **JWT on every route**, with account status re-checked on each request.
+- **Login throttling.** Failed logins are counted per IP and username, per IP, and per username across all IPs; unknown usernames cost the same time as wrong passwords.
+- **Admin and viewer roles.** Viewers can read everything but every change route (targets, scans, schedules, audit log) needs an admin.
+- **Untrusted scan data is scrubbed.** NUL bytes from hostile banners are stripped before they reach PostgreSQL, and API docs are switched off when `APP_ENV=production`.
 - **Input validation.** Hostname format and length are enforced, and the per-target rate limit is bounded (1-100 req/s).
 - **Private address protection.** Scanning private and reserved ranges is refused unless explicitly enabled (`ASM_ALLOW_PRIVATE_TARGETS`). Discovered hostnames that resolve to loopback, link-local, private or carrier-grade NAT space are skipped too.
 - **Scope stays on the target.** URLs that HTTP probing reaches by following a redirect to another organisation are dropped before any scanner runs against them.
-- **Webhook safety.** Destinations must be HTTPS and resolve to public addresses, redirects are never followed, messages are signed (HMAC-SHA256), credentials are never returned by the API, and target-controlled text is defanged in Slack and Discord messages.
+- **Webhook safety.** Destinations must be HTTPS and resolve to public addresses, the connection is pinned to the address that was checked (no DNS-rebinding gap), redirects are never followed, messages are signed (HMAC-SHA256), credentials are never returned by the API, and target-controlled text is defanged in Slack and Discord messages.
 - **Export safety.** CSV exports neutralise spreadsheet formulas.
 - **Audit trail** for sensitive actions, including source IP.
 - **Secrets stay out of git.** `.env` and `.env.docker` are ignored, and `SECRET_KEY` has no default: the app refuses to start without one.
@@ -249,6 +252,8 @@ docker compose ps
 ```bash
 docker exec -it asm_backend python3 -m backend.scripts.create_admin
 ```
+
+To add a read-only account, add `--viewer` to that command.
 
 ### 5. Sign in
 
