@@ -61,4 +61,5 @@
   outline-offset: 2px;
 }
 
-.ios-toggle input:disabled + .ios-toggle-track { opacity: 0.55; cursor: progress; }
+.ios-toggle input:disabled + .ios-toggle-track { opacity: 0.5; }
+.toggle-row:has(input:disabled) { cursor: not-allowed; }

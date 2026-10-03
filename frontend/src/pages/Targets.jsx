@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
 import { getTargets, createTarget, deleteTarget, triggerScan, getTargetHistory, getTargetInfrastructure, updateDirbusterToggle, getScans, getScanProfiles, updateTargetProfile } from "../api";
 import { Plus, Trash2, Play, Shield, History, Globe, Bell, Loader2 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
@@ -169,7 +168,6 @@ export default function Targets() {
   const [notifExpandedId, setNotifExpandedId] = useState(null);
   const [pendingDelete, setDeleteTarget] = useState(null);   // target awaiting delete confirmation
   const { toast } = useToast();
-  const navigate = useNavigate();
   const [activeScans, setActiveScans] = useState({});   // target id -> scan that is pending or running
   const [starting, setStarting] = useState({});         // target id -> a scan request is in flight
 
@@ -279,8 +277,6 @@ export default function Targets() {
       const t = targets.find(x => x.id === id);
       const profile = profileChoice[id] ?? t?.default_profile ?? "standard";
       await triggerScan({ target_id: id, profile, run_dirbuster: dirbusterEnabled[id] ?? t?.dirbuster_enabled ?? true });
-      toast(`${profile.charAt(0).toUpperCase() + profile.slice(1)} scan queued for ${t?.domain || "target"}.`, "ok",
-        { label: "View scans", onClick: () => navigate("/scans") });
       refreshActive();
     } catch (e) {
       toast(extractErrorMessage(e, "Failed to trigger scan."), "bad");

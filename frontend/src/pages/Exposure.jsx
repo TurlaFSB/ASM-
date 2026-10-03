@@ -117,7 +117,8 @@ export default function Exposure() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [saving, setSaving] = useState(null);   // name of the source being saved
+  const [saving, setSaving] = useState(() => new Set());   // sources being saved
+  const [waiting, setWaiting] = useState(null);             // time a check was queued, until it shows up
 
   useEffect(() => {
     getTargets()
@@ -139,38 +140,42 @@ export default function Exposure() {
 
   // while a run is in flight, refresh so results appear without a manual reload
   const running = runs.some(r => r.status === "running");
+  // a queued check counts as in flight until a run newer than the click appears (or 45 s pass)
+  const arrived = waiting != null && runs.some(r => new Date(r.started_at).getTime() >= waiting - 5000);
+  const active = running || (waiting != null && !arrived);
   useEffect(() => {
-    if (!running) return undefined;
-    const t = setInterval(load, 5000);
+    if (!active) return undefined;
+    const t = setInterval(load, 3000);
     return () => clearInterval(t);
-  }, [running, load]);
+  }, [active, load]);
 
   const lastRun = (name) => runs.find(r => r.source === name);
   const enabledCount = sources.filter(s => s.enabled).length;
 
+  // The switch moves at once; the server call happens in the background. Only the switch being saved is
+  // locked, the others stay still. A failed save puts that one switch back and says why.
   const toggle = async (name, on) => {
-    if (saving) return;
-    const before = sources;
-    const next = before.map(s => (s.name === name ? { ...s, enabled: on } : s));
-    setSources(next);                                   // show the change straight away
-    setSaving(name);
+    if (saving.has(name)) return;
+    const next = sources.map(s => (s.name === name ? { ...s, enabled: on } : s));
+    setSources(next);
+    setSaving(prev => new Set(prev).add(name));
     try {
-      const r = await setExposureSources(targetId, next.filter(s => s.enabled).map(s => s.name));
-      setSources(r.data);
-      const label = before.find(s => s.name === name)?.label || name;
-      toast(`${label} turned ${on ? "on" : "off"}.`);
+      await setExposureSources(targetId, next.filter(s => s.enabled).map(s => s.name));
     } catch (e) {
-      setSources(before);                               // put the switch back: it was not saved
-      toast(errorText(e, "Could not save sources"), "bad");
-    } finally { setSaving(null); }
+      setSources(cur => cur.map(s => (s.name === name ? { ...s, enabled: !on } : s)));
+      toast(errorText(e, "Could not save that change"), "bad");
+    } finally {
+      setSaving(prev => { const n = new Set(prev); n.delete(name); return n; });
+    }
   };
 
   const runNow = async () => {
     setBusy(true);
     try {
       await runExposureNow(targetId);
-      toast("Check queued. Results appear here when it finishes.");
-      setTimeout(load, 3000);
+      setWaiting(Date.now());
+      load();
+      setTimeout(() => setWaiting(null), 45000);
     } catch (e) { toast(errorText(e, "Could not start the check"), "bad"); }
     finally { setBusy(false); }
   };
@@ -201,9 +206,9 @@ export default function Exposure() {
           <Picker value={targetId} onChange={setTargetId} icon={Globe} ariaLabel="Target" minWidth={300}
             options={targets.map(t => ({ value: t.id, label: t.domain, hint: t.authorized_by ? `Authorized by ${t.authorized_by}` : undefined }))} />
           {canEdit && (
-            <button type="button" className="btn btn-primary btn-lg" onClick={runNow} disabled={busy || enabledCount === 0 || running}
+            <button type="button" className="btn btn-primary btn-lg" onClick={runNow} disabled={busy || enabledCount === 0 || active}
               title={enabledCount === 0 ? "Turn on a source first" : "Check the enabled sources now"}>
-              <Play size={14} /> {running ? "Checking..." : "Check now"}
+              <Play size={14} /> {active ? "Checking..." : "Check now"}
             </button>
           )}
         </div>
@@ -223,7 +228,7 @@ export default function Exposure() {
               <div style={{ marginTop: 6 }}><RunChip source={s} run={lastRun(s.name)} /></div>
             </div>
             {canEdit
-              ? <ToggleSwitch checked={!!s.enabled} disabled={!!saving} onChange={on => toggle(s.name, on)} label="" ariaLabel={`Check ${s.label}`} />
+              ? <ToggleSwitch checked={!!s.enabled} disabled={saving.has(s.name) || (!s.configured && !s.enabled)} onChange={on => toggle(s.name, on)} label="" ariaLabel={`Check ${s.label}`} />
               : <span className="muted-note">{s.enabled ? "On" : "Off"}</span>}
           </div>
         ))}
