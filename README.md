@@ -6,7 +6,8 @@
 
 Continuous external reconnaissance, vulnerability scanning, TLS auditing and **historical change detection** in a single self-hosted platform.
 
-![Python](https://img.shields.io/badge/python-3.11%2B-blue)
+[![CI](https://github.com/TurlaFSB/ASM-/actions/workflows/ci.yml/badge.svg)](https://github.com/TurlaFSB/ASM-/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-3.13-blue)
 ![Stack](https://img.shields.io/badge/stack-FastAPI%20%7C%20PostgreSQL%20%7C%20Celery%20%7C%20React-9b5de5)
 ![Deploy](https://img.shields.io/badge/deploy-Docker%20Compose-2496ed)
 ![License](https://img.shields.io/badge/license-MIT-informational)
@@ -18,7 +19,7 @@ Continuous external reconnaissance, vulnerability scanning, TLS auditing and **h
 
 ## Overview
 
-ASM takes an authorized domain or host and runs a full recon-to-report pipeline: subdomain enumeration, DNS and WHOIS/ASN enrichment, port scanning, HTTP probing, technology fingerprinting, directory discovery, template-based vulnerability scanning, CVE matching against detected service versions, TLS auditing and screenshots.
+ASM takes an authorized domain or host and runs a full recon-to-report pipeline: subdomain enumeration, DNS and WHOIS/ASN enrichment, port scanning, HTTP probing, technology fingerprinting, directory discovery, template-based vulnerability scanning, CVE matching against detected service versions, TLS auditing and screenshots. Alongside the active scan it watches for exposure outside your infrastructure (leaked credentials in public code, breach records, lookalike domains, ransomware listings, infostealer counts) and seals every scan into a tamper-evident, signed history.
 
 Every scan is stored as a point-in-time **snapshot** and compared with the previous comparable scan. The result is a structured, severity-rated list of what changed on your attack surface: a port opened, a service appeared, a sensitive path became reachable, a new CVE applies. Risk is scored against **CISA's Known Exploited Vulnerabilities (KEV) catalog**, so a Critical rating means active exploitation in the wild, not just a high CVSS score.
 
@@ -43,15 +44,17 @@ Every scan is stored as a point-in-time **snapshot** and compared with the previ
 - [Exposure monitoring](#exposure-monitoring-leaks-breaches-mentions)
 - [Scan integrity](#scan-integrity-tamper-evident-history)
 - [Security posture](#security-posture)
+- [Requirements](#requirements)
 - [Quick start](#quick-start)
 - [Configuration](#configuration)
 - [Usage](#usage)
 - [API](#api)
 - [Scanning private and lab targets](#scanning-private-and-lab-targets)
-- [Development](#development)
+- [Development and testing](#development-and-testing)
 - [Production deployment](#production-deployment)
 - [Backup and restore](#backup-and-restore)
 - [Troubleshooting](#troubleshooting)
+- [Contributing and security](#contributing-and-security)
 - [Credits](#credits)
 - [Roadmap](#roadmap)
 - [Known limitations](#known-limitations)
@@ -92,10 +95,11 @@ Each scan runs as one Celery task and reports progress per stage to the UI. Data
 | `postgres` | Primary datastore |
 | `redis` | Celery broker and result backend |
 | `migrate` | One-shot `alembic upgrade head` |
-| `backend` | FastAPI application (JWT auth, REST API) |
+| `volume-init` | Production overlay only: fixes ownership of data volumes, then exits |
+| `backend` | FastAPI application (cookie and bearer auth, REST API) |
 | `celery_worker` | Executes scans |
 | `celery_beat` | Triggers scheduled scans |
-| `frontend` | React single-page app served by nginx |
+| `frontend` | React single-page app served by nginx with a strict Content Security Policy |
 
 ---
 
@@ -130,9 +134,14 @@ Each scan runs as one Celery task and reports progress per stage to the UI. Data
 - Light and dark themes (match system by default), keyboard-navigable menus, and no WCAG A/AA violations in automated checks
 - Three scan profiles (Quick, Standard, Deep), with a per-target default for scheduled scans
 - Recurring scans via Celery Beat (cron expressions or presets)
-- JWT authentication on every route; admin created via script, no default credentials
+- Cookie sessions (httpOnly, SameSite, CSRF-protected) for the web app and bearer tokens for scripts, on every route; admin created via script, no default credentials
+- Admin and viewer roles: viewers are read-only
+- Exposure monitoring for leaks, breaches, lookalike domains, ransomware listings and infostealer counts (see [Exposure monitoring](#exposure-monitoring-leaks-breaches-mentions))
+- Tamper-evident scan history: signed, chained seals per scan, shown in the PDF report (see [Scan integrity](#scan-integrity-tamper-evident-history))
+- Target, asset, vulnerability and scan lists with search, filters and a side panel for details; target pickers that scale to many targets
 - Audit log of target, scan and authentication actions, with source IP
-- Docker Compose deployment with healthchecked dependencies
+- Docker Compose deployment with healthchecked dependencies, plus a hardened non-root production overlay (see [Production deployment](#production-deployment))
+- Clear action feedback in the UI: scan state on each target row, optimistic switches that roll back and explain when a save fails
 
 ---
 
@@ -324,38 +333,66 @@ Set these in `.env.docker`. Only the first two are required.
 | `DIRBUSTER_MAX_SECONDS` | `900` | Upper bound for directory discovery per scan |
 | `NUCLEI_TIMEOUT` | `1800` | Upper bound for a nuclei run, in seconds |
 | `NUCLEI_CONCURRENCY` | `15` | Nuclei template concurrency |
-| `ASM_LLM_PROVIDER` | `none` | AI triage: `none`, `ollama` or `mock`. See `ASM_LLM_*` in `.env.docker.example` |
+| `CORS_ORIGINS` | `http://localhost:5173,http://localhost:5174,http://localhost:3000` | Comma-separated browser origins allowed to call the API. Add the origin you open the app on if it differs, for example `http://192.168.1.20:3000` |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | `480` | Session lifetime |
+| `APP_ENV` | `production` in the example file | `production` switches the interactive API docs off |
+| `ASM_GITHUB_TOKEN` | unset | Free GitHub token (no scopes) for the GitHub public code exposure source |
+| `ASM_HUDSONROCK_ACK` | `false` | Set `true` after reading Hudson Rock's terms to allow the infostealer source |
+| `ASM_NMAP_SCAN_TYPE` | `auto` | `auto`, `syn` or `connect`. `auto` uses SYN scans when allowed and falls back to connect scans |
+| `SCAN_MAX_SECONDS` | `21600` | Overall scan runtime limit; a reaper fails scans stuck past it |
+| `SCAN_PENDING_MAX_SECONDS` | `43200` | How long a scan may sit in `pending` before the reaper fails it |
+| `SCHEDULE_MIN_INTERVAL_SECONDS` | `3600` | Shortest allowed gap between scheduled runs |
+| `ALERTS_MAX_PER_SCAN` | `50` | Cap on in-app alerts created per scan |
+| `WEBHOOK_ATTEMPTS`, `WEBHOOK_BACKOFF`, `WEBHOOK_TIMEOUT` | `3`, `2`, `5` | Webhook attempts, backoff seconds (doubled each retry) and timeout seconds |
+| `ASM_LLM_PROVIDER` | `none` | AI triage: `none`, `ollama` or `mock` |
+| `ASM_LLM_BASE_URL`, `ASM_LLM_MODEL`, `ASM_LLM_SEVERITY_MODE`, `ASM_LLM_TIMEOUT`, `ASM_LLM_MAX_EVENTS`, `ASM_LLM_BUDGET_SECONDS` | see [AI-assisted triage](#ai-assisted-triage-optional) | Local model settings |
 | `ASM_REPORT_CACHE_DIR` | `/app/scan_output/reports` | Where rendered PDF reports are cached |
+
+Nuclei tuning (`NUCLEI_SEVERITY`, `NUCLEI_AUTOSCAN`, `NUCLEI_MAX_HOST_ERROR`, `NUCLEI_NETWORK_CONCURRENCY`, `NUCLEI_RETRY_*`) and the CVE lookup limits have defaults that suit most setups; read `backend/scanner/` before changing them.
 
 ---
 
 ## Usage
 
-| Step | Action |
+| Page | What you do there |
 |---|---|
-| **Targets** | *Add Target* with domain, authorizer and rate limit. The authorization box is mandatory and enforced server-side. |
-| **Scans** | Pick a profile and click *Scan*. Watch per-stage progress; cancel at any time. |
-| **Assets** | Open ports, technologies, HTTP metadata, discovered paths and risk score. |
-| **Infrastructure** | Per-target WHOIS/ASN data, tech stack and TLS findings. |
-| **Vulnerabilities** | Template findings and TLS issues with severity, CVE and CVSS. |
-| **Alerts** | New, changed and disappeared asset alerts; mark read individually or in bulk. |
+| **Dashboard** | Posture at a glance: risk, open findings, recent scans and changes. |
+| **Targets** | *Add Target* with domain, authorizer and rate limit (the authorization box is mandatory and enforced server-side). Per row: pick a profile, switch directory scanning on or off, press *Scan*, and open History, Infrastructure and Notifications. The button shows *Queued* or *Scanning* while a scan is active. |
+| **Scans** | Per-stage progress, cancel at any time, download the PDF or CSV export. |
+| **Assets** | Searchable, filterable inventory: ports, technologies, HTTP metadata, discovered paths and risk score. Click a row for the side panel. |
 | **Schedules** | Recurring scans by cron expression or preset interval. |
-| **Reports** | Download the PDF or CSV export from any completed scan. |
+| **Changes** | Severity-rated change events between comparable scans, with optional AI notes. |
+| **Vulnerabilities** | Template findings, inferred CVE matches and TLS issues with severity, CVE and CVSS. |
+| **Exposure** | Choose a target, switch sources on, press *Check now*, review masked findings and dismiss or reopen them. |
+| **Alerts** | In-app alerts, delivery log and per-target webhook settings. |
+
+The appearance switch at the bottom of the sidebar selects light, system or dark. Viewer accounts can read every page but cannot change anything.
+
+Scheduled scans, alerts and webhooks need the `celery_worker` and `celery_beat` services running, which `docker compose up` starts.
 
 ---
 
 ## API
 
-Interactive documentation is served by FastAPI at `http://<host>:8000/docs`. All routes except login need a session: the browser cookie, or a bearer token for scripts.
+Interactive documentation is served by FastAPI at `http://<host>:8000/docs`. All routes except login need a session: the browser cookie (state-changing calls must also send the `X-CSRF-Token` header), or a bearer token for scripts. List endpoints are paginated with `limit` and `offset`, and return the full count in `X-Total-Count` where noted.
 
 | Area | Endpoints |
 |---|---|
-| Auth | `/auth/*` |
+| Auth | `POST /auth/token`, `GET /auth/me`, `POST /auth/logout` |
 | Targets and scans | `/targets/*`, `/scans/*` (including `/scans/profiles`) |
 | Assets and vulnerabilities | `/assets/*`, `/vulnerabilities/*` |
 | Alerts and schedules | `/alerts/*`, `/schedules/*` |
 | Changes | `GET /changes/`, `GET /changes/scans/{scan_id}` |
+| Exposure | `/exposure/*` (sources, run, findings, runs) |
+| Integrity | `/integrity/*` (scan and target seal verification, public key) |
 | Audit | `/audit/*` |
+
+Script access example:
+
+```bash
+TOKEN=$(curl -s -d "username=admin&password=..." http://localhost:8000/auth/token | python3 -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/targets/
+```
 
 `GET /changes/` supports filters: `target_id`, `scan_id`, `severity` (comma-separated), `category`, `confidence`, `status` and pagination.
 
@@ -378,15 +415,16 @@ docker compose up -d --force-recreate backend celery_worker
 
 ---
 
-## Development
+## Development and testing
 
 ```bash
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt -r backend/requirements-dev.txt
 pytest
+cd frontend && npm ci && npm run lint && npm run build
 ```
 
-The test suite runs against in-memory SQLite and mocked scanners; no Docker, Redis or network access is required.
+The backend test suite runs against in-memory SQLite and mocked scanners; no Docker, Redis or network access is required. CI (`.github/workflows/ci.yml`) runs the tests with a coverage floor, frontend lint and build, `bandit` static analysis, and `pip-audit` and `npm audit` dependency checks on every push.
 
 | Change | How to apply |
 |---|---|
@@ -470,8 +508,12 @@ docker run --rm -v asm_screenshots_data:/data -v "$PWD/backups":/out busybox:1.3
 |---|---|---|
 | Port 5432 / 6379 already in use | Native Postgres or Redis on the host | Stop and disable the host services |
 | `asm_postgres` restart-looping with a mount error | Postgres 18 expects `/var/lib/postgresql` | Keep the volume path used in `docker-compose.yml` |
-| CORS error in the browser | Frontend origin not allowed by the backend | Add the host to `allow_origins` in `backend/main.py` |
-| 401 with correct credentials | `users` table is empty (usually after `down -v`) | Re-run `create_admin` |
+| CORS error in the browser | The origin you opened the app on is not in the allow-list | Add it to `CORS_ORIGINS` in `.env.docker` and recreate `backend` |
+| Page loads but buttons and switches do nothing, or `403 CSRF check failed` | The CSRF cookie is missing, or the app and API are on different host names (for example `127.0.0.1` for one and `localhost` for the other) | Open the app and the API through the same host name, then sign out and in. The app repairs a missing CSRF cookie automatically once per request |
+| Scan button shows `Private IP targets are disabled` | Target is in a private range | Set `ASM_ALLOW_PRIVATE_TARGETS=true` and recreate `backend` and `celery_worker` |
+| Exposure source says `Needs ...` | A required token or acknowledgement is not set | Set `ASM_GITHUB_TOKEN` or `ASM_HUDSONROCK_ACK=true` in `.env.docker` and recreate `backend` and `celery_worker` |
+| Nmap SYN scan refused in the production overlay | The worker lacks `NET_RAW` | Keep `cap_add: [NET_RAW]` on `celery_worker`, or accept the automatic connect-scan fallback |
+| 401 with correct credentials | `users` table is empty (usually after `down -v`) | Re-run `create_admin`. Repeated failures also lock the login for a while |
 | Scan stuck on `pending` | A non-Docker Celery worker consumed the task | Stop any host-level `celery` process |
 | `redis.exceptions.ResponseError: MISCONF` | Disk full, Redis cannot persist | Free space (`docker image prune -a`, `docker builder prune`) and restart |
 | Scanner tool "not found" | Binary missing from the image | `docker exec asm_celery_worker which <tool>`; fix the Dockerfile |
@@ -480,6 +522,10 @@ docker run --rm -v asm_screenshots_data:/data -v "$PWD/backups":/out busybox:1.3
 | Services on unusual ports are missing | Quick/Standard scan only the top 100/1000 ports | Run a Deep scan |
 
 ---
+
+## Contributing and security
+
+Issues and pull requests are welcome. Before opening a pull request, run `pytest` and `npm run lint` and keep new behaviour covered by tests. Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md); do not open a public issue for them.
 
 ## Credits
 
@@ -491,37 +537,38 @@ Infostealer exposure counts: free OSINT lookup by [Hudson Rock](https://www.huds
 
 | Area | Status |
 |---|---|
-| Historical diff engine, change events API | Done |
-| CVE roll-up: one line per component and host with "N of M" (report, vulnerabilities API and page, changes API) | Done |
-| Changes page in the UI | Done |
-| Alerts and webhooks driven by change events (backend, settings API, delivery log) | Done |
-| Alerts page and per-target notification settings in the UI | Done |
-| Per-port path tracking (paths keyed by host and port) | Done |
-| AI-assisted triage: severity, summary and recommended action per change, with guardrails and a labelled evaluation set | Done: explain-only by default, severity adjustment stays off until a model beats the rules |
-| Leak and breach collectors (HIBP, GitHub code search, paste sites) | Planned |
+| Historical diff engine, change events API and Changes page | Done |
+| CVE roll-up: one line per component and host | Done |
+| Alerts, webhooks and per-target notification settings | Done |
+| Per-port path tracking | Done |
+| AI-assisted triage with guardrails and a labelled evaluation set | Done: explain-only by default |
+| Role-based access (viewer and admin) | Done |
+| Login throttling per IP and username, constant-time unknown-user path | Done |
+| Scan watchdog and reaper; one active scan per target | Done |
+| Pagination on list endpoints; schedule safety rails | Done |
+| Cookie sessions with CSRF protection | Done |
+| Exposure monitoring: GitHub code, breach records, lookalike domains, ransomware listings, infostealer counts | Done |
+| Tamper-evident signed scan history | Done |
+| Light and dark themes, accessibility checks | Done |
+| Container hardening: non-root production overlay, read-only filesystem, dropped capabilities | Built; verification on a Docker host in progress. The frontend nginx image still runs its master process as root |
 | Dark-web mention monitoring via licensed intelligence APIs | Planned |
 | Screenshot perceptual-hash diffing | Planned |
 | Report delivery: scheduled PDF, Slack/email notifications for high and critical changes | Planned |
-| Container hardening (non-root, pinned dependencies, healthchecks, production compose without bind mounts) | Planned |
-| Role-based access (viewer vs admin) on mutating routes | Planned |
-| Login throttling per IP and per username, constant-time unknown-user path | Planned |
-| Scan watchdog: overall runtime limit (`SCAN_MAX_SECONDS`, default 6h) and a beat-driven reaper for scans stuck in running or pending | Done |
-| One active scan per target, enforced by a partial unique index (migration 0008) | Done |
-| Pagination on list endpoints; uniqueness constraints on assets | Planned |
-| Schedule safety rails: 5-field cron only, minimum interval (`SCHEDULE_MIN_INTERVAL_SECONDS`, default 1h), active-target check, audit entries | Done |
+| More unit coverage for the scan orchestrator stages | Planned |
 
 ---
 
 ## Known limitations
 
-- **Single operator model.** There is no self-service registration or multi-user management; the admin account is script-created.
+- **Small-team user model.** There are two roles (admin and viewer) but no self-service registration or user management screen; accounts are created with `create_admin`.
 - **CVE matching is version-based.** At most 15 CVEs are kept per service (highest risk first); the report says when a list was capped. It depends on the version a service reports. Services without a banner version produce no matches, and matches are marked *inferred* until verified.
 - **Profile blind spots.** Quick and Standard do not see services outside their port lists (top 100, and top 1000 plus a curated extras list).
 - **Network service checks can be starved.** Some services (an old OpenSSH, for instance) answer the banner but stall on the deeper protocol handshakes the nuclei network templates perform. The scanner detects this (per-template timeouts), retries the affected templates gently, and if they still fail marks the host `low coverage`: removals there are held as pending and never reported as fixed. Root-causing a stalling service is left to the operator.
 - **Time-boxed stages.** Nuclei and directory discovery stop at their time budget; collected results are kept and the stage is reported as `partial`.
 - **TLS findings are not de-duplicated across scans**; recurring issues add rows on every scan.
 - **Earlier alerts.** Alerts created before change-event alerting came from asset state and could report scan noise; they are kept, shown in a collapsed group on the Alerts page, and no new ones are written.
-- **Webhook delivery resolves DNS twice** (once to validate, once to send), so a hostile DNS server could in theory switch addresses in between. Pinning the resolved address is on the hardening list.
+- **Exposure sources are best effort.** They rely on free public services whose terms, limits and uptime can change; a source can be unavailable or rate limited, and a mention is never proof of a leak.
+- **Scan seals are not external proof.** Someone who controls both the database and `SECRET_KEY` could re-seal history; keep a target's head hash somewhere you trust after important scans.
 
 ---
 
