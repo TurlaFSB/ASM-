@@ -58,3 +58,14 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if user is None:
         raise credentials_exception
     return user
+
+
+ROLES = ("admin", "viewer")
+
+
+def require_admin(current_user: User = Depends(get_current_user)) -> User:
+    """Gate for mutating routes. Viewers are read-only. A missing role (legacy rows
+    created before roles existed) counts as admin so upgrades do not lock anyone out."""
+    if (getattr(current_user, "role", None) or "admin") != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin role required")
+    return current_user

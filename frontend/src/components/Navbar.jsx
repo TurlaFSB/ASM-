@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { getUnreadAlerts } from "../api";
+import { getUnreadAlerts, getMe } from "../api";
 import { Shield, Target, Activity, Database, Bell, AlertTriangle, LogOut, Clock, GitCompare } from "lucide-react";
 import turlaLogo from "../assets/TURLA.png";
 
 export default function Navbar({ onLogout }) {
   const location = useLocation();
   const [unread, setUnread] = useState(0);
+  const [role, setRole] = useState(null);
+
+  useEffect(() => { getMe().then(r => setRole(r.data.role)).catch(() => {}); }, []);
 
   // Unread alert count: refreshed every minute, on navigation, and right after alerts are read.
   useEffect(() => {
@@ -52,6 +55,9 @@ export default function Navbar({ onLogout }) {
         ))}
       </ul>
       <div className="navbar-footer">
+        {role === "viewer" && (
+          <p className="nav-readonly" title="Viewer accounts can look at everything but cannot change anything.">Read-only account</p>
+        )}
         <button className="logout-btn" onClick={onLogout}>
           <LogOut size={16} />
           Logout

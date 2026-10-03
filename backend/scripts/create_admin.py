@@ -2,7 +2,8 @@
 Bootstrap script to create the first (or an additional) admin user.
 
 Usage:
-    python3 -m backend.scripts.create_admin
+    python3 -m backend.scripts.create_admin            # admin (can change things)
+    python3 -m backend.scripts.create_admin --viewer   # read-only account
 
 Run from the project root with the venv active. Prompts interactively for
 username and password (hidden input via getpass — never appears in shell
@@ -69,12 +70,12 @@ def main() -> int:
         user = User(
             username=username,
             hashed_password=hashed,
-            role="admin",
+            role="viewer" if "--viewer" in sys.argv[1:] else "admin",
             is_active=True,
         )
         db.add(user)
         db.commit()
-        print(f"Admin user '{username}' created successfully.")
+        print(f"{'Viewer' if '--viewer' in sys.argv[1:] else 'Admin'} user '{username}' created successfully.")
         return 0
     finally:
         db.close()

@@ -9,7 +9,7 @@ from backend.models.target import Target
 from backend.models.scan import Scan
 from backend.models.vulnerability import Vulnerability
 from backend.models.asset import Asset
-from backend.auth import get_current_user
+from backend.auth import get_current_user, require_admin
 from backend.audit import log_action
 from backend.validators import validate_target
 
@@ -71,7 +71,7 @@ class TargetResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 @router.post("/", response_model=TargetResponse)
-def create_target(target: TargetCreate, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def create_target(target: TargetCreate, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(require_admin)):
     if not target.authorized:
         raise HTTPException(
             status_code=400,
@@ -212,7 +212,7 @@ class TargetProfileUpdate(BaseModel):
 
 
 @router.patch("/{target_id}/profile", response_model=TargetResponse)
-def update_default_profile(target_id: int, payload: TargetProfileUpdate, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def update_default_profile(target_id: int, payload: TargetProfileUpdate, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(require_admin)):
     target = db.query(Target).filter(Target.id == target_id, Target.is_active == True).first()  # noqa: E712
     if not target:
         raise HTTPException(status_code=404, detail="Target not found")
@@ -230,7 +230,7 @@ class TargetDirbusterUpdate(BaseModel):
 
 
 @router.patch("/{target_id}/dirbuster-toggle", response_model=TargetResponse)
-def update_dirbuster_toggle(target_id: int, payload: TargetDirbusterUpdate, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def update_dirbuster_toggle(target_id: int, payload: TargetDirbusterUpdate, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(require_admin)):
     target = db.query(Target).filter(Target.id == target_id).first()
     if not target:
         raise HTTPException(status_code=404, detail="Target not found")
@@ -292,7 +292,7 @@ def get_notification_settings(target_id: int, db: Session = Depends(get_db), cur
 
 @router.put("/{target_id}/notifications")
 def update_notification_settings(target_id: int, payload: NotificationSettingsUpdate, request: Request,
-                                 db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+                                 db: Session = Depends(get_db), current_user: dict = Depends(require_admin)):
     import secrets
     from backend.validators import validate_webhook_url
     t = _active_target(db, target_id)
@@ -325,7 +325,7 @@ def update_notification_settings(target_id: int, payload: NotificationSettingsUp
 
 
 @router.post("/{target_id}/notifications/test")
-def test_webhook(target_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def test_webhook(target_id: int, db: Session = Depends(get_db), current_user: dict = Depends(require_admin)):
     from backend.notifications import send_test
     t = _active_target(db, target_id)
     if not t.webhook_url:
@@ -335,7 +335,7 @@ def test_webhook(target_id: int, db: Session = Depends(get_db), current_user: di
 
 
 @router.delete("/{target_id}")
-def delete_target(target_id: int, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def delete_target(target_id: int, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(require_admin)):
     target = db.query(Target).filter(Target.id == target_id).first()
     if not target:
         raise HTTPException(status_code=404, detail="Target not found")

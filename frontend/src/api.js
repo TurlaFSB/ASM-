@@ -22,6 +22,7 @@ api.interceptors.response.use(
 );
 
 // Named exports for all pages
+export const getMe = () => api.get("/auth/me");
 export const getTargets = () => api.get("/targets/");
 export const getScans = () => api.get("/scans/");
 export const getTargetHistory = (id) => api.get(`/targets/${id}/history`);

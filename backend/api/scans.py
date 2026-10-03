@@ -10,7 +10,7 @@ from backend.models.asset import Asset
 from backend.models.scan_asset import ScanAsset
 from backend.models.vulnerability import Vulnerability
 from backend.tasks import run_scan, celery_app
-from backend.auth import get_current_user
+from backend.auth import get_current_user, require_admin
 from backend.audit import log_action
 from backend.validators import validate_target
 from backend.scan_profiles import PROFILES, DEFAULT_PROFILE, get_profile, is_valid_profile
@@ -40,7 +40,7 @@ def list_profiles(current_user: dict = Depends(get_current_user)):
     return {"default": DEFAULT_PROFILE, "profiles": [p.public() for p in PROFILES.values()]}
 
 @router.post("/")
-def trigger_scan(scan: ScanCreate, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def trigger_scan(scan: ScanCreate, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(require_admin)):
     target = db.query(Target).filter(Target.id == scan.target_id).first()
     if not target:
         raise HTTPException(status_code=404, detail="Target not found")
@@ -167,7 +167,7 @@ def scan_progress(scan_id: int, db: Session = Depends(get_db), current_user: dic
     }
 
 @router.patch("/{scan_id}/cancel")
-def cancel_scan(scan_id: int, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def cancel_scan(scan_id: int, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(require_admin)):
     scan = db.query(Scan).filter(Scan.id == scan_id).first()
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")

@@ -9,7 +9,7 @@ from croniter import croniter
 from backend.db import get_db
 from backend.models.schedule import ScheduledScan, PRESET_CRON
 from backend.models.target import Target
-from backend.auth import get_current_user
+from backend.auth import get_current_user, require_admin
 from backend.audit import log_action
 
 MIN_INTERVAL_SECONDS = int(os.getenv("SCHEDULE_MIN_INTERVAL_SECONDS", "3600"))
@@ -72,7 +72,7 @@ def compute_next_run(cron_expr: str) -> datetime:
     return itr.get_next(datetime)
 
 @router.post("/", response_model=ScheduleResponse)
-def create_schedule(payload: ScheduleCreate, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def create_schedule(payload: ScheduleCreate, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(require_admin)):
     target = db.query(Target).filter(Target.id == payload.target_id).first()
     if not target:
         raise HTTPException(status_code=404, detail="Target not found")
@@ -107,7 +107,7 @@ def list_schedules(db: Session = Depends(get_db), current_user: dict = Depends(g
     return db.query(ScheduledScan).order_by(ScheduledScan.created_at.desc()).all()
 
 @router.patch("/{schedule_id}", response_model=ScheduleResponse)
-def update_schedule(schedule_id: int, payload: ScheduleUpdate, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def update_schedule(schedule_id: int, payload: ScheduleUpdate, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(require_admin)):
     schedule = db.query(ScheduledScan).filter(ScheduledScan.id == schedule_id).first()
     if not schedule:
         raise HTTPException(status_code=404, detail="Schedule not found")
@@ -136,7 +136,7 @@ def update_schedule(schedule_id: int, payload: ScheduleUpdate, request: Request,
     return schedule
 
 @router.patch("/{schedule_id}/toggle")
-def toggle_schedule(schedule_id: int, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def toggle_schedule(schedule_id: int, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(require_admin)):
     schedule = db.query(ScheduledScan).filter(ScheduledScan.id == schedule_id).first()
     if not schedule:
         raise HTTPException(status_code=404, detail="Schedule not found")
@@ -147,7 +147,7 @@ def toggle_schedule(schedule_id: int, request: Request, db: Session = Depends(ge
     return {"id": schedule.id, "enabled": schedule.enabled}
 
 @router.delete("/{schedule_id}")
-def delete_schedule(schedule_id: int, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def delete_schedule(schedule_id: int, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(require_admin)):
     schedule = db.query(ScheduledScan).filter(ScheduledScan.id == schedule_id).first()
     if not schedule:
         raise HTTPException(status_code=404, detail="Schedule not found")
