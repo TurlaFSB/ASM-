@@ -1,10 +1,17 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, JSON
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, JSON, Index, text
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from backend.db import Base
 
 class Scan(Base):
     __tablename__ = "scans"
+    # At most one pending or running scan per target, enforced by the database (the API and scheduler checks
+    # alone are check-then-insert and lose races).
+    __table_args__ = (
+        Index("uq_scans_active_per_target", "target_id", unique=True,
+              postgresql_where=text("status IN ('pending','running')"),
+              sqlite_where=text("status IN ('pending','running')")),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     celery_task_id = Column(String, nullable=True, index=True)

@@ -2,6 +2,7 @@ from celery import Celery
 import logging
 from backend.config import settings
 import redis
+from backend.watchdog import SCAN_MAX_SECONDS
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ celery_app.conf.update(
     broker_transport_options={"visibility_timeout": 6 * 3600},
     broker_connection_retry_on_startup=True,
     beat_schedule={
+        "reap-stuck-scans": {"task": "reap_stuck_scans", "schedule": 600.0},
         "check-scheduled-scans-every-minute": {
             "task": "check_scheduled_scans",
             "schedule": 60.0,
@@ -121,7 +123,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         raise self.retry(countdown=30, max_retries=20)
     if scan_id:
         redis_client.setex(cx.owner_key(target_id), 3600, str(scan_id))
-    guard = cx.ScanGuard(redis_client, scan_id, lock=lock)
+    guard = cx.ScanGuard(redis_client, scan_id, lock=lock, max_seconds=SCAN_MAX_SECONDS)
     guard.start()
     checkpoint = guard.checkpoint
 
@@ -681,14 +683,17 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             "module_results": module_results
         }
 
-    except cx.ScanCancelled:
-        logger.warning(f"[pipeline] scan_id={scan_id} cancelled")
+    except cx.ScanCancelled as _sc:
+        _timeout = isinstance(_sc, cx.ScanTimedOut)
+        logger.warning(f"[pipeline] scan_id={scan_id} {'timed out' if _timeout else 'cancelled'}")
         try:
             db.rollback()
             if scan_id:
                 _c = db.query(Scan).filter(Scan.id == scan_id).first()
                 if _c is not None:
-                    _c.status = "cancelled"
+                    _c.status = "failed" if _timeout else "cancelled"
+                    if _timeout:
+                        _c.error_log = f"Scan exceeded the maximum runtime of {SCAN_MAX_SECONDS // 60} minutes and was stopped"
                     _c.current_stage = None
                     _c.completed_at = datetime.now(timezone.utc)
                     db.commit()
@@ -736,6 +741,16 @@ def prebuild_report(scan_id: int):
         logger.warning(f"[report] pre-build failed for scan {scan_id}", exc_info=True)
     finally:
         db.close()
+
+
+@celery_app.task(name="reap_stuck_scans")
+def reap_stuck_scans_task():
+    from backend.watchdog import reap_stuck_scans
+    _db = SessionLocal()
+    try:
+        return reap_stuck_scans(_db, redis.Redis.from_url(settings.redis_url))
+    finally:
+        _db.close()
 
 
 @celery_app.task(name="check_scheduled_scans")
@@ -787,17 +802,31 @@ def check_scheduled_scans():
                 created_at=now
             )
             db.add(db_scan)
-            db.commit()
+            try:
+                db.commit()
+            except Exception:  # noqa: BLE001 - unique index: a scan became active since the check above
+                db.rollback()
+                logger.info(f"[scheduler] scan already active for target {target.id} (race), skipping this tick")
+                sched.next_run_at = croniter(sched.cron_expression, now).get_next(datetime)
+                continue
             db.refresh(db_scan)
 
-            task = run_scan.delay(
-                target_id=target.id,
-                domain=target.domain,
-                rate_limit=target.rate_limit,
-                scan_id=db_scan.id,
-                enable_dirbuster=bool(target.dirbuster_enabled),
-                profile=db_scan.profile,
-            )
+            try:
+                task = run_scan.delay(
+                    target_id=target.id,
+                    domain=target.domain,
+                    rate_limit=target.rate_limit,
+                    scan_id=db_scan.id,
+                    enable_dirbuster=bool(target.dirbuster_enabled),
+                    profile=db_scan.profile,
+                )
+            except Exception:  # noqa: BLE001 - broker down: do not leave a pending row that blocks the target
+                db_scan.status = "failed"
+                db_scan.error_log = "Could not queue the scheduled scan (task queue unavailable)."
+                db_scan.completed_at = now
+                db.commit()
+                logger.exception(f"[scheduler] could not queue scan for target {target.id}")
+                continue
             db_scan.celery_task_id = task.id
             db.commit()
 

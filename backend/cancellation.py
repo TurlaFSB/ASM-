@@ -11,6 +11,7 @@ renewed) so a worker that dies hard can never block a target for long.
 """
 import logging
 import threading
+import time
 from typing import Callable, List, Optional
 
 import psutil
@@ -25,6 +26,10 @@ RENEW_SECONDS = 30.0
 
 class ScanCancelled(Exception):
     pass
+
+
+class ScanTimedOut(ScanCancelled):
+    """The scan hit its maximum runtime; handled like a cancel, but recorded as a failure."""
 
 
 def flag_key(scan_id: int) -> str:
@@ -78,11 +83,15 @@ class ScanGuard(threading.Thread):
 
     def __init__(self, redis_client, scan_id: Optional[int], lock=None,
                  poll: float = POLL_SECONDS, renew: float = RENEW_SECONDS,
-                 killer: Callable[[], List[int]] = kill_descendants):
+                 killer: Callable[[], List[int]] = kill_descendants,
+                 max_seconds: Optional[float] = None, clock: Callable[[], float] = time.monotonic):
         super().__init__(daemon=True, name=f"scan-guard-{scan_id}")
         self.redis, self.scan_id, self.lock = redis_client, scan_id, lock
         self.poll, self.renew, self.killer = poll, renew, killer
         self.cancelled = threading.Event()
+        self.timed_out = threading.Event()
+        self.clock = clock
+        self.deadline = clock() + max_seconds if max_seconds else None
         self._stop = threading.Event()
 
     def run(self) -> None:
@@ -90,6 +99,12 @@ class ScanGuard(threading.Thread):
         while not self._stop.wait(self.poll):
             if self.cancelled.is_set():
                 self.killer()                      # keep reaping: the pipeline may spawn its next tool
+                continue
+            if self.deadline is not None and self.clock() >= self.deadline:
+                logger.error(f"[watchdog] scan {self.scan_id}: exceeded max runtime, stopping tools")
+                self.timed_out.set()
+                self.cancelled.set()
+                self.killer()
                 continue
             if is_flagged(self.redis, self.scan_id):
                 logger.warning(f"[cancel] scan {self.scan_id}: cancellation requested, stopping tools")
@@ -109,6 +124,8 @@ class ScanGuard(threading.Thread):
 
     def checkpoint(self) -> None:
         """Call between stages: raise if the scan was cancelled."""
+        if self.timed_out.is_set():
+            raise ScanTimedOut()
         if self.cancelled.is_set() or is_flagged(self.redis, self.scan_id):
             self.cancelled.set()
             raise ScanCancelled()

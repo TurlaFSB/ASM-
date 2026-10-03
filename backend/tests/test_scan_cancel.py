@@ -131,7 +131,9 @@ def test_lock_held_by_live_scan_is_respected(env):
     db, t, _, _ = env
     live = _scan(db, t, "running")
     FakeLock.held.add(cx.lock_key(t.id)); FakeRedis.store[cx.owner_key(t.id)] = str(live.id)
-    new = _scan(db, t, "pending")
+    # The database now allows one active scan per target, so the competing delivery is a duplicate
+    # of the live scan itself (broker redelivery), not a second pending row.
+    new = live
     with pytest.raises(Exception) as e:
         _run(new, t)
     assert "Retry" in type(e.value).__name__ or "retry" in str(e.value).lower()
@@ -158,12 +160,14 @@ def test_legacy_lock_without_owner_marker_is_cleared_when_nothing_runs(env):
     assert took.get("lock")
 
 
-def test_legacy_lock_is_kept_while_another_scan_is_really_running(env):
+
+
+def test_second_active_scan_for_a_target_is_rejected_by_the_database(env):
+    from sqlalchemy.exc import IntegrityError
     db, t, _, _ = env
     _scan(db, t, "running")
-    FakeLock.held.add(cx.lock_key(t.id))                           # no owner marker, but a scan IS running
-    new = _scan(db, t, "pending")
-    with pytest.raises(Exception) as e:
-        _run(new, t)
-    assert "retry" in str(e.value).lower() or "Retry" in type(e.value).__name__
-    assert cx.lock_key(t.id) in FakeLock.held
+    db.add(Scan(target_id=t.id, status="pending")); 
+    with pytest.raises(IntegrityError):
+        db.commit()
+    db.rollback()
+    _scan(db, t, "completed")                                      # finished scans are unlimited

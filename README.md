@@ -376,9 +376,10 @@ docker exec asm_postgres pg_restore -U asm_user -d asm_db --clean --if-exists -v
 | Container hardening (non-root, pinned dependencies, healthchecks, production compose without bind mounts) | Planned |
 | Role-based access (viewer vs admin) on mutating routes | Planned |
 | Login throttling per IP and per username, constant-time unknown-user path | Planned |
-| Scan watchdog: overall runtime limit and a reaper for scans stuck in running or pending | Planned |
-| Pagination on list endpoints; uniqueness constraints on assets and one active scan per target | Planned |
-| Schedule safety rails: minimum interval, validation and audit entries | Planned |
+| Scan watchdog: overall runtime limit (`SCAN_MAX_SECONDS`, default 6h) and a beat-driven reaper for scans stuck in running or pending | Done |
+| One active scan per target, enforced by a partial unique index (migration 0008) | Done |
+| Pagination on list endpoints; uniqueness constraints on assets | Planned |
+| Schedule safety rails: 5-field cron only, minimum interval (`SCHEDULE_MIN_INTERVAL_SECONDS`, default 1h), active-target check, audit entries | Done |
 
 ---
 

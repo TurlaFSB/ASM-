@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
 from datetime import datetime, timezone
@@ -85,7 +86,12 @@ def trigger_scan(scan: ScanCreate, request: Request, db: Session = Depends(get_d
         created_at=datetime.now(timezone.utc)
     )
     db.add(db_scan)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Lost a race with another trigger for the same target: the database allows one active scan each.
+        db.rollback()
+        raise HTTPException(status_code=409, detail=f"A scan is already pending or running for {target.domain}.")
     db.refresh(db_scan)
     log_action(db, current_user.username, "scan_triggered", target_id=target.id,
                scan_id=db_scan.id, detail={"domain": target.domain, "profile": prof.name, "directory_discovery": dirs_on},

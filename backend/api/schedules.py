@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+import os
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, ConfigDict, field_validator
 from typing import Optional
@@ -9,6 +10,9 @@ from backend.db import get_db
 from backend.models.schedule import ScheduledScan, PRESET_CRON
 from backend.models.target import Target
 from backend.auth import get_current_user
+from backend.audit import log_action
+
+MIN_INTERVAL_SECONDS = int(os.getenv("SCHEDULE_MIN_INTERVAL_SECONDS", "3600"))
 
 router = APIRouter(prefix="/schedules", tags=["schedules"])
 
@@ -49,25 +53,38 @@ class ScheduleResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+def check_cron(expr: str) -> str:
+    """Standard 5-field cron only, and never firing more often than the minimum interval."""
+    expr = " ".join((expr or "").split())
+    if len(expr.split(" ")) != 5 or not croniter.is_valid(expr):
+        raise HTTPException(status_code=422, detail="Invalid cron expression (use 5 fields: minute hour day month weekday)")
+    itr = croniter(expr, datetime.now(timezone.utc))
+    fires = [itr.get_next(datetime) for _ in range(6)]
+    gap = min((b - a).total_seconds() for a, b in zip(fires, fires[1:]))
+    if gap < MIN_INTERVAL_SECONDS:
+        raise HTTPException(status_code=422, detail=f"Schedule too frequent: scans must be at least {MIN_INTERVAL_SECONDS // 60} minutes apart")
+    return expr
+
+
 def compute_next_run(cron_expr: str) -> datetime:
     base = datetime.now(timezone.utc)
     itr = croniter(cron_expr, base)
     return itr.get_next(datetime)
 
 @router.post("/", response_model=ScheduleResponse)
-def create_schedule(payload: ScheduleCreate, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def create_schedule(payload: ScheduleCreate, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     target = db.query(Target).filter(Target.id == payload.target_id).first()
     if not target:
         raise HTTPException(status_code=404, detail="Target not found")
     if not target.authorized:
         raise HTTPException(status_code=403, detail="Target is not authorized for scanning")
+    if not target.is_active:
+        raise HTTPException(status_code=409, detail="Target is inactive")
 
     if payload.preset:
         cron_expr = PRESET_CRON[payload.preset]
     elif payload.cron_expression:
-        if not croniter.is_valid(payload.cron_expression):
-            raise HTTPException(status_code=422, detail="Invalid cron expression")
-        cron_expr = payload.cron_expression
+        cron_expr = check_cron(payload.cron_expression)
     else:
         raise HTTPException(status_code=422, detail="Either preset or cron_expression is required")
 
@@ -81,6 +98,8 @@ def create_schedule(payload: ScheduleCreate, db: Session = Depends(get_db), curr
     db.add(schedule)
     db.commit()
     db.refresh(schedule)
+    log_action(db, current_user.username, "schedule_created", target_id=target.id,
+               detail={"schedule_id": schedule.id, "cron": cron_expr, "enabled": schedule.enabled}, ip_address=request.client.host)
     return schedule
 
 @router.get("/", response_model=list[ScheduleResponse])
@@ -88,7 +107,7 @@ def list_schedules(db: Session = Depends(get_db), current_user: dict = Depends(g
     return db.query(ScheduledScan).order_by(ScheduledScan.created_at.desc()).all()
 
 @router.patch("/{schedule_id}", response_model=ScheduleResponse)
-def update_schedule(schedule_id: int, payload: ScheduleUpdate, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def update_schedule(schedule_id: int, payload: ScheduleUpdate, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     schedule = db.query(ScheduledScan).filter(ScheduledScan.id == schedule_id).first()
     if not schedule:
         raise HTTPException(status_code=404, detail="Schedule not found")
@@ -100,10 +119,8 @@ def update_schedule(schedule_id: int, payload: ScheduleUpdate, db: Session = Dep
         schedule.cron_expression = PRESET_CRON[payload.preset]
         cron_changed = True
     elif payload.cron_expression is not None:
-        if not croniter.is_valid(payload.cron_expression):
-            raise HTTPException(status_code=422, detail="Invalid cron expression")
         schedule.preset = None
-        schedule.cron_expression = payload.cron_expression
+        schedule.cron_expression = check_cron(payload.cron_expression)
         cron_changed = True
 
     if payload.enabled is not None:
@@ -114,22 +131,28 @@ def update_schedule(schedule_id: int, payload: ScheduleUpdate, db: Session = Dep
 
     db.commit()
     db.refresh(schedule)
+    log_action(db, current_user.username, "schedule_updated", target_id=schedule.target_id,
+               detail={"schedule_id": schedule.id, "cron": schedule.cron_expression, "enabled": schedule.enabled}, ip_address=request.client.host)
     return schedule
 
 @router.patch("/{schedule_id}/toggle")
-def toggle_schedule(schedule_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def toggle_schedule(schedule_id: int, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     schedule = db.query(ScheduledScan).filter(ScheduledScan.id == schedule_id).first()
     if not schedule:
         raise HTTPException(status_code=404, detail="Schedule not found")
     schedule.enabled = not schedule.enabled
     db.commit()
+    log_action(db, current_user.username, "schedule_toggled", target_id=schedule.target_id,
+               detail={"schedule_id": schedule.id, "enabled": schedule.enabled}, ip_address=request.client.host)
     return {"id": schedule.id, "enabled": schedule.enabled}
 
 @router.delete("/{schedule_id}")
-def delete_schedule(schedule_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def delete_schedule(schedule_id: int, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     schedule = db.query(ScheduledScan).filter(ScheduledScan.id == schedule_id).first()
     if not schedule:
         raise HTTPException(status_code=404, detail="Schedule not found")
+    tid, sid = schedule.target_id, schedule.id
     db.delete(schedule)
     db.commit()
+    log_action(db, current_user.username, "schedule_deleted", target_id=tid, detail={"schedule_id": sid}, ip_address=request.client.host)
     return {"message": "Schedule deleted"}
