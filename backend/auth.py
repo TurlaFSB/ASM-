@@ -18,9 +18,15 @@ def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
 
 
+# A real bcrypt hash of a random value, used so unknown/inactive users cost the same
+# time as a wrong password (no username enumeration via response timing).
+_DUMMY_HASH = pwd_context.hash("asm-timing-equaliser")
+
+
 def authenticate_user(db: Session, username: str, password: str):
     user = db.query(User).filter(User.username == username, User.is_active == True).first()
     if not user:
+        pwd_context.verify(password, _DUMMY_HASH)
         return None
     if not verify_password(password, user.hashed_password):
         return None
