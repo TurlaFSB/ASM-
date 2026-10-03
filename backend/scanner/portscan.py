@@ -1,5 +1,6 @@
 import subprocess
 import logging
+import os
 import time
 import defusedxml.ElementTree as ET   # nmap output carries text from scanned hosts: parse it defensively
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -96,8 +97,20 @@ def _port_args(ports: str, services_paths=NMAP_SERVICES_PATHS) -> List[str]:
     return ["--top-ports", p if p in ("100", "1000") else "1000"]
 
 
+def scan_type_flag() -> str:
+    """-sS (SYN, fast, needs raw sockets) or -sT (TCP connect, works for any user).
+
+    ASM_NMAP_SCAN_TYPE=syn|connect forces one; the default (auto) uses SYN when running as root or when
+    the container grants raw sockets (NMAP_PRIVILEGED is set together with the CAP_NET_RAW file capability)."""
+    forced = os.environ.get("ASM_NMAP_SCAN_TYPE", "auto").strip().lower()
+    if forced in ("syn", "connect"):
+        return "-sS" if forced == "syn" else "-sT"
+    is_root = getattr(os, "geteuid", lambda: 0)() == 0
+    return "-sS" if (is_root or os.environ.get("NMAP_PRIVILEGED")) else "-sT"
+
+
 def build_nmap_cmd(host: str, rate_limit: int, ports: str = "1000",
-                   host_timeout: int = 600, version_intensity: int = 2) -> List[str]:
+                   host_timeout: int = 600, version_intensity: int = 2, scan_flag: str = None) -> List[str]:
     """Build the nmap command.
 
     rate_limit is the per-target "politeness" knob shared with the HTTP tools
@@ -108,7 +121,7 @@ def build_nmap_cmd(host: str, rate_limit: int, ports: str = "1000",
     """
     max_rate = max(100, int(rate_limit) * 50)
     return [
-        "nmap", "-Pn", "-n", "-sS", "-sV", "--version-intensity", str(max(0, min(9, int(version_intensity)))),
+        "nmap", "-Pn", "-n", scan_flag or scan_type_flag(), "-sV", "--version-intensity", str(max(0, min(9, int(version_intensity)))),
         *_port_args(ports), "--max-rate", str(max_rate),
         "--open", "-T4", "--host-timeout", f"{int(host_timeout)}s",
         "-oX", "-", host,
@@ -134,6 +147,14 @@ def scan_ports(host: str, rate_limit: int = 100, ports: str = "1000",
             build_nmap_cmd(host, rate_limit, ports, host_timeout, version_intensity),
             timeout=int(host_timeout) + 120,
         )
+        if nmap_result.returncode != 0 and "requires root privileges" in (nmap_result.stderr or ""):
+            # Raw sockets are not available to this user (no capability on the binary): the connect scan
+            # needs no privileges, so degrade instead of reporting every host as having no ports.
+            logger.warning("[nmap] SYN scan not permitted here; falling back to a TCP connect scan (-sT)")
+            nmap_result = _run_with_process_group_cleanup(
+                build_nmap_cmd(host, rate_limit, ports, host_timeout, version_intensity, scan_flag="-sT"),
+                timeout=int(host_timeout) + 120,
+            )
 
         if nmap_result.returncode != 0:
             duration = time.time() - start

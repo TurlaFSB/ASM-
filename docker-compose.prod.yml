@@ -1,0 +1,76 @@
+# Production overlay. Use together with the base file:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml build
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# What changes compared with development:
+#   * the backend, worker and beat run as an unprivileged user (uid 10001), not root
+#   * no source bind mounts: the code is whatever is baked into the image
+#   * the root filesystem is read-only (writable scratch space is tmpfs or named volumes)
+#   * all Linux capabilities are dropped; the worker gets only NET_RAW so nmap can run SYN scans
+#   * data lives in named volumes, with a one-shot step that fixes their ownership
+#
+# Do NOT add `security_opt: no-new-privileges` to the worker: it would stop nmap using its file capability.
+
+x-app-prod: &app-prod
+  build:
+    context: .
+    dockerfile: backend/Dockerfile
+    target: prod
+  read_only: true
+  cap_drop: [ALL]
+  tmpfs:
+    - /tmp:size=512m,mode=1777
+    - /home/asm/.config:uid=10001,gid=10001
+    - /home/asm/.cache:uid=10001,gid=10001
+    - /home/asm/.pdcp:uid=10001,gid=10001
+  environment:
+    PYTHONDONTWRITEBYTECODE: "1"
+
+services:
+  volume-init:
+    image: busybox:1.37
+    container_name: asm_volume_init
+    user: "0:0"
+    restart: "no"
+    command: ["sh", "-c", "chown -R 10001:10001 /screenshots /scan_output"]
+    volumes:
+      - screenshots_data:/screenshots
+      - scan_output_data:/scan_output
+
+  migrate:
+    <<: *app-prod
+    volumes: !override []
+
+  backend:
+    <<: *app-prod
+    depends_on:
+      volume-init: { condition: service_completed_successfully }
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    volumes: !override
+      - screenshots_data:/app/screenshots
+      - scan_output_data:/app/scan_output
+    command: ["bash", "-c", "Xvfb :99 -screen 0 1280x1024x24 & exec python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000"]
+
+  celery_worker:
+    <<: *app-prod
+    cap_add: [NET_RAW]
+    depends_on:
+      volume-init: { condition: service_completed_successfully }
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    volumes: !override
+      - screenshots_data:/app/screenshots
+      - scan_output_data:/app/scan_output
+    command: celery -A backend.tasks worker --loglevel=info --concurrency=1
+
+  celery_beat:
+    <<: *app-prod
+    volumes: !override []
+    command: celery -A backend.tasks beat --loglevel=info -s /tmp/celerybeat-schedule
+
+volumes:
+  scan_output_data:

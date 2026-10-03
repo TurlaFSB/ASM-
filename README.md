@@ -49,6 +49,7 @@ Every scan is stored as a point-in-time **snapshot** and compared with the previ
 - [API](#api)
 - [Scanning private and lab targets](#scanning-private-and-lab-targets)
 - [Development](#development)
+- [Production deployment](#production-deployment)
 - [Backup and restore](#backup-and-restore)
 - [Troubleshooting](#troubleshooting)
 - [Credits](#credits)
@@ -395,21 +396,71 @@ The test suite runs against in-memory SQLite and mocked scanners; no Docker, Red
 
 ---
 
+## Production deployment
+
+The base `docker-compose.yml` is a development setup (source bind-mounted, hot reload, root user). For a production-style run, layer the production overlay on top of it:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml build
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+What the overlay changes:
+
+- **Non-root.** The backend, Celery worker and Celery beat run as uid/gid `10001` (`asm`), built from the `prod` stage of `backend/Dockerfile`.
+- **No source mounts.** The code is whatever was baked into the image; rebuild to deploy.
+- **Read-only root filesystem.** Scratch space is `tmpfs`; screenshots and scan output live in named volumes.
+- **Least privilege.** All Linux capabilities are dropped. Only the worker gets `NET_RAW`, and `nmap` carries a matching file capability so SYN scans (`-sS`) still work. If a deployment cannot grant `NET_RAW`, the scanner falls back to a TCP connect scan (`-sT`); force a mode with `ASM_NMAP_SCAN_TYPE=syn|connect`.
+- **Volume ownership.** A one-shot `volume-init` service fixes ownership of existing root-owned volumes, so upgrading from the development setup keeps your data.
+
+Before exposing it, set in `.env.docker`:
+
+- `SECRET_KEY` to a long random value (it also derives the scan-seal signing key; rotating it marks older seals `valid_unverified_signature`).
+- `COOKIE_SECURE=true` and serve the app over HTTPS. The web app and API must share a host name for the login cookie.
+- A strong database password.
+
+Do not add `security_opt: no-new-privileges` to the worker: it would stop `nmap` from using its file capability.
+
+---
+
 ## Backup and restore
 
-`docker compose down -v` permanently deletes all data. Back up first:
+`docker compose down -v` permanently deletes all data. Back up first.
+
+**Database** (custom format, compressed, restorable selectively):
 
 ```bash
+mkdir -p backups
 docker exec asm_postgres pg_dump -U asm_user -F c -d asm_db -f /tmp/backup.dump
 docker cp asm_postgres:/tmp/backup.dump ./backups/asm_db_$(date +%Y%m%d).dump
+docker exec asm_postgres rm /tmp/backup.dump
 ```
 
-Restore:
+**Restore** into the running stack (stop the writers first so nothing changes mid-restore):
 
 ```bash
+docker compose stop backend celery_worker celery_beat
 docker cp ./backups/asm_db_YYYYMMDD.dump asm_postgres:/tmp/restore.dump
 docker exec asm_postgres pg_restore -U asm_user -d asm_db --clean --if-exists -v /tmp/restore.dump
+docker compose start backend celery_worker celery_beat
 ```
+
+**Prove the backup works.** A backup you have never restored is a hope, not a backup. Restore into a scratch database and count rows:
+
+```bash
+docker exec asm_postgres createdb -U asm_user asm_restore_test
+docker exec asm_postgres pg_restore -U asm_user -d asm_restore_test /tmp/restore.dump
+docker exec asm_postgres psql -U asm_user -d asm_restore_test -c "SELECT count(*) FROM scans;"
+docker exec asm_postgres dropdb -U asm_user asm_restore_test
+```
+
+**Files.** Screenshots and scan output live in named volumes (`screenshots_data`, `scan_output_data` in the production overlay). Archive one with a throwaway container:
+
+```bash
+docker run --rm -v asm_screenshots_data:/data -v "$PWD/backups":/out busybox:1.37 tar czf /out/screenshots.tgz -C /data .
+```
+
+(The volume name is prefixed with your Compose project name; check `docker volume ls`.) Scan seals are stored in the database, so a database restore brings the integrity chain back intact.
 
 ---
 

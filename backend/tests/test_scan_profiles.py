@@ -188,3 +188,36 @@ def test_alembic_has_single_linear_head():
     assert len(script.get_heads()) == 1
     revs = list(script.walk_revisions())
     assert [r.revision for r in revs][-1] == "0001" and revs[0].revision == script.get_heads()[0]
+
+
+def test_nmap_scan_type_follows_privileges(monkeypatch):
+    from backend.scanner import portscan as ps
+    monkeypatch.delenv("ASM_NMAP_SCAN_TYPE", raising=False)
+    monkeypatch.delenv("NMAP_PRIVILEGED", raising=False)
+    monkeypatch.setattr(ps.os, "geteuid", lambda: 0, raising=False)
+    assert ps.scan_type_flag() == "-sS"                                  # root: SYN scan
+    monkeypatch.setattr(ps.os, "geteuid", lambda: 10001, raising=False)
+    assert ps.scan_type_flag() == "-sT"                                  # unprivileged and no capability
+    monkeypatch.setenv("NMAP_PRIVILEGED", "1")
+    assert ps.scan_type_flag() == "-sS"                                  # image grants CAP_NET_RAW on nmap
+    monkeypatch.setenv("ASM_NMAP_SCAN_TYPE", "connect")
+    assert ps.scan_type_flag() == "-sT" and "-sT" in ps.build_nmap_cmd("h", 10)
+
+
+def test_nmap_falls_back_to_connect_scan_when_raw_sockets_refused(monkeypatch):
+    from types import SimpleNamespace
+    from backend.scanner import portscan as ps
+    monkeypatch.setattr(ps.os, "geteuid", lambda: 0, raising=False)
+    monkeypatch.delenv("ASM_NMAP_SCAN_TYPE", raising=False)
+    calls = []
+
+    def fake_run(cmd, timeout):
+        calls.append(cmd)
+        if "-sS" in cmd:
+            return SimpleNamespace(returncode=1, stdout="", stderr="You requested a scan type which requires root privileges. QUITTING!")
+        return SimpleNamespace(returncode=0, stderr="", stdout='<nmaprun><host><ports><port protocol="tcp" portid="80"><state state="open"/><service name="http"/></port></ports></host></nmaprun>')
+
+    monkeypatch.setattr(ps, "_run_with_process_group_cleanup", fake_run)
+    res = ps.scan_ports("example.org")
+    assert res["module_status"] == "ok" and [p["port"] for p in res["ports"]] == [80]
+    assert "-sS" in calls[0] and "-sT" in calls[1] and len(calls) == 2

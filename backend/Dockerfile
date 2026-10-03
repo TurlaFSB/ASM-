@@ -1,4 +1,6 @@
-FROM python:3.13-slim
+# Stages: `base` (all tools) -> `prod` (non-root, for docker-compose.prod.yml) -> `dev` (root; the default target,
+# used by docker-compose.yml with the source bind-mounted).
+FROM python:3.13-slim AS base
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -81,3 +83,25 @@ EXPOSE 8000
 
 CMD Xvfb :99 -screen 0 1280x1024x24 & \
     python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
+
+# ── Production image: runs as an unprivileged user, owns nothing it does not need ──
+FROM base AS prod
+RUN apt-get update && apt-get install -y --no-install-recommends libcap2-bin \
+    && rm -rf /var/lib/apt/lists/* \
+    # Raw sockets for SYN scans WITHOUT root: only CAP_NET_RAW, only on the nmap binary. The container must
+    # also grant it (cap_add: NET_RAW); without it scans fall back to a TCP connect scan automatically.
+    && setcap cap_net_raw+eip "$(readlink -f /usr/bin/nmap)" \
+    && groupadd -g 10001 asm \
+    && useradd -u 10001 -g 10001 -m -d /home/asm -s /usr/sbin/nologin asm \
+    # nuclei looks for templates under $HOME, which is /root in the base image and unreadable here
+    && cp -a /root/nuclei-templates /home/asm/nuclei-templates \
+    && mkdir -p /app/screenshots /app/scan_output /tmp/.X11-unix \
+    && chmod 1777 /tmp/.X11-unix \
+    && chown -R asm:asm /home/asm /app/screenshots /app/scan_output
+ENV HOME=/home/asm \
+    NMAP_PRIVILEGED=1 \
+    MOZ_DISABLE_CONTENT_SANDBOX=1
+USER asm
+
+# ── Development image (default target) ──
+FROM base AS dev
