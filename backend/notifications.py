@@ -55,10 +55,15 @@ def meets_threshold(severity: Optional[str], minimum: Optional[str]) -> bool:
     return sev_rank(s) <= sev_rank(m)
 
 
+def effective_severity(e: ChangeEvent) -> str:
+    """The AI-refined severity when the model answered (policy-bounded), otherwise the rule-based one."""
+    return e.final_severity or e.severity
+
+
 def _view(e: ChangeEvent) -> Dict:
     return {"id": e.id, "scan_id": e.scan_id, "category": e.category, "change_type": e.change_type,
-            "asset": e.asset, "subject": e.subject, "severity": e.severity, "confidence": e.confidence,
-            "summary": e.summary, "group": e.group, "before": e.before, "after": e.after}
+            "asset": e.asset, "subject": e.subject, "severity": effective_severity(e), "confidence": e.confidence,
+            "summary": e.summary, "ai_summary": e.ai_summary, "ai_action": e.ai_action, "group": e.group, "before": e.before, "after": e.after}
 
 
 def sign(secret: str, body: bytes, timestamp: str) -> str:
@@ -91,7 +96,9 @@ def build_digest(target: Target, scan: Scan, events: List[Dict]) -> Dict:
         "counts": {k: v for k, v in counts.items() if v},
         "events": [{"id": e["id"], "severity": e["severity"], "category": e["category"],
                     "change_type": e["change_type"], "asset": e["asset"], "subject": e["subject"],
-                    "summary": e["summary"], "confidence": e["confidence"]} for e in shown],
+                    "summary": e["summary"], "confidence": e["confidence"],
+                    **({"ai_summary": e["ai_summary"], "ai_action": e["ai_action"]} if e.get("ai_summary") else {})}
+                   for e in shown],
         "cve_rollups": lines,
         "truncated": {"events": max(0, len(rest) - len(shown)), "cve_rollups": max(0, len(rollups) - len(lines))},
     }
@@ -209,7 +216,7 @@ def notify_scan_changes(db: Session, scan: Scan, sleep=time.sleep) -> Dict:
         minimum = target.alert_min_severity or DEFAULT_MIN_SEVERITY
         rows = (db.query(ChangeEvent).filter(ChangeEvent.scan_id == scan.id, ChangeEvent.status == "confirmed")
                 .order_by(ChangeEvent.id).all())
-        rows = [r for r in rows if meets_threshold(r.severity, minimum)]
+        rows = [r for r in rows if meets_threshold(effective_severity(r), minimum)]
         summary["qualifying"] = len(rows)
         if not rows:
             return summary
@@ -217,10 +224,10 @@ def notify_scan_changes(db: Session, scan: Scan, sleep=time.sleep) -> Dict:
         already = {a[0] for a in db.query(Alert.change_event_id)
                    .filter(Alert.scan_id == scan.id, Alert.change_event_id.isnot(None)).all()}
         fresh = [r for r in rows if r.id not in already]
-        fresh.sort(key=lambda r: (sev_rank(r.severity), r.category, r.asset, r.subject))
+        fresh.sort(key=lambda r: (sev_rank(effective_severity(r)), r.category, r.asset, r.subject))
         for r in fresh[:MAX_ALERTS_PER_SCAN]:
             db.add(Alert(target_id=scan.target_id, scan_id=scan.id, change_event_id=r.id,
-                         alert_type=f"{r.category}_{r.change_type}", severity=r.severity, category=r.category,
+                         alert_type=f"{r.category}_{r.change_type}", severity=effective_severity(r), category=r.category,
                          asset_subdomain=r.asset or "", summary=r.summary,
                          detail={"subject": r.subject, "confidence": r.confidence, "group": r.group,
                                  "before": r.before, "after": r.after}))
@@ -228,7 +235,7 @@ def notify_scan_changes(db: Session, scan: Scan, sleep=time.sleep) -> Dict:
         left_out = len(fresh) - summary["alerts"]
         if left_out > 0:
             db.add(Alert(target_id=scan.target_id, scan_id=scan.id, alert_type="changes_summary",
-                         severity=fresh[summary["alerts"]].severity, category="summary", asset_subdomain="",
+                         severity=effective_severity(fresh[summary["alerts"]]), category="summary", asset_subdomain="",
                          summary=f"{left_out} more change{'s' if left_out != 1 else ''} not listed individually. "
                                  f"Open the Changes page for scan #{scan.id}.",
                          detail={"omitted": left_out}))

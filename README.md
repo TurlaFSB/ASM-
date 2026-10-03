@@ -163,6 +163,23 @@ Recompute the events of the newest scan of a profile (for example after upgradin
 docker compose exec backend python -m backend.scripts.rediff <scan_id>
 ```
 
+### AI-assisted triage (optional)
+
+With a local model enabled, each confirmed change also gets a one-line summary and a recommended next step. The rule-based severity stays the source of truth: the model may move it by one step, and it can never lower a high or critical change or one tied to a known-exploited CVE (`rule_severity` and the AI's own answer are both kept). Nothing leaves your machine with the `ollama` provider.
+
+- Model output must match a strict schema; anything else, or text containing links or commands, is discarded and the rules stand.
+- Scanned content reaches the model only as short, whitelisted, sanitized fields, and the prompt treats it as untrusted data.
+- Per scan it is bounded (`ASM_LLM_MAX_EVENTS`, `ASM_LLM_BUDGET_SECONDS`) and stops early when the model is down, so a scan never waits on it.
+- The Changes page marks AI notes as advisory. Alerts and webhooks use the adjusted severity.
+
+Check the setup with `docker compose exec backend python -m backend.scripts.ai_smoke`. To measure a model before trusting it, run the labelled evaluation (48 cases covering exposed databases, secrets, KEV findings, noise, removals and prompt injection):
+
+```bash
+docker compose exec backend python -m backend.scripts.ai_eval
+```
+
+It writes a JSON report and exits non-zero unless every quality gate passes: at least 95% valid answers, no prompt-injection failures, no serious change judged below high, and at least 85% within one severity step of the labelled answer.
+
 ---
 
 ## Security posture
@@ -252,6 +269,7 @@ Set these in `.env.docker`. Only the first two are required.
 | `DIRBUSTER_MAX_SECONDS` | `900` | Upper bound for directory discovery per scan |
 | `NUCLEI_TIMEOUT` | `1800` | Upper bound for a nuclei run, in seconds |
 | `NUCLEI_CONCURRENCY` | `15` | Nuclei template concurrency |
+| `ASM_LLM_PROVIDER` | `none` | AI triage: `none`, `ollama` or `mock`. See `ASM_LLM_*` in `.env.docker.example` |
 | `ASM_REPORT_CACHE_DIR` | `/app/scan_output/reports` | Where rendered PDF reports are cached |
 
 ---
@@ -368,7 +386,7 @@ docker exec asm_postgres pg_restore -U asm_user -d asm_db --clean --if-exists -v
 | Alerts and webhooks driven by change events (backend, settings API, delivery log) | Done |
 | Alerts page and per-target notification settings in the UI | Done |
 | Per-port path tracking (paths keyed by host and port) | Done |
-| AI-assisted triage: severity, summary and recommended action per change, with guardrails | Planned |
+| AI-assisted triage: severity, summary and recommended action per change, with guardrails and a labelled evaluation set | Wired in; model evaluation in progress |
 | Leak and breach collectors (HIBP, GitHub code search, paste sites) | Planned |
 | Dark-web mention monitoring via licensed intelligence APIs | Planned |
 | Screenshot perceptual-hash diffing | Planned |

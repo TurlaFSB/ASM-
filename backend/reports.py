@@ -206,6 +206,10 @@ def _paths_view(db: Session, scan_id: int, assets: Dict[int, Asset]) -> List[Dic
     return out
 
 
+def _sev(r) -> str:
+    return r.final_severity or r.severity
+
+
 def _changes_view(db: Session, scan: Scan, mr: Dict) -> Optional[Dict]:
     """Structured changes for this scan from the diff engine; None for scans recorded before it existed
     (the template then falls back to the legacy per-asset alerts)."""
@@ -213,21 +217,21 @@ def _changes_view(db: Session, scan: Scan, mr: Dict) -> Optional[Dict]:
         return None
     detail = mr.get("diff_detail") or {}
     rows = (db.query(ChangeEvent).filter(ChangeEvent.scan_id == scan.id, ChangeEvent.status == "confirmed").all())
-    rows.sort(key=lambda r: (SEVERITY_ORDER.index(r.severity) if r.severity in SEVERITY_ORDER else 9,
+    rows.sort(key=lambda r: (SEVERITY_ORDER.index(_sev(r)) if _sev(r) in SEVERITY_ORDER else 9,
                              r.category, r.asset, r.subject))
     direct, grouped = [], {}
     for r in rows:
         if r.group and r.confidence == "inferred":
             g = grouped.setdefault((r.group, r.asset, r.change_type), {"group": r.group, "asset": r.asset,
                                                                        "change_type": r.change_type, "n": 0,
-                                                                       "severity": r.severity})
+                                                                       "severity": _sev(r)})
             g["n"] += 1
         else:
-            direct.append({"severity": r.severity, "category": r.category, "change_type": r.change_type,
+            direct.append({"severity": _sev(r), "category": r.category, "change_type": r.change_type,
                            "asset": r.asset, "summary": r.summary, "confidence": r.confidence})
     counts = {k: 0 for k in COUNTED}
     for r in rows:
-        counts[r.severity] = counts.get(r.severity, 0) + 1
+        counts[_sev(r)] = counts.get(_sev(r), 0) + 1
     baseline_id = detail.get("baseline_scan_id")
     pending = db.query(ChangeEvent).filter(ChangeEvent.scan_id == scan.id, ChangeEvent.status == "pending").count()
     return {"is_baseline": baseline_id is None, "baseline_scan_id": baseline_id, "total": len(rows),

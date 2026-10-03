@@ -620,6 +620,12 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                                                f"{diff_summary['pending']} pending)")
                 module_results["diff_detail"] = diff_summary
                 logger.info(f"[diff] {module_results['diff']}")
+                # AI triage is advisory and bounded; failures leave the rule-based severities in place.
+                from backend.ai.triage import triage_scan_events
+                ai = triage_scan_events(db, scan)
+                module_results["ai_triage"] = ai
+                if ai["status"] != "disabled":
+                    logger.info(f"[ai] {ai}")
                 # Alerts and the webhook digest come from the CONFIRMED events just recorded.
                 from backend.notifications import notify_scan_changes
                 note = notify_scan_changes(db, scan)

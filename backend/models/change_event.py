@@ -33,6 +33,16 @@ class ChangeEvent(Base):
     after = Column(JSON, nullable=True)
     fingerprint = Column(String, nullable=False, index=True)
 
+    # AI triage (advisory). `severity` stays the rule-based value; final_severity is the policy-bounded
+    # result when the model answered. ai_status: ok | failed | skipped (NULL = not attempted / disabled).
+    ai_status = Column(String, nullable=True)
+    ai_severity = Column(String, nullable=True)
+    final_severity = Column(String, nullable=True)
+    ai_summary = Column(Text, nullable=True)
+    ai_action = Column(Text, nullable=True)
+    ai_model = Column(String, nullable=True)
+    ai_error = Column(String, nullable=True)
+
     # scan that settled a pending removal (confirmed it -> superseded, or saw it return -> dismissed)
     resolved_by_scan_id = Column(Integer, ForeignKey("scans.id"), nullable=True, index=True)
 

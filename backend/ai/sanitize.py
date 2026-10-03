@@ -4,12 +4,13 @@ import re
 from typing import Dict
 
 _CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+_ANGLE = re.compile(r"[<>]")   # a hostile field must not be able to close the <event> envelope
 _WS = re.compile(r"\s+")
 FIELD_MAX = 160
 
 
 def clean_text(v, limit: int = FIELD_MAX) -> str:
-    s = _CTRL.sub("", str(v if v is not None else ""))
+    s = _ANGLE.sub(" ", _CTRL.sub("", str(v if v is not None else "")))
     s = _WS.sub(" ", s).strip()
     return s[:limit]
 

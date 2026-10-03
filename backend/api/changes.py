@@ -1,6 +1,7 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.auth import get_current_user
@@ -14,10 +15,17 @@ router = APIRouter(prefix="/changes", tags=["changes"])
 SEVERITIES = ["critical", "high", "medium", "low", "info"]
 
 
+def _eff(e: ChangeEvent) -> str:
+    return e.final_severity or e.severity
+
+
 def _view(e: ChangeEvent) -> dict:
     return {"id": e.id, "target_id": e.target_id, "scan_id": e.scan_id, "baseline_scan_id": e.baseline_scan_id,
             "category": e.category, "change_type": e.change_type, "asset": e.asset, "subject": e.subject,
-            "severity": e.severity, "confidence": e.confidence, "status": e.status, "summary": e.summary,
+            "severity": _eff(e), "rule_severity": e.severity, "confidence": e.confidence, "status": e.status,
+            "summary": e.summary,
+            "ai": ({"status": e.ai_status, "severity": e.ai_severity, "summary": e.ai_summary,
+                    "action": e.ai_action, "model": e.ai_model} if e.ai_status == "ok" else None),
             "group": e.group, "before": e.before, "after": e.after,
             "created_at": e.created_at.isoformat() if e.created_at else None}
 
@@ -47,7 +55,7 @@ def list_changes(
         bad = [s for s in wanted if s not in SEVERITIES]
         if bad:
             raise HTTPException(status_code=422, detail=f"unknown severity: {', '.join(bad)}")
-        q = q.filter(ChangeEvent.severity.in_(wanted))
+        q = q.filter(func.coalesce(ChangeEvent.final_severity, ChangeEvent.severity).in_(wanted))
     if category:
         q = q.filter(ChangeEvent.category == category)
     if confidence:
@@ -70,10 +78,10 @@ def scan_changes(scan_id: int,
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
     rows = db.query(ChangeEvent).filter(ChangeEvent.scan_id == scan_id, ChangeEvent.status == "confirmed").all()
-    rows.sort(key=lambda r: (SEVERITIES.index(r.severity) if r.severity in SEVERITIES else 9, r.category, r.asset, r.subject))
+    rows.sort(key=lambda r: (SEVERITIES.index(_eff(r)) if _eff(r) in SEVERITIES else 9, r.category, r.asset, r.subject))
     counts = {s: 0 for s in SEVERITIES}
     for r in rows:
-        counts[r.severity] = counts.get(r.severity, 0) + 1
+        counts[_eff(r)] = counts.get(_eff(r), 0) + 1
     views = [_view(r) for r in rows]
     rest, rollups = rollup_events(views)
     events = rest if collapse_cves else views
