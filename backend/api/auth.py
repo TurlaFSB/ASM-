@@ -3,7 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
-from backend.auth import authenticate_user, create_access_token, get_current_user, set_session_cookies, clear_session_cookies
+from backend.auth import (authenticate_user, create_access_token, get_current_user, set_session_cookies,
+                          set_csrf_cookie, clear_session_cookies, SESSION_COOKIE, CSRF_COOKIE)
 from backend.db import get_db
 from backend.models.user import User
 from backend.config import settings
@@ -53,7 +54,11 @@ def login(request: Request, response: Response, form_data: OAuth2PasswordRequest
     }
 
 @router.get("/me")
-def get_me(current_user: User = Depends(get_current_user)):
+def get_me(request: Request, response: Response, current_user: User = Depends(get_current_user)):
+    # Self-heal: a valid session cookie but a missing CSRF cookie (cleared or expired on its own)
+    # would make every state-changing call fail, so hand out a fresh CSRF cookie here.
+    if request.cookies.get(SESSION_COOKIE) and not request.cookies.get(CSRF_COOKIE):
+        set_csrf_cookie(response)
     return {"username": current_user.username, "role": current_user.role}
 
 

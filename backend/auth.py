@@ -21,11 +21,17 @@ CSRF_HEADER = "X-CSRF-Token"
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 
+def _cookie_opts() -> dict:
+    return dict(max_age=settings.access_token_expire_minutes * 60, path="/", secure=settings.cookie_secure, samesite="lax")
+
+
+def set_csrf_cookie(response: Response) -> None:
+    response.set_cookie(CSRF_COOKIE, secrets.token_urlsafe(32), httponly=False, **_cookie_opts())
+
+
 def set_session_cookies(response: Response, token: str) -> None:
-    age = settings.access_token_expire_minutes * 60
-    common = dict(max_age=age, path="/", secure=settings.cookie_secure, samesite="lax")
-    response.set_cookie(SESSION_COOKIE, token, httponly=True, **common)
-    response.set_cookie(CSRF_COOKIE, secrets.token_urlsafe(32), httponly=False, **common)
+    response.set_cookie(SESSION_COOKIE, token, httponly=True, **_cookie_opts())
+    set_csrf_cookie(response)
 
 
 def clear_session_cookies(response: Response) -> None:

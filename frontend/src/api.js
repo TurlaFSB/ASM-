@@ -20,7 +20,14 @@ api.interceptors.request.use(config => {
 
 api.interceptors.response.use(
   res => res,
-  err => {
+  async err => {
+    // The CSRF cookie can go missing on its own (cleared, expired). /auth/me hands out a fresh one,
+    // so repair it once and replay the call instead of failing silently.
+    const cfg = err.config;
+    if (err.response?.status === 403 && err.response?.data?.detail === "CSRF check failed" && cfg && !cfg._csrfRetried) {
+      cfg._csrfRetried = true;
+      try { await api.get("/auth/me"); return api(cfg); } catch { /* fall through to the original error */ }
+    }
     // An expired session on a normal call sends the user back to the login screen.
     if (err.response?.status === 401 && !err.config?.url?.startsWith("/auth/")) window.location.reload();
     return Promise.reject(err);

@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
-import { getTargets, createTarget, deleteTarget, triggerScan, getTargetHistory, getTargetInfrastructure, updateDirbusterToggle, getScanProfiles, updateTargetProfile } from "../api";
-import { Plus, Trash2, Play, Shield, History, Globe, Bell } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import { getTargets, createTarget, deleteTarget, triggerScan, getTargetHistory, getTargetInfrastructure, updateDirbusterToggle, getScans, getScanProfiles, updateTargetProfile } from "../api";
+import { Plus, Trash2, Play, Shield, History, Globe, Bell, Loader2 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import RowMenu from "../components/RowMenu";
 import Sheet from "../components/Sheet";
@@ -168,6 +169,25 @@ export default function Targets() {
   const [notifExpandedId, setNotifExpandedId] = useState(null);
   const [pendingDelete, setDeleteTarget] = useState(null);   // target awaiting delete confirmation
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const [activeScans, setActiveScans] = useState({});   // target id -> scan that is pending or running
+  const [starting, setStarting] = useState({});         // target id -> a scan request is in flight
+
+  const refreshActive = useCallback(() => {
+    getScans().then(r => {
+      const m = {};
+      for (const sc of r.data) if (sc.status === "pending" || sc.status === "running") m[sc.target_id] = sc;
+      setActiveScans(m);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => { refreshActive(); }, [refreshActive]);
+  const anyActive = Object.keys(activeScans).length > 0;
+  useEffect(() => {
+    if (!anyActive) return undefined;
+    const t = setInterval(refreshActive, 5000);
+    return () => clearInterval(t);
+  }, [anyActive, refreshActive]);
 
   const fetchTargets = () => {
     getTargets()
@@ -253,13 +273,29 @@ export default function Targets() {
   };
 
   const handleScan = async (id) => {
+    if (starting[id] || activeScans[id]) return;
+    setStarting(prev => ({ ...prev, [id]: true }));
     try {
       const t = targets.find(x => x.id === id);
       const profile = profileChoice[id] ?? t?.default_profile ?? "standard";
       await triggerScan({ target_id: id, profile, run_dirbuster: dirbusterEnabled[id] ?? t?.dirbuster_enabled ?? true });
-      toast(`${profile.charAt(0).toUpperCase() + profile.slice(1)} scan queued.`);
+      toast(`${profile.charAt(0).toUpperCase() + profile.slice(1)} scan queued for ${t?.domain || "target"}.`, "ok",
+        { label: "View scans", onClick: () => navigate("/scans") });
+      refreshActive();
     } catch (e) {
       toast(extractErrorMessage(e, "Failed to trigger scan."), "bad");
+    } finally {
+      setStarting(prev => ({ ...prev, [id]: false }));
+    }
+  };
+
+  const setDirScan = async (target, val) => {
+    setDirbusterEnabled(prev => ({ ...prev, [target.id]: val }));
+    try {
+      await updateDirbusterToggle(target.id, val);
+    } catch (e) {
+      setDirbusterEnabled(prev => ({ ...prev, [target.id]: !val }));
+      toast(extractErrorMessage(e, "Could not save the directory scan setting."), "bad");
     }
   };
 
@@ -415,7 +451,7 @@ export default function Targets() {
                   <label className="target-dir" title="Also discover directories and files on web servers (slower, more thorough)">
                     <span>Dir scan</span>
                     <span className="ios-toggle">
-                      <input type="checkbox" checked={dirOn} onChange={e => { const val = e.target.checked; setDirbusterEnabled(prev => ({ ...prev, [target.id]: val })); updateDirbusterToggle(target.id, val).catch(console.error); }} />
+                      <input type="checkbox" checked={dirOn} onChange={e => setDirScan(target, e.target.checked)} />
                       <span className="ios-toggle-track"><span className="ios-toggle-knob" /></span>
                     </span>
                   </label>
@@ -427,9 +463,17 @@ export default function Targets() {
                       updateTargetProfile(target.id, val).catch(() => toast("Could not save default profile.", "bad"));
                     }}
                   />
-                  <button className="btn btn-primary" onClick={() => handleScan(target.id)}>
-                    <Play size={14} /> Scan
-                  </button>
+                  {(() => {
+                    const act = activeScans[target.id];
+                    const busy = !!starting[target.id] || !!act;
+                    return (
+                      <button type="button" className="btn btn-primary" onClick={() => handleScan(target.id)} disabled={busy}
+                        title={act ? `Scan #${act.id} is ${act.status}` : "Start a scan now"} aria-busy={busy}>
+                        {busy ? <Loader2 size={14} className="spin" /> : <Play size={14} />}
+                        {act ? (act.status === "pending" ? "Queued" : "Scanning") : starting[target.id] ? "Starting" : "Scan"}
+                      </button>
+                    );
+                  })()}
                   <RowMenu label={`More actions for ${target.domain}`} items={[
                     { label: "Remove target", icon: Trash2, danger: true, onClick: () => setDeleteTarget(target) },
                   ]} />

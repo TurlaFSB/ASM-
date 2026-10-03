@@ -490,6 +490,9 @@ td.actions { flex-wrap: wrap; justify-content: flex-end; max-width: 520px; row-g
 }
 .toast.bad { border-color: rgba(255, 123, 114, 0.4); }
 .toast.bad span { color: var(--red); }
+.toast-action { margin-left: auto; background: none; border: 0; color: var(--accent, #7c6af2); font: inherit; font-weight: 600; cursor: pointer; padding: 2px 6px; border-radius: 6px; }
+.toast-action:hover { text-decoration: underline; }
+.toast-action + .toast-close { margin-left: 0; }
 .toast-close { margin-left: auto; background: none; border: 0; color: var(--text-tertiary); font-size: 18px; line-height: 1; cursor: pointer; }
 .toast-close:hover { color: var(--text-primary); }
 @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
@@ -788,3 +791,7 @@ dialog.sheet[open] { animation: sheet-in var(--dur-2) var(--ease); }
 .skip-link { position: absolute; left: 12px; top: -48px; z-index: 10001; padding: 8px 14px; border-radius: 8px; background: var(--accent); color: var(--accent-ink); font-size: 13px; transition: top var(--dur-1) var(--ease); }
 .skip-link:focus { top: 12px; }
 #main:focus { outline: none; }
+
+.spin { animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation-duration: 3s; } }

@@ -117,6 +117,7 @@ export default function Exposure() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(null);   // name of the source being saved
 
   useEffect(() => {
     getTargets()
@@ -148,11 +149,20 @@ export default function Exposure() {
   const enabledCount = sources.filter(s => s.enabled).length;
 
   const toggle = async (name, on) => {
-    const next = sources.filter(s => (s.name === name ? on : s.enabled)).map(s => s.name);
+    if (saving) return;
+    const before = sources;
+    const next = before.map(s => (s.name === name ? { ...s, enabled: on } : s));
+    setSources(next);                                   // show the change straight away
+    setSaving(name);
     try {
-      const r = await setExposureSources(targetId, next);
+      const r = await setExposureSources(targetId, next.filter(s => s.enabled).map(s => s.name));
       setSources(r.data);
-    } catch (e) { toast(errorText(e, "Could not save sources"), "bad"); }
+      const label = before.find(s => s.name === name)?.label || name;
+      toast(`${label} turned ${on ? "on" : "off"}.`);
+    } catch (e) {
+      setSources(before);                               // put the switch back: it was not saved
+      toast(errorText(e, "Could not save sources"), "bad");
+    } finally { setSaving(null); }
   };
 
   const runNow = async () => {
@@ -213,7 +223,7 @@ export default function Exposure() {
               <div style={{ marginTop: 6 }}><RunChip source={s} run={lastRun(s.name)} /></div>
             </div>
             {canEdit
-              ? <ToggleSwitch checked={!!s.enabled} onChange={on => toggle(s.name, on)} label="" ariaLabel={`Check ${s.label}`} />
+              ? <ToggleSwitch checked={!!s.enabled} disabled={!!saving} onChange={on => toggle(s.name, on)} label="" ariaLabel={`Check ${s.label}`} />
               : <span className="muted-note">{s.enabled ? "On" : "Off"}</span>}
           </div>
         ))}

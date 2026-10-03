@@ -133,3 +133,15 @@ def test_logout_clears_cookies_and_session_stops_working(env):
     _cookie_login(c)
     assert c.post("/auth/logout").status_code == 200
     assert c.get("/auth/me").status_code == 401
+
+
+def test_me_reissues_missing_csrf_cookie(env):
+    _, _, c = env
+    login(c, "admin1", "correct horse battery")
+    c.cookies.delete("asm_csrf")
+    r = c.get("/auth/me")
+    assert r.status_code == 200
+    assert c.cookies.get("asm_csrf")
+    # and the new token works for a state-changing call
+    ok = c.post("/auth/logout", headers={"X-CSRF-Token": c.cookies.get("asm_csrf")})
+    assert ok.status_code == 200

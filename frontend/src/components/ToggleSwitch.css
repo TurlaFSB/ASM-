@@ -60,3 +60,5 @@
   outline: 2px solid #34c759;
   outline-offset: 2px;
 }
+
+.ios-toggle input:disabled + .ios-toggle-track { opacity: 0.55; cursor: progress; }
