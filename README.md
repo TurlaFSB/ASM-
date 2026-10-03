@@ -40,6 +40,7 @@ Every scan is stored as a point-in-time **snapshot** and compared with the previ
 - [Features](#features)
 - [Scan profiles](#scan-profiles)
 - [Change detection](#change-detection)
+- [Exposure monitoring](#exposure-monitoring-leaks-breaches-mentions)
 - [Security posture](#security-posture)
 - [Quick start](#quick-start)
 - [Configuration](#configuration)
