@@ -795,3 +795,5 @@ dialog.sheet[open] { animation: sheet-in var(--dur-2) var(--ease); }
 .spin { animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spin { animation-duration: 3s; } }
+
+.build-stamp { margin-top: 10px; font-size: 11px; color: var(--text-tertiary); text-align: center; }

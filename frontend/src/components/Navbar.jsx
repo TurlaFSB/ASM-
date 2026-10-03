@@ -73,6 +73,7 @@ export default function Navbar({ onLogout }) {
           <LogOut size={16} />
           Logout
         </button>
+        <div className="build-stamp" title="When this frontend build was made">Build {__BUILD_TIME__}</div>
       </div>
     </nav>
   );
