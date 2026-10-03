@@ -102,6 +102,11 @@ def _headline(d: Dict) -> str:
     return f"ASM: {d['total']} change{'s' if d['total'] != 1 else ''} on {d['target']['domain']} (scan #{d['scan']['id']}): {order}"
 
 
+def _slack_safe(text: str) -> str:
+    """Slack treats & < > as control characters (<!channel>, <http://x|label>); defang them."""
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def render_text(d: Dict) -> str:
     """Plain-text body for chat webhooks (Slack/Discord); kept well under their size limits."""
     out = [_headline(d)]
@@ -118,13 +123,25 @@ def render_text(d: Dict) -> str:
 
 def render_body(fmt: str, digest: Dict) -> Dict:
     if fmt == "slack":
-        return {"text": render_text(digest)}
+        return {"text": _slack_safe(render_text(digest))}
     if fmt == "discord":
-        return {"content": render_text(digest)}
+        # target-controlled text must never ping @everyone or a role
+        return {"content": render_text(digest), "allowed_mentions": {"parse": []}}
     return digest
 
 
 # --------------------------------------------------------------------------- delivery
+
+def _error_label(e: Exception) -> str:
+    import requests
+    if isinstance(e, requests.exceptions.Timeout):
+        return "timeout"
+    if isinstance(e, requests.exceptions.SSLError):
+        return "tls error"
+    if isinstance(e, requests.exceptions.ConnectionError):
+        return "connection error"
+    return "request error"
+
 
 def _post(url: str, body: bytes, headers: Dict[str, str]):
     import requests
@@ -168,7 +185,8 @@ def deliver(db: Session, target: Target, payload: Dict, *, scan_id: Optional[int
             if 400 <= resp.status_code < 500 and resp.status_code != 429:
                 break                      # the receiver rejected it; retrying will not help
         except Exception as e:  # noqa: BLE001 - network errors of every kind
-            rec.error = f"{type(e).__name__}: {e}"[:300]
+            # requests puts the full URL (which may embed a token) in its messages, so store a label only
+            rec.error = _error_label(e)
         if attempt < WEBHOOK_ATTEMPTS:
             sleep(WEBHOOK_BACKOFF * (2 ** (attempt - 1)))
     if rec.status != "sent":
@@ -242,5 +260,5 @@ def send_test(db: Session, target: Target, sleep=time.sleep) -> WebhookDelivery:
     }
     fmt = target.webhook_format or "json"
     body = ({"text": sample["message"]} if fmt == "slack"
-            else {"content": sample["message"]} if fmt == "discord" else sample)
+            else {"content": sample["message"], "allowed_mentions": {"parse": []}} if fmt == "discord" else sample)
     return deliver(db, target, body, scan_id=None, kind="test", event_count=0, sleep=sleep)

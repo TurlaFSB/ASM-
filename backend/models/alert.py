@@ -7,8 +7,8 @@ class Alert(Base):
     __tablename__ = "alerts"
 
     id = Column(Integer, primary_key=True, index=True)
-    target_id = Column(Integer, ForeignKey("targets.id"), nullable=False)
-    scan_id = Column(Integer, ForeignKey("scans.id"), nullable=False)
+    target_id = Column(Integer, ForeignKey("targets.id"), nullable=False, index=True)
+    scan_id = Column(Integer, ForeignKey("scans.id"), nullable=False, index=True)
 
     # Alerts are generated from confirmed ChangeEvents (alert_type = "<category>_<change_type>",
     # or "changes_summary" when a scan exceeded the per-scan cap). Rows written before change-event
@@ -27,7 +27,7 @@ class Alert(Base):
     detail = Column(JSON, nullable=True)
     
     # Read status
-    is_read = Column(Boolean, default=False)
+    is_read = Column(Boolean, default=False, index=True)
     webhook_sent = Column(Boolean, default=False)
 
     # Timestamps

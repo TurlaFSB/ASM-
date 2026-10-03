@@ -1,3 +1,4 @@
+import re
 import subprocess
 import os
 import signal
@@ -127,7 +128,9 @@ def normalize_hostname(raw: str, domain: str) -> str:
     if not raw:
         return ""
     host = raw.strip().lower().rstrip(".")
-    if not host:
+    # Tool output is attacker-influenced (wildcard zones, hostile sub-zones): only plain hostname
+    # characters, and never a leading "-" that a downstream CLI could read as an option.
+    if not host or host.startswith("-") or not re.fullmatch(r"[a-z0-9._-]+", host):
         return ""
     domain_l = domain.strip().lower().rstrip(".")
     if host == domain_l or host.endswith("." + domain_l):

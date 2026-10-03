@@ -9,7 +9,8 @@ from backend.scanner.subdomain import _run_with_process_group_cleanup
 
 logger = logging.getLogger(__name__)
 
-SCREENSHOT_DIR = "/home/worm/projects/asm-platform/screenshots"
+# Mounted as the screenshots_data volume in docker-compose
+SCREENSHOT_DIR = os.getenv("SCREENSHOT_DIR", "/app/screenshots")
 
 
 def run_eyewitness(hosts: List[str]) -> Dict:

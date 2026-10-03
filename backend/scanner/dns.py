@@ -1,18 +1,35 @@
 import dns.resolver
 import dns.exception
 import socket
+import ipaddress
 import logging
 from typing import List, Dict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logger = logging.getLogger(__name__)
 
+def _in_scope_ip(subdomain: str, ip: str) -> bool:
+    """A public name that resolves to loopback, link-local (cloud metadata), private or otherwise
+    non-global space would make the scanner hit internal services. Only allowed in lab mode."""
+    from backend.validators import private_targets_allowed
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    if addr.is_global or private_targets_allowed():
+        return True
+    logger.warning(f"[dns] {subdomain} resolves to non-public address {ip}; skipped (out of scope)")
+    return False
+
+
 def resolve_host(subdomain: str) -> Dict:
     resolver = dns.resolver.Resolver()
     resolver.lifetime = 5
     try:
         answer = resolver.resolve(subdomain, "A")
-        ip = str(answer[0])
+        ip = next((str(a) for a in answer if _in_scope_ip(subdomain, str(a))), None)
+        if ip is None:
+            return {"subdomain": subdomain, "ip": None, "alive": False}
         return {"subdomain": subdomain, "ip": ip, "alive": True}
     except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
         # Real DNS has no record -- fall back to the OS resolver, which
@@ -21,6 +38,8 @@ def resolve_host(subdomain: str) -> Dict:
         # while public DNS remains the authoritative first path.
         try:
             ip = socket.gethostbyname(subdomain)
+            if not _in_scope_ip(subdomain, ip):
+                return {"subdomain": subdomain, "ip": None, "alive": False}
             logger.info(f"[dns] {subdomain} resolved via OS/hosts fallback -> {ip}")
             return {"subdomain": subdomain, "ip": ip, "alive": True}
         except socket.gaierror:

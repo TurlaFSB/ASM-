@@ -101,12 +101,12 @@ def vuln_rollup(limit: int = Query(1000, ge=1, le=5000), scope: str = Query("lat
 def vulns_by_target(target_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     vulns = db.query(Vulnerability).filter(
         Vulnerability.target_id == target_id
-    ).order_by(Vulnerability.severity).all()
+    ).order_by(SEVERITY_RANK, Vulnerability.id).all()
     return [_serialize(v) for v in vulns]
 
 @router.get("/scan/{scan_id}")
 def vulns_by_scan(scan_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     vulns = db.query(Vulnerability).filter(
         Vulnerability.scan_id == scan_id
-    ).order_by(Vulnerability.severity).all()
+    ).order_by(SEVERITY_RANK, Vulnerability.id).all()
     return [_serialize(v) for v in vulns]

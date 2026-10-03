@@ -10,6 +10,10 @@ import Vulnerabilities from "./pages/Vulnerabilities";
 import Changes from "./pages/Changes";
 import Schedules from "./pages/Schedules";
 import Login from "./pages/Login";
+import NotFound from "./pages/NotFound";
+import ToastProvider from "./components/Toast";
+import ErrorBoundary from "./components/ErrorBoundary";
+import PageTitle from "./components/PageTitle";
 import "./App.css";
 
 export default function App() {
@@ -19,9 +23,12 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <ToastProvider>
+      <PageTitle />
       <div className="app">
         <Navbar onLogout={() => { localStorage.removeItem("token"); setAuthed(false); }} />
         <main className="main-content">
+          <ErrorBoundary>
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/targets" element={<Targets />} />
@@ -31,9 +38,12 @@ export default function App() {
             <Route path="/changes" element={<Changes />} />
             <Route path="/vulnerabilities" element={<Vulnerabilities />} />
             <Route path="/schedules" element={<Schedules />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
+          </ErrorBoundary>
         </main>
       </div>
+      </ToastProvider>
     </BrowserRouter>
   );
 }

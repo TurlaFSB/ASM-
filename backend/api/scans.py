@@ -6,6 +6,7 @@ from backend.db import get_db
 from backend.models.scan import Scan
 from backend.models.target import Target
 from backend.models.asset import Asset
+from backend.models.scan_asset import ScanAsset
 from backend.models.vulnerability import Vulnerability
 from backend.tasks import run_scan, celery_app
 from backend.auth import get_current_user
@@ -16,6 +17,13 @@ from typing import Optional
 import redis
 from backend.config import settings
 from backend.cancellation import request_cancel
+
+def _csv_safe(v):
+    """Neutralise spreadsheet formulas: cell text comes from scanned hosts, so a title like
+    =HYPERLINK(...) must not execute when an analyst opens the export in Excel."""
+    s = "" if v is None else str(v)
+    return "'" + s if s[:1] in ("=", "+", "-", "@", "\t", "\r") else s
+
 
 router = APIRouter(prefix="/scans", tags=["scans"])
 
@@ -83,14 +91,22 @@ def trigger_scan(scan: ScanCreate, request: Request, db: Session = Depends(get_d
                scan_id=db_scan.id, detail={"domain": target.domain, "profile": prof.name, "directory_discovery": dirs_on},
                ip_address=request.client.host)
 
-    task = run_scan.delay(
-        target_id=target.id,
-        domain=target.domain,
-        rate_limit=target.rate_limit,
-        scan_id=db_scan.id,
-        enable_dirbuster=dirs_on,
-        profile=prof.name,
-    )
+    try:
+        task = run_scan.delay(
+            target_id=target.id,
+            domain=target.domain,
+            rate_limit=target.rate_limit,
+            scan_id=db_scan.id,
+            enable_dirbuster=dirs_on,
+            profile=prof.name,
+        )
+    except Exception:
+        # Broker unreachable: without this the row stays "pending" forever and every later
+        # trigger for the target is refused with 409.
+        db_scan.status = "failed"
+        db_scan.error_log = "Could not queue the scan (task queue unavailable). Try again shortly."
+        db.commit()
+        raise HTTPException(status_code=503, detail="Task queue unavailable. The scan was not started; try again shortly.")
 
     db_scan.celery_task_id = task.id
     db.commit()
@@ -199,14 +215,19 @@ def export_assets_csv(scan_id: int, db: Session = Depends(get_db), current_user:
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
 
-    assets = db.query(Asset).filter(Asset.target_id == scan.target_id).all()
+    # Point in time: the assets this scan actually observed. Scans from before scan_assets
+    # existed have none recorded, so they fall back to the target's current assets.
+    assets = (db.query(Asset).join(ScanAsset, ScanAsset.asset_id == Asset.id)
+              .filter(ScanAsset.scan_id == scan_id).all())
+    if not assets:
+        assets = db.query(Asset).filter(Asset.target_id == scan.target_id).all()
 
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["subdomain", "ip", "http_status", "http_title", "technologies",
                       "open_ports", "risk_score", "risk_level", "status", "last_seen"])
     for a in assets:
-        writer.writerow([
+        writer.writerow([_csv_safe(x) for x in [
             a.subdomain,
             a.ip or "",
             a.http_status or "",
@@ -217,7 +238,7 @@ def export_assets_csv(scan_id: int, db: Session = Depends(get_db), current_user:
             a.risk_level or "",
             a.status or "",
             a.last_seen.isoformat() if a.last_seen else "",
-        ])
+        ]])
 
     output.seek(0)
     return StreamingResponse(
@@ -240,7 +261,7 @@ def export_vulnerabilities_csv(scan_id: int, db: Session = Depends(get_db), curr
     writer.writerow(["severity", "name", "host", "cve_id", "cvss_score",
                       "template_id", "matched_at", "description"])
     for v in vulns:
-        writer.writerow([
+        writer.writerow([_csv_safe(x) for x in [
             v.severity or "",
             v.name or "",
             v.host or "",
@@ -249,7 +270,7 @@ def export_vulnerabilities_csv(scan_id: int, db: Session = Depends(get_db), curr
             v.template_id or "",
             v.matched_at or "",
             (v.description or "").replace("\n", " ").strip(),
-        ])
+        ]])
 
     output.seek(0)
     return StreamingResponse(

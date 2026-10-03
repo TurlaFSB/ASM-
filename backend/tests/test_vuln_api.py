@@ -68,3 +68,10 @@ def test_verified_flag(client):
 
 def test_limit_validation(client):
     assert client.get("/vulnerabilities/?limit=100000").status_code == 422
+
+
+def test_target_and_scan_lists_sort_by_severity_not_alphabet(client):
+    for url in ("/vulnerabilities/target/1", "/vulnerabilities/scan/2"):
+        sev = [r["severity"] for r in client.get(url).json()]
+        order = ["critical", "high", "medium", "low", "info"]
+        assert sev == sorted(sev, key=order.index), (url, sev)

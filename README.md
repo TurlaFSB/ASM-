@@ -173,7 +173,10 @@ ASM performs active scanning, so its own security matters.
 - **No hardcoded credentials.** The admin account is created interactively; passwords are hashed with bcrypt.
 - **JWT on every route**, with account status re-checked on each request.
 - **Input validation.** Hostname format and length are enforced, and the per-target rate limit is bounded (1-100 req/s).
-- **Private address protection.** Scanning private and reserved ranges is refused unless explicitly enabled (`ASM_ALLOW_PRIVATE_TARGETS`).
+- **Private address protection.** Scanning private and reserved ranges is refused unless explicitly enabled (`ASM_ALLOW_PRIVATE_TARGETS`). Discovered hostnames that resolve to loopback, link-local, private or carrier-grade NAT space are skipped too.
+- **Scope stays on the target.** URLs that HTTP probing reaches by following a redirect to another organisation are dropped before any scanner runs against them.
+- **Webhook safety.** Destinations must be HTTPS and resolve to public addresses, redirects are never followed, messages are signed (HMAC-SHA256), credentials are never returned by the API, and target-controlled text is defanged in Slack and Discord messages.
+- **Export safety.** CSV exports neutralise spreadsheet formulas.
 - **Audit trail** for sensitive actions, including source IP.
 - **Secrets stay out of git.** `.env` and `.env.docker` are ignored, and `SECRET_KEY` has no default: the app refuses to start without one.
 - **Report rendering is sandboxed.** Templates are autoescaped and the PDF renderer blocks outbound fetches.
@@ -370,7 +373,12 @@ docker exec asm_postgres pg_restore -U asm_user -d asm_db --clean --if-exists -v
 | Dark-web mention monitoring via licensed intelligence APIs | Planned |
 | Screenshot perceptual-hash diffing | Planned |
 | Report delivery: scheduled PDF, Slack/email notifications for high and critical changes | Planned |
-| Container hardening (non-root, pinned dependencies) | Planned |
+| Container hardening (non-root, pinned dependencies, healthchecks, production compose without bind mounts) | Planned |
+| Role-based access (viewer vs admin) on mutating routes | Planned |
+| Login throttling per IP and per username, constant-time unknown-user path | Planned |
+| Scan watchdog: overall runtime limit and a reaper for scans stuck in running or pending | Planned |
+| Pagination on list endpoints; uniqueness constraints on assets and one active scan per target | Planned |
+| Schedule safety rails: minimum interval, validation and audit entries | Planned |
 
 ---
 
@@ -382,7 +390,8 @@ docker exec asm_postgres pg_restore -U asm_user -d asm_db --clean --if-exists -v
 - **Network service checks can be starved.** Some services (an old OpenSSH, for instance) answer the banner but stall on the deeper protocol handshakes the nuclei network templates perform. The scanner detects this (per-template timeouts), retries the affected templates gently, and if they still fail marks the host `low coverage`: removals there are held as pending and never reported as fixed. Root-causing a stalling service is left to the operator.
 - **Time-boxed stages.** Nuclei and directory discovery stop at their time budget; collected results are kept and the stage is reported as `partial`.
 - **TLS findings are not de-duplicated across scans**; recurring issues add rows on every scan.
-- **Legacy alerts** are derived from asset state and are not yet unified with change events.
+- **Earlier alerts.** Alerts created before change-event alerting came from asset state and could report scan noise; they are kept, shown in a collapsed group on the Alerts page, and no new ones are written.
+- **Webhook delivery resolves DNS twice** (once to validate, once to send), so a hostile DNS server could in theory switch addresses in between. Pinning the resolved address is on the hardening list.
 
 ---
 

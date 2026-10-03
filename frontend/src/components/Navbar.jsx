@@ -1,9 +1,22 @@
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { getUnreadAlerts } from "../api";
 import { Shield, Target, Activity, Database, Bell, AlertTriangle, LogOut, Clock, GitCompare } from "lucide-react";
 import turlaLogo from "../assets/TURLA.png";
 
 export default function Navbar({ onLogout }) {
   const location = useLocation();
+  const [unread, setUnread] = useState(0);
+
+  // Unread alert count: refreshed every minute, on navigation, and right after alerts are read.
+  useEffect(() => {
+    let live = true;
+    const load = () => getUnreadAlerts({ limit: 100 }).then(r => live && setUnread(r.data.length)).catch(() => {});
+    load();
+    const timer = setInterval(load, 60000);
+    window.addEventListener("asm:alerts-changed", load);
+    return () => { live = false; clearInterval(timer); window.removeEventListener("asm:alerts-changed", load); };
+  }, [location.pathname]);
 
   const links = [
     { path: "/", label: "Dashboard", icon: <Shield size={18} /> },
@@ -31,6 +44,9 @@ export default function Navbar({ onLogout }) {
             >
               {link.icon}
               {link.label}
+              {link.path === "/alerts" && unread > 0 && (
+                <span className="nav-badge" aria-label={`${unread} unread alerts`}>{unread > 99 ? "99+" : unread}</span>
+              )}
             </Link>
           </li>
         ))}

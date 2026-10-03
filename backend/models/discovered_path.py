@@ -7,8 +7,8 @@ class DiscoveredPath(Base):
     __tablename__ = "discovered_paths"
 
     id = Column(Integer, primary_key=True, index=True)
-    asset_id = Column(Integer, ForeignKey("assets.id"), nullable=False)
-    scan_id = Column(Integer, ForeignKey("scans.id"), nullable=False)
+    asset_id = Column(Integer, ForeignKey("assets.id"), nullable=False, index=True)
+    scan_id = Column(Integer, ForeignKey("scans.id"), nullable=False, index=True)
 
     # Discovery result
     path = Column(String, nullable=False, index=True)      # e.g. "/admin", "/backup.zip"

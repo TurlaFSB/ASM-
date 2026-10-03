@@ -86,11 +86,12 @@ export default function Alerts() {
   useEffect(() => { load("all"); }, []);
 
   const pick = (sev) => { setFilter(sev); load(sev); };
-  const markAll = async () => { await markAllAlertsRead(); load(filter); };
+  const notifyNav = () => window.dispatchEvent(new Event("asm:alerts-changed"));
+  const markAll = async () => { await markAllAlertsRead(); load(filter); notifyNav(); };
   const markOne = async (a) => {
     if (a.is_read) return;
     setAlerts(list => list.map(x => (x.id === a.id ? { ...x, is_read: true } : x)));
-    try { await markAlertRead(a.id); } catch { load(filter); }
+    try { await markAlertRead(a.id); notifyNav(); } catch { load(filter); }
   };
 
   const current = alerts.filter(a => a.summary);

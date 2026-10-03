@@ -20,6 +20,9 @@ celery_app.conf.update(
     enable_utc=True,
     task_track_started=True,
     task_acks_late=True,
+    # With acks_late on Redis an unacked task is redelivered after the visibility timeout (default 1h),
+    # which would re-run a long deep scan that is still going. Keep it well above the longest scan.
+    broker_transport_options={"visibility_timeout": 6 * 3600},
     broker_connection_retry_on_startup=True,
     beat_schedule={
         "check-scheduled-scans-every-minute": {
@@ -135,6 +138,9 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             if scan:
                 if scan.status == "cancelled":
                     raise cx.ScanCancelled()
+                if scan.status == "completed":      # redelivered after a worker restart: do not run twice
+                    logger.warning(f"[pipeline] scan {scan_id} already completed; ignoring duplicate delivery")
+                    return {"scan_id": scan_id, "status": "completed", "duplicate": True}
                 scan.status = "running"
                 scan.started_at = datetime.now(timezone.utc)
                 db.commit()
@@ -283,6 +289,13 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         # Falls back to bare hostnames only if HTTPX found nothing, so
         # nuclei/eyewitness don't get an empty target list on partial failure.
         confirmed_urls = list(dict.fromkeys(h["url"] for h in http_data["hosts"] if h.get("url")))
+        from backend.pipeline_utils import urls_in_scope
+        scope_names = [h["subdomain"] for h in live_hosts] + [h.get("ip") for h in live_hosts]
+        confirmed_urls, out_of_scope = urls_in_scope(confirmed_urls, scope_names, domain)
+        if out_of_scope:
+            logger.warning(f"[pipeline] dropped {len(out_of_scope)} URL(s) outside the target scope "
+                           f"(redirected away): {out_of_scope[:5]}")
+            module_results["scope_filter"] = f"dropped {len(out_of_scope)} out-of-scope redirect URL(s)"
         # No confirmed web service -> web stages get nothing (bare hosts have no scheme
         # and would make feroxbuster/nuclei/eyewitness error out).
         host_urls = confirmed_urls

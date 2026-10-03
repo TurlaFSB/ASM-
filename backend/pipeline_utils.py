@@ -135,3 +135,20 @@ def host_port_from_url(url: str):
     u = urlsplit(url if "://" in url else f"http://{url}")
     port = u.port or (443 if u.scheme == "https" else 80)
     return (u.hostname or ""), port
+
+
+def urls_in_scope(urls, scope_hosts, domain):
+    """Keep only URLs whose host belongs to the authorized target.
+
+    httpx follows redirects, so a URL it reports can point somewhere else entirely (an SSO provider,
+    a SaaS app, a parked domain). Scanning or brute-forcing those would leave the authorized scope.
+    A URL is in scope when its host is one of the hosts discovered for this target (name or IP),
+    is the target itself, or is a subdomain of it. Returns (kept, dropped)."""
+    scope = {str(h).lower() for h in scope_hosts if h}
+    dom = (domain or "").lower().strip(".")
+    kept, dropped = [], []
+    for u in urls:
+        host = (urlparse(u).hostname or "").lower()
+        ok = bool(host) and (host in scope or host == dom or (dom and host.endswith("." + dom)))
+        (kept if ok else dropped).append(u)
+    return kept, dropped

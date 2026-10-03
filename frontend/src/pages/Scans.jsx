@@ -3,6 +3,8 @@ import { Activity, X, Download, ChevronRight } from "lucide-react";
 import { getScans, getScanProgress, cancelScan, downloadScanReport } from "../api";
 import { ProfileBadge } from "../components/ProfilePicker";
 import Collapse from "../components/Collapse";
+import ConfirmDialog from "../components/ConfirmDialog";
+import { useToast } from "../components/toastContext";
 
 const STAGE_LABELS = {
   subdomain_enumeration: "Subfinder + Amass",
@@ -100,6 +102,9 @@ export default function Scans() {
   const [downloadingId, setDownloadingId] = useState(null);
   const [stages, setStages] = useState({}); // { scanId: current_stage }
   const [openDetails, setOpenDetails] = useState({}); // { scanId: true } stage lists that are expanded
+  const [cancelId, setCancelId] = useState(null);      // scan awaiting cancel confirmation
+  const [cancelling, setCancelling] = useState(false);
+  const { toast } = useToast();
 
   const fetchScans = () => {
     getScans()
@@ -128,13 +133,16 @@ export default function Scans() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleCancel = async (id) => {
-    if (window.confirm("Cancel this scan?")) {
-      try {
-        await cancelScan(id);
-      } catch (err) {
-        alert(err?.response?.data?.detail || "Could not cancel the scan.");
-      }
+  const confirmCancel = async () => {
+    setCancelling(true);
+    try {
+      await cancelScan(cancelId);
+      toast(`Scan #${cancelId} is being cancelled.`);
+    } catch (err) {
+      toast(err?.response?.data?.detail || "Could not cancel the scan.", "bad");
+    } finally {
+      setCancelling(false);
+      setCancelId(null);
       fetchScans();
     }
   };
@@ -154,7 +162,7 @@ export default function Scans() {
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error("Failed to download report:", err);
-      alert("Failed to generate report. Check console for details.");
+      toast("Could not generate the report. Try again in a moment.", "bad");
     } finally {
       setDownloadingId(null);
     }
@@ -168,6 +176,11 @@ export default function Scans() {
         <h1>Scans</h1>
         <Activity size={20} />
       </div>
+
+      <ConfirmDialog open={cancelId !== null} tone="danger" title={`Cancel scan #${cancelId}?`} confirmLabel="Cancel scan"
+        cancelLabel="Keep running" busy={cancelling} onConfirm={confirmCancel} onCancel={() => setCancelId(null)}>
+        The scan stops at the next safe point. Results found so far are kept, but the scan will not complete.
+      </ConfirmDialog>
 
       <div className="table-container">
         <table>
@@ -227,7 +240,7 @@ export default function Scans() {
                   {(scan.status === "running" || scan.status === "pending") && (
                     <button
                       className="btn btn-sm btn-danger"
-                      onClick={() => handleCancel(scan.id)}
+                      onClick={() => setCancelId(scan.id)}
                     >
                       <X size={14} /> Cancel
                     </button>

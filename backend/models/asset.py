@@ -7,7 +7,7 @@ class Asset(Base):
     __tablename__ = "assets"
 
     id = Column(Integer, primary_key=True, index=True)
-    target_id = Column(Integer, ForeignKey("targets.id"), nullable=False)
+    target_id = Column(Integer, ForeignKey("targets.id"), nullable=False, index=True)
     
     # Asset identity — natural key is target_id + subdomain
     subdomain = Column(String, nullable=False, index=True)

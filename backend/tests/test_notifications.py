@@ -213,7 +213,8 @@ def test_slack_and_discord_formats(db, posts):
     scan2 = mk_scan(db); ev(db, scan2, "high")
     db.target.webhook_format = "discord"; db.commit()
     n.notify_scan_changes(db, scan2)
-    assert list(json.loads(posts[1]["body"])) == ["content"]
+    d = json.loads(posts[1]["body"])
+    assert set(d) == {"content", "allowed_mentions"} and d["allowed_mentions"] == {"parse": []}
 
 
 def test_retries_then_succeeds(db, posts):
@@ -349,3 +350,48 @@ def test_alert_list_filters_by_severity_and_lists_deliveries(client, db, posts):
     assert [a["severity"] for a in only] == ["critical"] and only[0]["summary"]
     d = client.get("/alerts/deliveries").json()
     assert d[0]["status"] == "sent" and d[0]["host"] == "hooks.example" and "url" not in d[0]
+
+
+# ---------------------------------------------------------------- hardening
+
+def test_error_label_never_contains_the_url(db, monkeypatch):
+    import requests
+    monkeypatch.setattr("backend.validators.validate_webhook_url", lambda u: u)
+    monkeypatch.setattr(n, "WEBHOOK_BACKOFF", 0)
+
+    def boom(*a, **k):
+        raise requests.exceptions.ConnectionError("HTTPSConnectionPool: Max retries exceeded with url: /services/T0/B0/SECRETTOKEN")
+
+    monkeypatch.setattr(n, "_post", boom)
+    db.target.webhook_url = "https://hooks.example/services/T0/B0/SECRETTOKEN"; db.commit()
+    scan = mk_scan(db); ev(db, scan, "high")
+    n.notify_scan_changes(db, scan)
+    err = db.query(WebhookDelivery).one().error
+    assert err == "connection error" and "SECRETTOKEN" not in err
+
+
+def test_slack_text_is_defanged(db, posts):
+    db.target.webhook_url = "https://hooks.example/x"; db.target.webhook_format = "slack"; db.commit()
+    scan = mk_scan(db)
+    e = ev(db, scan, "critical", subject="/x", category="path")
+    e.summary = "Path <!channel> <http://evil|click> reachable"; db.commit()
+    n.notify_scan_changes(db, scan)
+    text = json.loads(posts[0]["body"])["text"]
+    assert "<!channel>" not in text and "&lt;!channel&gt;" in text
+
+
+@pytest.mark.parametrize("ip", ["100.64.0.1", "10.0.0.1", "127.0.0.1", "169.254.169.254", "192.168.1.1"])
+def test_webhook_rejects_non_global_addresses(monkeypatch, ip):
+    import socket
+    from backend.validators import validate_webhook_url
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: [(2, 1, 6, "", (ip, 443))])
+    with pytest.raises(ValueError):
+        validate_webhook_url("https://hooks.example/x")
+
+
+def test_target_list_never_exposes_webhook_credentials(client, db):
+    tid = db.target.id
+    client.put(f"/targets/{tid}/notifications", json={"webhook_url": "https://hooks.example/abc?token=zzz"})
+    for body in (client.get("/targets/").json()[0], client.get(f"/targets/{tid}").json()):
+        text = json.dumps(body)
+        assert "webhook_secret" not in text and "webhook_url" not in text and "token=zzz" not in text

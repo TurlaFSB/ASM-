@@ -6,6 +6,8 @@ import ScrollHint from "../components/ScrollHint";
 import ProfilePicker from "../components/ProfilePicker";
 import ToggleSwitch from "../components/ToggleSwitch";
 import NotificationSettings from "../components/NotificationSettings";
+import ConfirmDialog from "../components/ConfirmDialog";
+import { useToast } from "../components/toastContext";
 
 function extractErrorMessage(err, fallback) {
   const detail = err.response?.data?.detail;
@@ -89,6 +91,62 @@ const emptyForm = {
   rate_limit: 10,
 };
 
+
+const SEV_CLASS = { critical: "badge-sev-critical", high: "badge-sev-high", medium: "badge-sev-medium" };
+
+function Fact({ label, children }) {
+  return (
+    <div className="fact">
+      <div className="fact-label">{label}</div>
+      <div className="fact-value">{children || "—"}</div>
+    </div>
+  );
+}
+
+function InfoSection({ title, empty, isEmpty, children }) {
+  return (
+    <section className="info-section">
+      <h3>{title}</h3>
+      {isEmpty ? <p className="muted-note">{empty}</p> : children}
+    </section>
+  );
+}
+
+function InfrastructurePanel({ data }) {
+  const whois = data.whois_data?.domain_whois;
+  const asn = data.whois_data?.asn;
+  return (
+    <div className="info-panel">
+      <InfoSection title="Registration" isEmpty={!data.whois_data} empty="No WHOIS data available.">
+        <div className="facts">
+          <Fact label="Registrar">{whois?.registrar}</Fact>
+          <Fact label="Created">{whois?.creation_date && formatDate(whois.creation_date)}</Fact>
+          <Fact label="Expires">{whois?.expiration_date && formatDate(whois.expiration_date)}</Fact>
+          <Fact label="Network (ASN)">{asn?.asn_description}</Fact>
+        </div>
+      </InfoSection>
+      <InfoSection title="Technologies" isEmpty={data.technologies.length === 0} empty="No technologies detected.">
+        <div className="tag-list">
+          {data.technologies.map(tech => <span key={tech} className="tag">{tech}</span>)}
+        </div>
+      </InfoSection>
+      <InfoSection title="TLS findings" isEmpty={data.tls_findings.length === 0} empty="No TLS misconfigurations found.">
+        <ul className="finding-list">
+          {data.tls_findings.map(f => (
+            <li key={f.id}>
+              <div>
+                <div className="finding-name">{f.name}</div>
+                <div className="mono-dim">{f.host}</div>
+              </div>
+              <span className={"badge " + (SEV_CLASS[f.severity] || "badge-sev-info")}>{f.severity}</span>
+            </li>
+          ))}
+        </ul>
+      </InfoSection>
+    </div>
+  );
+}
+
 export default function Targets() {
   const [targets, setTargets] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -107,6 +165,8 @@ export default function Targets() {
   const [infraExpandedId, setInfraExpandedId] = useState(null);
   const [infraData, setInfraData] = useState({});
   const [notifExpandedId, setNotifExpandedId] = useState(null);
+  const [pendingDelete, setDeleteTarget] = useState(null);   // target awaiting delete confirmation
+  const { toast } = useToast();
 
   const fetchTargets = () => {
     getTargets()
@@ -179,12 +239,15 @@ export default function Targets() {
     }
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async () => {
+    const t = pendingDelete;
+    setDeleteTarget(null);
     try {
-      await deleteTarget(id);
+      await deleteTarget(t.id);
+      toast(`${t.domain} removed. Its scan history is kept.`);
       fetchTargets();
     } catch {
-      setMessage("Failed to delete target.");
+      toast("Could not remove the target.", "bad");
     }
   };
 
@@ -245,6 +308,11 @@ export default function Targets() {
       </div>
 
       {message && <div className="message">{message}</div>}
+
+      <ConfirmDialog open={!!pendingDelete} tone="danger" title={`Remove ${pendingDelete?.domain ?? "target"}?`}
+        confirmLabel="Remove target" onConfirm={handleDelete} onCancel={() => setDeleteTarget(null)}>
+        Scheduled scans for it stop and it leaves the target list. Past scans, findings and reports are kept.
+      </ConfirmDialog>
 
       {showForm && (
         <div className="form-card">
@@ -382,7 +450,7 @@ export default function Targets() {
                       aria-expanded={notifExpandedId === target.id}>
                       <Bell size={14} /> Notifications
                     </button>
-                    <button className="btn btn-danger btn-sm" onClick={() => handleDelete(target.id)}>
+                    <button className="btn btn-danger btn-sm" onClick={() => setDeleteTarget(target)} aria-label={`Remove ${target.domain}`}>
                       <Trash2 size={14} />
                     </button>
                   </td>
@@ -465,122 +533,7 @@ export default function Targets() {
                       {!infraData[target.id] ? (
                         <div className="loading">Loading infrastructure data...</div>
                       ) : (
-                        <div style={{ padding: "1.25rem 0.25rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                          <div style={{
-                            background: "linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015))",
-                            border: "1px solid rgba(255,255,255,0.07)",
-                            borderRadius: "14px",
-                            padding: "1.25rem 1.5rem",
-                            boxShadow: "0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 24px rgba(0,0,0,0.18)"
-                          }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "1rem" }}>
-                              <div style={{ width: "3px", height: "13px", borderRadius: "2px", background: "#8b5cf6" }} />
-                              <div style={{ fontSize: "11.5px", fontWeight: 600, color: "rgba(255,255,255,0.92)", letterSpacing: "0.04em", textTransform: "uppercase" }}>
-                                WHOIS &amp; ASN
-                              </div>
-                            </div>
-                            {!infraData[target.id].whois_data ? (
-                              <div style={{ fontSize: "12.5px", color: "rgba(255,255,255,0.32)" }}>No WHOIS data available.</div>
-                            ) : (
-                              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: "1.25rem" }}>
-                                <div>
-                                  <div style={{ fontSize: "10.5px", color: "rgba(255,255,255,0.38)", letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: "4px" }}>Registrar</div>
-                                  <div style={{ fontSize: "13px", color: "rgba(255,255,255,0.92)", fontWeight: 500 }}>{infraData[target.id].whois_data.domain_whois?.registrar || "—"}</div>
-                                </div>
-                                <div>
-                                  <div style={{ fontSize: "10.5px", color: "rgba(255,255,255,0.38)", letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: "4px" }}>Created</div>
-                                  <div style={{ fontSize: "13px", color: "rgba(255,255,255,0.92)", fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>{infraData[target.id].whois_data.domain_whois?.creation_date ? formatDate(infraData[target.id].whois_data.domain_whois.creation_date) : "—"}</div>
-                                </div>
-                                <div>
-                                  <div style={{ fontSize: "10.5px", color: "rgba(255,255,255,0.38)", letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: "4px" }}>Expires</div>
-                                  <div style={{ fontSize: "13px", color: "rgba(255,255,255,0.92)", fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>{infraData[target.id].whois_data.domain_whois?.expiration_date ? formatDate(infraData[target.id].whois_data.domain_whois.expiration_date) : "—"}</div>
-                                </div>
-                                <div>
-                                  <div style={{ fontSize: "10.5px", color: "rgba(255,255,255,0.38)", letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: "4px" }}>ASN</div>
-                                  <div style={{ fontSize: "13px", color: "rgba(255,255,255,0.92)", fontWeight: 500 }}>{infraData[target.id].whois_data.asn?.asn_description || "—"}</div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                          <div style={{
-                            background: "linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015))",
-                            border: "1px solid rgba(255,255,255,0.07)",
-                            borderRadius: "14px",
-                            padding: "1.25rem 1.5rem",
-                            boxShadow: "0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 24px rgba(0,0,0,0.18)"
-                          }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "1rem" }}>
-                              <div style={{ width: "3px", height: "13px", borderRadius: "2px", background: "#34d399" }} />
-                              <div style={{ fontSize: "11.5px", fontWeight: 600, color: "rgba(255,255,255,0.92)", letterSpacing: "0.04em", textTransform: "uppercase" }}>
-                                Technologies
-                              </div>
-                            </div>
-                            {infraData[target.id].technologies.length === 0 ? (
-                              <div style={{ fontSize: "12.5px", color: "rgba(255,255,255,0.32)" }}>No technologies detected.</div>
-                            ) : (
-                              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                                {infraData[target.id].technologies.map(tech => (
-                                  <span key={tech} style={{
-                                    fontSize: "12px",
-                                    fontWeight: 500,
-                                    padding: "6px 13px",
-                                    borderRadius: "999px",
-                                    background: "rgba(139,92,246,0.10)",
-                                    border: "1px solid rgba(139,92,246,0.22)",
-                                    color: "#c9b8fb",
-                                    letterSpacing: "0.01em"
-                                  }}>{tech}</span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                          <div style={{
-                            background: "linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015))",
-                            border: "1px solid rgba(255,255,255,0.07)",
-                            borderRadius: "14px",
-                            padding: "1.25rem 1.5rem",
-                            boxShadow: "0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 24px rgba(0,0,0,0.18)"
-                          }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "1rem" }}>
-                              <div style={{ width: "3px", height: "13px", borderRadius: "2px", background: "#fb923c" }} />
-                              <div style={{ fontSize: "11.5px", fontWeight: 600, color: "rgba(255,255,255,0.92)", letterSpacing: "0.04em", textTransform: "uppercase" }}>
-                                TLS &amp; SSL Findings
-                              </div>
-                            </div>
-                            {infraData[target.id].tls_findings.length === 0 ? (
-                              <div style={{ fontSize: "12.5px", color: "rgba(255,255,255,0.32)" }}>No TLS misconfigurations found.</div>
-                            ) : (
-                              <div style={{ display: "flex", flexDirection: "column" }}>
-                                {infraData[target.id].tls_findings.map((finding, i) => (
-                                  <div key={finding.id} style={{
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    alignItems: "center",
-                                    padding: "10px 4px",
-                                    borderTop: i === 0 ? "none" : "1px solid rgba(255,255,255,0.05)"
-                                  }}>
-                                    <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                                      <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.9)", fontWeight: 500 }}>{finding.name}</span>
-                                      <span style={{ fontSize: "11.5px", color: "rgba(255,255,255,0.35)", fontFamily: "ui-monospace, SFMono-Regular, monospace" }}>{finding.host}</span>
-                                    </div>
-                                    <span style={{
-                                      fontSize: "10px",
-                                      fontWeight: 600,
-                                      textTransform: "uppercase",
-                                      letterSpacing: "0.04em",
-                                      padding: "4px 11px",
-                                      borderRadius: "999px",
-                                      background: finding.severity === "critical" ? "rgba(248,113,113,0.12)" : finding.severity === "high" ? "rgba(251,146,60,0.12)" : "rgba(251,191,36,0.12)",
-                                      border: finding.severity === "critical" ? "1px solid rgba(248,113,113,0.25)" : finding.severity === "high" ? "1px solid rgba(251,146,60,0.25)" : "1px solid rgba(251,191,36,0.25)",
-                                      color: finding.severity === "critical" ? "#f87171" : finding.severity === "high" ? "#fb923c" : "#fbbf24",
-                                      whiteSpace: "nowrap"
-                                    }}>{finding.severity}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
+                        <InfrastructurePanel data={infraData[target.id]} />
                       )}
                     </td>
                   </tr>

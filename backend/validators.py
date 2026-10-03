@@ -92,7 +92,7 @@ def validate_webhook_url(url: str) -> str:
         raise ValueError("Webhook host does not resolve")
     for info in infos:
         ip = ipaddress.ip_address(info[4][0])
-        if (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast
-                or ip.is_unspecified or ip.is_reserved):
+        # is_global also rejects ranges the individual flags miss, e.g. carrier-grade NAT 100.64.0.0/10
+        if not ip.is_global or ip.is_multicast:
             raise ValueError("Webhook host resolves to a non-public address")
     return url.strip()

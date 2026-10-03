@@ -1,5 +1,6 @@
 import { useState } from "react";
 import axios from "axios";
+import turlaLogo from "../assets/TURLA.png";
 
 const API = `http://${window.location.hostname}:8000`;
 
@@ -9,7 +10,8 @@ export default function Login({ onLogin }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     setLoading(true);
     setError("");
     try {
@@ -19,63 +21,37 @@ export default function Login({ onLogin }) {
       const res = await axios.post(`${API}/auth/token`, params);
       localStorage.setItem("token", res.data.access_token);
       onLogin();
-    } catch {
-      setError("Invalid username or password");
+    } catch (err) {
+      // Distinguish "too many attempts" and "server not reachable" from a wrong password
+      const status = err.response?.status;
+      setError(status === 429 ? "Too many attempts. Wait a few minutes and try again."
+        : !err.response ? "Cannot reach the server. Check that the API is running."
+        : "Invalid username or password.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div style={{
-      display: "flex", alignItems: "center", justifyContent: "center",
-      height: "100vh", background: "var(--bg)"
-    }}>
-      <div style={{
-        background: "var(--surface)", border: "1px solid var(--border)",
-        borderRadius: "var(--radius)", padding: "40px", width: "360px"
-      }}>
-        <h2 style={{ marginBottom: 24, color: "var(--text-primary)" }}>ASM Platform</h2>
-        <div style={{ marginBottom: 16 }}>
-          <label style={{ fontSize: 12, color: "var(--text-secondary)", display: "block", marginBottom: 6 }}>Username</label>
-          <input
-            value={username}
-            onChange={e => setUsername(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && handleSubmit()}
-            style={{
-              width: "100%", padding: "10px 12px", background: "var(--surface-2)",
-              border: "1px solid var(--border)", borderRadius: 6,
-              color: "var(--text-primary)", fontSize: 14, boxSizing: "border-box"
-            }}
-          />
+    <div className="login-screen">
+      <form className="login-card" onSubmit={handleSubmit}>
+        <div className="login-brand">
+          <img src={turlaLogo} alt="" />
+          <h1>ASM Platform</h1>
         </div>
-        <div style={{ marginBottom: 24 }}>
-          <label style={{ fontSize: 12, color: "var(--text-secondary)", display: "block", marginBottom: 6 }}>Password</label>
-          <input
-            type="password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && handleSubmit()}
-            style={{
-              width: "100%", padding: "10px 12px", background: "var(--surface-2)",
-              border: "1px solid var(--border)", borderRadius: 6,
-              color: "var(--text-primary)", fontSize: 14, boxSizing: "border-box"
-            }}
-          />
-        </div>
-        {error && <div style={{ color: "var(--red)", fontSize: 13, marginBottom: 16 }}>{error}</div>}
-        <button
-          onClick={handleSubmit}
-          disabled={loading}
-          style={{
-            width: "100%", padding: "10px", background: "var(--accent)",
-            color: "#000", border: "none", borderRadius: 6,
-            fontWeight: 600, cursor: "pointer", fontSize: 14
-          }}
-        >
-          {loading ? "Signing in..." : "Sign In"}
+        <label className="login-field">
+          <span>Username</span>
+          <input value={username} onChange={e => setUsername(e.target.value)} autoComplete="username" autoFocus required />
+        </label>
+        <label className="login-field">
+          <span>Password</span>
+          <input type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" required />
+        </label>
+        {error && <div className="login-error" role="alert">{error}</div>}
+        <button type="submit" className="btn btn-primary" disabled={loading}>
+          {loading ? "Signing in..." : "Sign in"}
         </button>
-      </div>
+      </form>
     </div>
   );
 }

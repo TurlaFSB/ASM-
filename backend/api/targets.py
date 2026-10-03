@@ -108,12 +108,12 @@ def create_target(target: TargetCreate, request: Request, db: Session = Depends(
                ip_address=request.client.host)
     return db_target
 
-@router.get("/")
+@router.get("/", response_model=list[TargetResponse])
 def list_targets(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     targets = db.query(Target).filter(Target.is_active == True).all()
     return targets
 
-@router.get("/{target_id}")
+@router.get("/{target_id}", response_model=TargetResponse)
 def get_target(target_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     target = db.query(Target).filter(Target.id == target_id).first()
     if not target:

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { getTargets, getScans, getAssets, getVulnSummary } from "../api";
+import { Link } from "react-router-dom";
+import { getTargets, getScans, getAssets, getVulnSummary, getUnreadAlerts, getScanChanges } from "../api";
 import { ProfileBadge } from "../components/ProfilePicker";
 import { Shield, Activity, AlertTriangle, CheckCircle, Flame } from "lucide-react";
 
@@ -8,6 +9,8 @@ export default function Dashboard() {
   const [scans, setScans] = useState([]);
   const [assets, setAssets] = useState([]);
   const [vulnSummary, setVulnSummary] = useState({});
+  const [unread, setUnread] = useState(0);
+  const [latestChanges, setLatestChanges] = useState(null);   // { scanId, counts, total, pending, baseline }
   const [loading, setLoading] = useState(true);
   const [now] = useState(() => Date.now());  // relative times are computed against page-load time
 
@@ -21,7 +24,24 @@ export default function Dashboard() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
+    getUnreadAlerts({ limit: 100 }).then(r => setUnread(r.data.length)).catch(() => {});
   }, []);
+
+  // What changed in the most recent finished scan (secondary data: the page works without it)
+  const latestDoneId = scans.filter(x => x.status === "completed").sort((a, b) => b.id - a.id)[0]?.id;
+  useEffect(() => {
+    if (!latestDoneId) return;
+    let live = true;
+    getScanChanges(latestDoneId, { collapse_cves: true })
+      .then(r => {
+        if (!live) return;
+        const counts = r.data.counts || {};
+        setLatestChanges({ scanId: latestDoneId, counts, total: Object.values(counts).reduce((a, b) => a + b, 0),
+          pending: r.data.pending_removals || 0, baseline: !!r.data.is_baseline });
+      })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [latestDoneId]);
 
   const targetMap = {};
   targets.forEach(t => { targetMap[t.id] = t.domain; });
@@ -84,6 +104,29 @@ export default function Dashboard() {
         </div>
       </div>
 
+      <div className="attention">
+        <Link to="/changes" className="attention-item">
+          <div className="attention-title">Latest changes</div>
+          {!latestChanges ? <div className="muted-note">No completed scan yet.</div>
+            : latestChanges.baseline ? <div className="muted-note">Scan #{latestChanges.scanId} set the baseline. Changes appear from the next scan.</div>
+            : latestChanges.total === 0 ? <div className="muted-note">Nothing changed in scan #{latestChanges.scanId}.</div>
+            : (
+              <div className="attention-counts">
+                {["critical", "high", "medium", "low", "info"].filter(k => latestChanges.counts[k]).map(k => (
+                  <span key={k} className={"badge badge-sev-" + k}>{latestChanges.counts[k]} {k}</span>
+                ))}
+                {latestChanges.pending > 0 && <span className="muted-note">{latestChanges.pending} awaiting confirmation</span>}
+              </div>
+            )}
+        </Link>
+        <Link to="/alerts" className="attention-item">
+          <div className="attention-title">Alerts</div>
+          {unread > 0
+            ? <div className="attention-counts"><span className="badge badge-pending">{unread >= 100 ? "100+" : unread} unread</span></div>
+            : <div className="muted-note">You are all caught up.</div>}
+        </Link>
+      </div>
+
       {topRiskAssets.length > 0 && (
         <div className="recent-scans" style={{ marginBottom: 32 }}>
           <h2>Top Risk-Scored Assets</h2>
@@ -102,7 +145,7 @@ export default function Dashboard() {
                   <td className="mono">{a.subdomain}</td>
                   <td>{targetMap[a.target_id] || `Target #${a.target_id}`}</td>
                   <td>
-                    <span className={`badge badge-risk-${a.risk_level.toLowerCase()}`}>
+                    <span className={`badge badge-risk-${(a.risk_level || "low").toLowerCase()}`}>
                       {a.risk_level}
                     </span>
                   </td>
@@ -115,7 +158,7 @@ export default function Dashboard() {
       )}
 
       <div className="recent-scans">
-        <h2>Recent Scans</h2>
+        <h2>Recent Scans {scans.length > 8 && <Link to="/scans" className="see-all">View all {scans.length}</Link>}</h2>
         <table>
           <thead>
             <tr>
@@ -130,7 +173,7 @@ export default function Dashboard() {
             </tr>
           </thead>
           <tbody>
-            {scans.map(scan => {
+            {scans.slice(0, 8).map(scan => {
               const noResults = scan.status === "completed" && !(scan.total_assets > 0);
               const duration = (scan.started_at && scan.completed_at)
                 ? Math.round((new Date(scan.completed_at) - new Date(scan.started_at)) / 1000)
