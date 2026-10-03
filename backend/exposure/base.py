@@ -29,14 +29,19 @@ def clean_text(value, limit: int) -> str:
     return s[:limit]
 
 
-def safe_https_url(value, allowed_hosts: tuple) -> Optional[str]:
-    """Only keep evidence links that are https and on a host we expect from that source."""
+def safe_https_url(value, allowed_hosts: Optional[tuple]) -> Optional[str]:
+    """Only keep evidence links that are https, carry no credentials, and (when a list is given) sit on an
+    expected host. Pass allowed_hosts=None for third-party reference links (news articles): the UI must show
+    the host and open them with rel="noopener noreferrer"."""
     from urllib.parse import urlparse
     try:
         u = urlparse(str(value or "").strip())
+        host = (u.hostname or "").lower()
     except ValueError:
         return None
-    if u.scheme != "https" or (u.hostname or "").lower() not in allowed_hosts:
+    if u.scheme != "https" or not host or u.username or u.password:
+        return None
+    if allowed_hosts is not None and host not in allowed_hosts:
         return None
     return u.geturl()[:500]
 

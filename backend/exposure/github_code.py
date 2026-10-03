@@ -8,7 +8,7 @@ import os
 from typing import Dict, List
 
 from backend.exposure.base import CollectorError, Finding, RateLimited, clean_text, safe_https_url
-from backend.exposure.masking import path_severity, scan_fragment
+from backend.exposure.masking import HARD_RULES, is_doc_path, path_severity, scan_fragment
 
 API = "https://api.github.com/search/code"
 QUERY_SUFFIXES = ["password", "secret", "api_key", "filename:.env"]
@@ -79,6 +79,10 @@ class GitHubCodeCollector:
         sev = path_severity(path)
         for h in hits:
             sev = _worst(sev, h.severity)
+        # Docs, tests and examples are full of fake `password=...` lines. Keep real token formats at full
+        # severity, but cap everything else found there at "low".
+        if is_doc_path(path) and not any(h.rule in HARD_RULES for h in hits) and SEV_ORDER.index(sev) > SEV_ORDER.index("low"):
+            sev = "low"
         rules = sorted({h.rule for h in hits})
         title = f"{repo}: {clean_text(path, 120)}"
         if hits:

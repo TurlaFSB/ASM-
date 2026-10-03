@@ -76,6 +76,16 @@ def scan_fragment(fragment: str, domain: str = "") -> List[Hit]:
     return out[:10]
 
 
+DOC_PATH = re.compile(
+    r"(?i)(\.(md|markdown|rst|txt|adoc)$|(^|/)(docs?|documentation|examples?|samples?|tests?|__tests__|fixtures?|mocks?|testdata|demo)(/|$))"
+)
+HARD_RULES = {r[0] for r in _RULES}
+
+
+def is_doc_path(path: str) -> bool:
+    return bool(DOC_PATH.search(path or ""))
+
+
 def path_severity(path: str) -> str:
     if SENSITIVE_PATH.search(path or ""):
         return "medium"

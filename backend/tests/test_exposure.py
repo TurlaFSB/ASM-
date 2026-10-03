@@ -337,3 +337,47 @@ def test_evidence_in_db_has_no_full_secret(db, target, monkeypatch):
     stored = json.dumps([f.title, f.summary, f.url, f.evidence])
     assert SECRET not in stored and "AKIAIOSFODNN7EXAMPLE" not in stored
     assert f.severity == "high"
+
+
+# ------------------------------------------------------------------ real responses recorded from the live services (2026-10-03)
+
+REAL_XON_ADOBE = {"status": "success", "message": None, "exposedBreaches": [{
+    "breachID": "Adobe", "breachedDate": "2013-10-01T00:00:00+00:00", "addedDate": "2023-11-08T06:30:03+00:00",
+    "domain": "adobe.com", "industry": "Information Technology", "logo": "https://xposedornot.com/static/logos/Adobe.png",
+    "passwordRisk": "easytocrack", "searchable": True, "sensitive": False, "verified": True, "breachType": "DataBreach",
+    "exposedData": ["Usernames", "Passwords", "Email addresses"], "exposedRecords": 152403035,
+    "exposureDescription": "Adobe ...", "referenceURL": "https://krebsonsecurity.com/2013/10/adobe-breach-impacted-at-least-38-million-users/"}]}
+REAL_XON_NONE = {"status": "Not Found", "message": "No breaches found for the provided criteria", "exposedBreaches": None}
+
+
+def test_xon_real_adobe_response():
+    out = XposedOrNotCollector().collect("adobe.com", FakeHttp(resp(REAL_XON_ADOBE)), lambda s: None)
+    assert len(out) == 1
+    f = out[0]
+    assert f.severity == "high" and f.key == "Adobe"
+    assert f.url.startswith("https://krebsonsecurity.com/")          # third-party reference link is kept
+    assert "2013-10-01," in f.summary and "152,403,035 records" in f.summary
+    assert f.evidence["password_risk"] == "easytocrack"
+
+
+def test_xon_real_not_found_response_is_clean():
+    assert XposedOrNotCollector().collect("example.com", FakeHttp(resp(REAL_XON_NONE)), lambda s: None) == []
+
+
+def test_reference_urls_never_carry_credentials_or_non_https():
+    assert safe_https_url("https://user:pw@evil.example/x", None) is None
+    assert safe_https_url("http://news.example/x", None) is None
+    assert safe_https_url("https://news.example/x", None) == "https://news.example/x"
+
+
+def test_docs_tests_and_examples_are_capped_but_real_tokens_are_not(monkeypatch):
+    monkeypatch.setenv("ASM_GITHUB_TOKEN", "t")
+    items = [
+        gh_item("a/docs", "cli.md", "acme.com\npassword=Sup3rS3cretVal"),                    # docs: generic assignment -> low
+        gh_item("a/svc", "tests/fixtures/x.py", "acme.com\npassword=Sup3rS3cretVal"),        # tests -> low
+        gh_item("a/real", "docs/setup.md", "acme.com AKIAIOSFODNN7EXAMPLE"),                 # real token format keeps high
+        gh_item("a/app", "config/prod.env", "acme.com\npassword=Sup3rS3cretVal"),           # real config stays medium
+    ]
+    out = {f.key: f.severity for f in GitHubCodeCollector().collect("acme.com", FakeHttp(resp({"items": items})), lambda s: None)}
+    assert out == {"a/docs|cli.md": "low", "a/svc|tests/fixtures/x.py": "low",
+                   "a/real|docs/setup.md": "high", "a/app|config/prod.env": "medium"}
