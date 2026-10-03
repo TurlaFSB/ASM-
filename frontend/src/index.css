@@ -165,7 +165,7 @@ body {
 }
 
 .stat-card {
-  background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.01)), var(--surface);
+  background: linear-gradient(180deg, rgb(var(--fg) / 0.035), rgb(var(--fg) / 0.01)), var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 24px 20px;
@@ -174,7 +174,7 @@ body {
   gap: 16px;
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 20px rgba(0,0,0,0.15);
+  box-shadow: 0 1px 0 rgb(var(--fg) / 0.04) inset, 0 8px 20px rgba(0,0,0,0.15);
   transition: border-color 0.15s, transform 0.15s ease;
   cursor: default;
 }
@@ -220,7 +220,7 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 .table-container:hover {
-  scrollbar-color: rgba(255,255,255,0.15) transparent;
+  scrollbar-color: rgb(var(--fg) / 0.15) transparent;
 }
 .table-container::-webkit-scrollbar {
   height: 6px;
@@ -234,10 +234,10 @@ body {
   transition: background 0.25s ease;
 }
 .table-container:hover::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.15);
+  background: rgb(var(--fg) / 0.15);
 }
 .table-container::-webkit-scrollbar-thumb:hover {
-  background: rgba(255,255,255,0.28) !important;
+  background: rgb(var(--fg) / 0.28) !important;
 }
 .table-container table {
   background:
@@ -271,10 +271,10 @@ body {
   border: 1px solid rgba(139,92,246,0.22);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.2), 0 1px 0 rgba(255,255,255,0.04) inset;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2), 0 1px 0 rgb(var(--fg) / 0.04) inset;
 }
 .scroll-hint span {
-  color: #c9b8fb;
+  color: var(--accent);
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.02em;
@@ -287,9 +287,9 @@ body {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  border: 1px solid rgba(255,255,255,0.08);
-  background: rgba(255,255,255,0.05);
-  color: #c9b8fb;
+  border: 1px solid rgb(var(--fg) / 0.08);
+  background: rgb(var(--fg) / 0.05);
+  color: var(--accent);
   cursor: pointer;
   transition: background 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
 }
@@ -355,7 +355,7 @@ tr:hover td {
   letter-spacing: 0.01em;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset;
+  box-shadow: 0 1px 0 rgb(var(--fg) / 0.03) inset;
 }
 .badge::before {
   content: "";
@@ -580,7 +580,7 @@ tr:hover td {
 }
 
 .scan-card:hover {
-  border-color: #333;
+  border-color: var(--border-strong);
 }
 
 .scan-header {
@@ -615,7 +615,7 @@ tr:hover td {
 .scan-assets {
   padding: 20px 24px;
   border-top: 1px solid var(--border);
-  background: rgba(255,255,255,0.01);
+  background: rgb(var(--fg) / 0.01);
 }
 
 .scan-assets h4 {
@@ -698,7 +698,7 @@ tr:hover td {
 }
 
 .alert-card:hover {
-  border-color: #333;
+  border-color: var(--border-strong);
   background: var(--surface-2);
 }
 
@@ -776,7 +776,7 @@ tr:hover td {
   transition: all 0.15s;
 }
 
-.vuln-stat:hover { border-color: #333; }
+.vuln-stat:hover { border-color: var(--border-strong); }
 .vuln-stat.active { border-color: var(--accent); }
 
 .vuln-count {
@@ -957,11 +957,11 @@ input:focus-visible {
   font-weight: 500;
   padding: 7px 28px 7px 12px;
   border-radius: 8px;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.09);
+  background: rgb(var(--fg) / 0.04);
+  border: 1px solid rgb(var(--fg) / 0.09);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  color: rgba(255,255,255,0.82);
+  color: rgb(var(--fg) / 0.82);
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23a78bfa' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
@@ -977,8 +977,8 @@ input:focus-visible {
   border-color: rgba(139,92,246,0.4);
 }
 .wordlist-select option {
-  background: #16161a;
-  color: rgba(255,255,255,0.85);
+  background: var(--surface-2);
+  color: rgb(var(--fg) / 0.85);
 }
 
 /* ── Wordlist picker (custom dropdown, replaces native select) ── */
@@ -994,14 +994,14 @@ input:focus-visible {
   font-weight: 500;
   padding: 7px 10px 7px 13px;
   border-radius: 9px;
-  background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
-  border: 1px solid rgba(255,255,255,0.09);
+  background: linear-gradient(180deg, rgb(var(--fg) / 0.05), rgb(var(--fg) / 0.02));
+  border: 1px solid rgb(var(--fg) / 0.09);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  color: rgba(255,255,255,0.85);
+  color: rgb(var(--fg) / 0.85);
   cursor: pointer;
   font-family: inherit;
-  box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset;
+  box-shadow: 0 1px 0 rgb(var(--fg) / 0.04) inset;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 .select-menu-trigger:hover {
@@ -1027,10 +1027,10 @@ input:focus-visible {
   padding: 6px;
   border-radius: 12px;
   background: rgba(15,15,18,0.97);
-  border: 1px solid rgba(255,255,255,0.16);
+  border: 1px solid rgb(var(--fg) / 0.16);
   backdrop-filter: saturate(140%) blur(6px);
   -webkit-backdrop-filter: saturate(140%) blur(6px);
-  box-shadow: 0 12px 32px rgba(0,0,0,0.45), 0 1px 0 rgba(255,255,255,0.05) inset;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.45), 0 1px 0 rgb(var(--fg) / 0.05) inset;
   animation: wordlist-menu-in 0.14s ease;
   isolation: isolate;
 }
@@ -1041,7 +1041,7 @@ input:focus-visible {
   left: 0;
   right: 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
+  background: linear-gradient(90deg, transparent, rgb(var(--fg) / 0.35), transparent);
   pointer-events: none;
 }
 .select-menu-menu::-webkit-scrollbar {
@@ -1077,7 +1077,7 @@ input:focus-visible {
   transition: background 0.12s ease;
 }
 .select-menu-item {
-  background: rgba(255,255,255,0.02);
+  background: rgb(var(--fg) / 0.02);
 }
 .select-menu-item:hover {
   background: rgba(139,92,246,0.14);
@@ -1090,11 +1090,11 @@ input:focus-visible {
 .select-menu-item-label {
   font-size: 12.5px;
   font-weight: 600;
-  color: rgba(255,255,255,0.92);
+  color: rgb(var(--fg) / 0.92);
 }
 .select-menu-item-hint {
   font-size: 10.5px;
-  color: rgba(255,255,255,0.4);
+  color: rgb(var(--fg) / 0.4);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1113,7 +1113,7 @@ input:focus-visible {
 .profile-badge {
   display: inline-flex; align-items: center; gap: 4px;
   font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em; text-transform: capitalize;
-  padding: 2px 8px; border-radius: 20px; border: 1px solid; background: rgba(255,255,255,0.02);
+  padding: 2px 8px; border-radius: 20px; border: 1px solid; background: rgb(var(--fg) / 0.02);
 }
 .scan-progress { height: 3px; border-radius: 3px; background: var(--surface-3); margin-top: 8px; overflow: hidden; min-width: 140px; }
 .scan-progress > div { height: 100%; background: linear-gradient(90deg, var(--blue), var(--accent)); border-radius: 3px; transition: width 0.6s ease; }

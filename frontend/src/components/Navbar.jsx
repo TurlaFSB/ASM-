@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { getUnreadAlerts, getMe } from "../api";
-import { Shield, Target, Activity, Database, Bell, AlertTriangle, LogOut, Clock, GitCompare, Radar } from "lucide-react";
+import { Sun, Moon, Monitor, Shield, Target, Activity, Database, Bell, AlertTriangle, LogOut, Clock, GitCompare, Radar } from "lucide-react";
+import { getThemePref, setThemePref } from "../lib/theme";
 import turlaLogo from "../assets/TURLA.png";
 
 export default function Navbar({ onLogout }) {
   const location = useLocation();
   const [unread, setUnread] = useState(0);
   const [role, setRole] = useState(null);
+  const [theme, setTheme] = useState(getThemePref);
+  const pickTheme = (t) => { setTheme(t); setThemePref(t); };
 
   useEffect(() => { getMe().then(r => setRole(r.data.role)).catch(() => {}); }, []);
 
@@ -59,6 +62,13 @@ export default function Navbar({ onLogout }) {
         {role === "viewer" && (
           <p className="nav-readonly" title="Viewer accounts can look at everything but cannot change anything.">Read-only account</p>
         )}
+        <div className="theme-seg" role="group" aria-label="Appearance">
+          {[["light", Sun, "Light"], ["system", Monitor, "Match system"], ["dark", Moon, "Dark"]].map(([v, Icon, label]) => (
+            <button key={v} type="button" className={theme === v ? "active" : ""} aria-pressed={theme === v} aria-label={label} title={label} onClick={() => pickTheme(v)}>
+              <Icon size={15} />
+            </button>
+          ))}
+        </div>
         <button className="logout-btn" onClick={onLogout}>
           <LogOut size={16} />
           Logout

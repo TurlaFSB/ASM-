@@ -1,6 +1,6 @@
 import './ToggleSwitch.css';
 
-export default function ToggleSwitch({ checked, onChange, label }) {
+export default function ToggleSwitch({ checked, onChange, label, ariaLabel }) {
   return (
     <label className="toggle-row">
       {label && <span className="toggle-label">{label}</span>}
@@ -8,6 +8,7 @@ export default function ToggleSwitch({ checked, onChange, label }) {
         <input
           type="checkbox"
           checked={checked}
+          aria-label={label ? undefined : ariaLabel}
           onChange={(e) => onChange(e.target.checked)}
         />
         <span className="ios-toggle-track">

@@ -10,6 +10,7 @@ import ProfilePicker from "../components/ProfilePicker";
 import NotificationSettings from "../components/NotificationSettings";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { useToast } from "../components/toastContext";
+import { fgAlpha } from "../lib/theme";
 
 function extractErrorMessage(err, fallback) {
   const detail = err.response?.data?.detail;
@@ -35,16 +36,16 @@ const CustomTooltip = ({ active, payload, label }) => {
   return (
     <div
       style={{
-        background: "rgba(20, 20, 24, 0.9)",
+        background: "var(--pop)",
         backdropFilter: "blur(12px)",
-        border: "1px solid rgba(255,255,255,0.08)",
+        border: "1px solid var(--border)",
         borderRadius: "10px",
         padding: "10px 14px",
         fontSize: "13px",
-        boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+        boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
       }}
     >
-      <div style={{ color: "rgba(255,255,255,0.5)", marginBottom: "6px", fontSize: "12px" }}>
+      <div style={{ color: "var(--text-secondary)", marginBottom: "6px", fontSize: "12px" }}>
         {formatDate(label)}
       </div>
       {payload.map((p) => (
@@ -466,27 +467,27 @@ export default function Targets() {
                             <div style={{ width: "100%", height: 300 }}>
                               <ResponsiveContainer width="100%" height="100%">
                                 <LineChart data={historyData[target.id]}>
-                                  <CartesianGrid strokeDasharray="0" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                                  <CartesianGrid strokeDasharray="0" stroke={fgAlpha(0.06)} vertical={false} />
                                   <XAxis
                                     dataKey="scan_date"
                                     tickFormatter={formatDate}
-                                    stroke="rgba(255,255,255,0.35)"
+                                    stroke={fgAlpha(0.35)}
                                     fontSize={11}
                                     tickLine={false}
-                                    axisLine={{ stroke: "rgba(255,255,255,0.08)" }}
+                                    axisLine={{ stroke: fgAlpha(0.08) }}
                                   />
                                   <YAxis
-                                    stroke="rgba(255,255,255,0.35)"
+                                    stroke={fgAlpha(0.35)}
                                     fontSize={11}
                                     tickLine={false}
                                     axisLine={false}
                                     width={28}
                                   />
-                                  <Tooltip content={<CustomTooltip />} cursor={{ stroke: "rgba(255,255,255,0.15)" }} />
+                                  <Tooltip content={<CustomTooltip />} cursor={{ stroke: fgAlpha(0.15) }} />
                                   <Legend
                                     iconType="circle"
                                     iconSize={8}
-                                    wrapperStyle={{ fontSize: "12px", color: "rgba(255,255,255,0.6)", paddingTop: "12px" }}
+                                    wrapperStyle={{ fontSize: "12px", color: fgAlpha(0.6), paddingTop: "12px" }}
                                   />
                                   <Line type="monotone" dataKey="total_assets" name="Total Assets" stroke="#8b5cf6" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
                                   <Line type="monotone" dataKey="new_assets" name="New Assets" stroke="#34d399" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />

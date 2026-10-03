@@ -126,6 +126,7 @@ Each scan runs as one Celery task and reports progress per stage to the UI. Data
 - CSV export for assets and vulnerabilities
 
 ### Operations
+- Light and dark themes (match system by default), keyboard-navigable menus, and no WCAG A/AA violations in automated checks
 - Three scan profiles (Quick, Standard, Deep), with a per-target default for scheduled scans
 - Recurring scans via Celery Beat (cron expressions or presets)
 - JWT authentication on every route; admin created via script, no default credentials

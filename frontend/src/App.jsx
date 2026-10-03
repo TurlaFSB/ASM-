@@ -34,9 +34,10 @@ export default function App() {
     <BrowserRouter>
       <ToastProvider>
       <PageTitle />
+      <a className="skip-link" href="#main">Skip to content</a>
       <div className="app">
         <Navbar onLogout={() => { logout().catch(() => {}).finally(() => { resetRole(); setAuthed(false); }); }} />
-        <main className="main-content">
+        <main className="main-content" id="main" tabIndex={-1}>
           <ErrorBoundary>
           <Routes>
             <Route path="/" element={<Dashboard />} />

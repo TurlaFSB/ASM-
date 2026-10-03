@@ -213,7 +213,7 @@ export default function Exposure() {
               <div style={{ marginTop: 6 }}><RunChip source={s} run={lastRun(s.name)} /></div>
             </div>
             {canEdit
-              ? <ToggleSwitch checked={!!s.enabled} onChange={on => toggle(s.name, on)} label="" />
+              ? <ToggleSwitch checked={!!s.enabled} onChange={on => toggle(s.name, on)} label="" ariaLabel={`Check ${s.label}`} />
               : <span className="muted-note">{s.enabled ? "On" : "Off"}</span>}
           </div>
         ))}
