@@ -165,7 +165,7 @@ docker compose exec backend python -m backend.scripts.rediff <scan_id>
 
 ### AI-assisted triage (optional)
 
-With a local model enabled, each confirmed change also gets a one-line summary and a recommended next step. By default (`ASM_LLM_SEVERITY_MODE=advise`) the rules decide severity and the model only explains; when it rates a change differently the Changes page says so. Setting `adjust` lets the model move severity by one step (never lowering a high or critical change, or one tied to a known-exploited CVE). Turn that on only for a model that passes the evaluation below. Both the rule severity and the AI's own answer are always kept. Nothing leaves your machine with the `ollama` provider.
+With a local model enabled, each confirmed change also gets a one-line summary and a recommended next step. By default (`ASM_LLM_SEVERITY_MODE=advise`) the rules decide severity and the model only explains;  Setting `adjust` lets the model move severity by one step (never lowering a high or critical change, or one tied to a known-exploited CVE). Turn that on only for a model that passes the evaluation below. Both the rule severity and the AI's own answer are always kept. Nothing leaves your machine with the `ollama` provider.
 
 - Model output must match a strict schema; anything else, text containing links or commands, or an answer two or more severity steps away from what the rules allow (the sign of a model that was talked into something) is discarded together with its text, and the rules stand.
 - Scanned content reaches the model only as short, whitelisted, sanitized fields, and the prompt treats it as untrusted data.
@@ -389,7 +389,7 @@ docker exec asm_postgres pg_restore -U asm_user -d asm_db --clean --if-exists -v
 | Alerts and webhooks driven by change events (backend, settings API, delivery log) | Done |
 | Alerts page and per-target notification settings in the UI | Done |
 | Per-port path tracking (paths keyed by host and port) | Done |
-| AI-assisted triage: severity, summary and recommended action per change, with guardrails and a labelled evaluation set | Wired in; model evaluation in progress |
+| AI-assisted triage: severity, summary and recommended action per change, with guardrails and a labelled evaluation set | Done: explain-only by default, severity adjustment stays off until a model beats the rules |
 | Leak and breach collectors (HIBP, GitHub code search, paste sites) | Planned |
 | Dark-web mention monitoring via licensed intelligence APIs | Planned |
 | Screenshot perceptual-hash diffing | Planned |
