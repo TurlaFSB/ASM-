@@ -1,6 +1,7 @@
 """Everything that reaches the prompt is attacker-influenced (page titles, paths, banners, finding text).
 Reduce it to a small whitelist of short, printable fields; never forward raw page content."""
 import re
+import unicodedata
 from typing import Dict
 
 _CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
@@ -10,7 +11,10 @@ FIELD_MAX = 160
 
 
 def clean_text(v, limit: int = FIELD_MAX) -> str:
-    s = _ANGLE.sub(" ", _CTRL.sub("", str(v if v is not None else "")))
+    s = str(v if v is not None else "")
+    # drop control and invisible formatting characters (bidi overrides, zero-width joiners) but keep real letters
+    s = "".join(ch for ch in s if unicodedata.category(ch) not in ("Cc", "Cf") or ch in "\t\n ")
+    s = _ANGLE.sub(" ", _CTRL.sub("", s))
     s = _WS.sub(" ", s).strip()
     return s[:limit]
 

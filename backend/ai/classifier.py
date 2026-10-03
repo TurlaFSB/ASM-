@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Dict, Optional
 
@@ -5,6 +6,7 @@ from pydantic import ValidationError
 
 from backend.ai import guardrails
 from backend.ai.prompt import build_messages
+from backend.ai.sanitize import event_view
 from backend.ai.providers import LLMError, LLMProvider
 from backend.ai.schema import Triage, json_schema
 
@@ -31,6 +33,12 @@ def classify_event(provider: Optional[LLMProvider], event: Dict, retries: int = 
         if not (guardrails.text_is_safe(parsed.summary) and guardrails.text_is_safe(parsed.recommended_action)):
             last_err = "output rejected by guardrails"
             continue
+        claim = guardrails.unsupported_claim(
+            f"{parsed.summary} {parsed.recommended_action}", json.dumps(event_view(event), ensure_ascii=False),
+            kev=bool((event.get("after") or {}).get("kev")))
+        if claim:
+            logger.warning(f"[ai] triage rejected for {event.get('fingerprint')}: unsupported claim '{claim}'")
+            return {"ai_status": "rejected", "ai_error": f"unsupported claim: {claim}"}
         out = guardrails.apply(event, parsed, adjust)
         if guardrails.conflicts_with_rules(event.get("severity", "info"), parsed.severity, out["policy_severity"]):
             logger.warning(f"[ai] triage rejected for {event.get('fingerprint')}: model said {parsed.severity}, "

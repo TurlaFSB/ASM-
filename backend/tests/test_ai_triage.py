@@ -130,3 +130,28 @@ def test_conflict_is_judged_against_policy_even_in_advise_mode(monkeypatch):
     monkeypatch.delenv("ASM_LLM_SEVERITY_MODE", raising=False)
     out = classify_event(MockProvider({"3306": reply("info")}), EV)                  # rule high, model info
     assert out["ai_status"] == "rejected" and "ai_summary" not in out
+
+
+def test_invented_claims_are_rejected_but_claims_the_event_supports_pass():
+    made_up = reply("high", "MySQL is reachable (no auth observed).", "Restrict 3306.")
+    out = classify_event(MockProvider({"3306": made_up}), EV)
+    assert out["ai_status"] == "rejected" and "unsupported claim" in out["ai_error"] and "ai_summary" not in out
+    ev = dict(EV, summary="Port 3306/tcp opened on 10.0.0.5 (MySQL 5.0, no auth observed)")
+    assert classify_event(MockProvider({"3306": made_up}), ev)["ai_status"] == "ok"
+    ok = classify_event(MockProvider({"3306": reply("high", "MySQL is newly reachable.", "Require authentication.")}), EV)
+    assert ok["ai_status"] == "ok"                       # "require authentication" is advice, not a claim
+
+
+def test_exploited_claim_needs_the_kev_flag():
+    kev = dict(EV, category="finding", subject="CVE-2024-1", summary="New finding CVE-2024-1", after={"kev": True, "cve": "CVE-2024-1"})
+    text = reply("critical", "This CVE is actively exploited.", "Patch now.")
+    assert classify_event(MockProvider({"CVE-2024-1": text}), kev)["ai_status"] == "ok"
+    plain = dict(kev, after={"cve": "CVE-2024-1"}, severity="high")
+    assert classify_event(MockProvider({"CVE-2024-1": text}), plain)["ai_status"] == "rejected"
+
+
+def test_real_letters_survive_but_invisible_formatting_characters_do_not():
+    ev = dict(EV, asset="münchen.example.com", subject="/a‮b​c")
+    body = build_messages(ev)[-1]["content"]
+    assert "münchen.example.com" in body and "\\u00fc" not in body
+    assert "‮" not in body and "​" not in body

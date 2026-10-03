@@ -26,6 +26,24 @@ def final_severity(rule_sev: str, ai_sev: str, kev: bool = False) -> str:
 MAX_DISAGREEMENT = 1   # steps between the model's own answer and the severity policy allows
 
 
+# Assertions about the target that a small model tends to invent. They are allowed only when the event data
+# itself says the same thing, so "MySQL ... no auth observed" needs "no auth" in the event, not in the model's head.
+_CLAIMS = [re.compile(p, re.I) for p in (
+    r"no auth(entication)?\b", r"\bunauthenticated\b", r"without (any )?(auth(entication)?|password|login|credentials)",
+    r"default (password|credential|login)s?", r"anonymous (access|login)",
+    r"actively exploited|exploited in the wild|in the wild",
+    r"(already|been) (compromised|breached)", r"\bbackdoor|\bmalware|\bransomware")]
+
+
+def unsupported_claim(text: str, event_text: str, kev: bool = False) -> Optional[str]:
+    """Return the first assertion in `text` that the event data does not support, else None."""
+    for rx in _CLAIMS:
+        m = rx.search(text)
+        if m and not rx.search(event_text) and not (kev and "exploited" in m.group(0).lower()):
+            return m.group(0).lower()
+    return None
+
+
 def conflicts_with_rules(rule_sev: str, ai_sev: str, final_sev: str) -> bool:
     """The model is two or more steps away from what the rules let stand. That is the signature of a
     model that was talked into something (or is simply wrong), so its text is not shown either: a summary
