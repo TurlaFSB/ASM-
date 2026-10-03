@@ -9,6 +9,10 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 class Base(DeclarativeBase):
     pass
 
+# Untrusted scan data must never carry NUL bytes into PostgreSQL.
+from backend.db_sanitize import install as _install_sanitizer  # noqa: E402
+_install_sanitizer()
+
 def get_db():
     db = SessionLocal()
     try:

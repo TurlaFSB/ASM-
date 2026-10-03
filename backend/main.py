@@ -25,8 +25,14 @@ async def lifespan(app):
     yield
 
 
+_is_prod = settings.app_env.lower() in ("production", "prod")
+
 app = FastAPI(
     lifespan=lifespan,
+    # Interactive API docs/schema are a free map of the attack surface; off in production.
+    docs_url=None if _is_prod else "/docs",
+    redoc_url=None if _is_prod else "/redoc",
+    openapi_url=None if _is_prod else "/openapi.json",
     title="ASM Platform",
     description="Attack Surface Management Platform",
     version="0.1.0"
