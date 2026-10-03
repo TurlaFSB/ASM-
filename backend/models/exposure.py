@@ -19,7 +19,7 @@ class ExposureFinding(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     target_id = Column(Integer, ForeignKey("targets.id"), nullable=False, index=True)
-    source = Column(String, nullable=False, index=True)       # github_code | xposedornot | ahmia
+    source = Column(String, nullable=False, index=True)       # github_code | xposedornot | lookalike_domains | ransomlook
     kind = Column(String, nullable=False)                     # secret | breach | mention
     fingerprint = Column(String, nullable=False)
     title = Column(String, nullable=False)

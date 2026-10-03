@@ -381,3 +381,79 @@ def test_docs_tests_and_examples_are_capped_but_real_tokens_are_not(monkeypatch)
     out = {f.key: f.severity for f in GitHubCodeCollector().collect("acme.com", FakeHttp(resp({"items": items})), lambda s: None)}
     assert out == {"a/docs|cli.md": "low", "a/svc|tests/fixtures/x.py": "low",
                    "a/real|docs/setup.md": "high", "a/app|config/prod.env": "medium"}
+
+
+# ------------------------------------------------------------------ ransomlook (shape recorded from the live API, names replaced)
+
+from backend.exposure.ransomlook import RansomLookCollector  # noqa: E402
+
+
+def rl_post(title, group="rhysida", desc="x", discovered="2026-10-03 15:50:36.915404"):
+    return {"post_title": title, "discovered": discovered, "description": desc, "link": "archive.php?company=281",
+            "magnet": "magnet:?xt=urn:btih:abc", "screen": "screenshots/rhysida/x.png", "private": False,
+            "misp_uuid": "61861d23", "group_name": group}
+
+
+RL_NONE = {"groups": [], "markets": [], "posts": [], "leaks": [], "notes": []}
+
+
+def rl(posts):
+    return {"groups": [], "markets": [], "posts": posts, "leaks": [], "notes": []}
+
+
+def test_ransomlook_matching_rules_and_severity():
+    posts = [
+        rl_post("acmecorp.com"),                                             # domain in title -> critical
+        rl_post("Acmecorp Industries", group="lockbit"),                      # name in title -> high
+        rl_post("Some Other Firm", group="akira", desc="supplier to acmecorp.com and others"),   # description -> high
+        rl_post("Acmecorpse Ltd", group="play"),                              # not a word-boundary match -> ignored
+        rl_post("Unrelated", group="qilin", desc="mentions bank only"),       # keyword noise -> ignored
+    ]
+    http = FakeHttp(resp(rl(posts)), resp(rl([])))
+    out = {f.key: f for f in RansomLookCollector().collect("acmecorp.com", http, lambda s: None)}
+    assert set(out) == {"rhysida|acmecorp.com", "lockbit|acmecorp industries", "akira|some other firm"}
+    assert out["rhysida|acmecorp.com"].severity == "critical"
+    assert out["lockbit|acmecorp industries"].severity == "high"
+    assert out["akira|some other firm"].severity == "high"
+    assert http.calls[0][1] == {"q": "acmecorp.com"} and http.calls[1][1] == {"q": "acmecorp"}
+
+
+def test_ransomlook_never_stores_links_or_attachments():
+    out = RansomLookCollector().collect("acmecorp.com", FakeHttp(resp(rl([rl_post("acmecorp.com")])), resp(rl([]))), lambda s: None)
+    blob = json.dumps([f.__dict__ for f in out])
+    for forbidden in ("magnet", "archive.php", "screenshots/", "misp"):
+        assert forbidden not in blob
+    assert out[0].url == "https://www.ransomlook.io/" and out[0].evidence["credit"].startswith("RansomLook")
+    assert out[0].evidence["discovered"] == "2026-10-03"
+
+
+def test_ransomlook_short_names_only_query_the_domain():
+    http = FakeHttp(resp(RL_NONE))
+    out = RansomLookCollector().collect("acme.com", http, lambda s: None)
+    assert out == [] and len(http.calls) == 1 and out.complete is True
+
+
+def test_ransomlook_duplicates_across_queries_keep_the_worst_severity():
+    a = rl_post("acmecorp.com")
+    http = FakeHttp(resp(rl([a])), resp(rl([a])))
+    assert len(RansomLookCollector().collect("acmecorp.com", http, lambda s: None)) == 1
+
+
+def test_ransomlook_oversized_common_name_query_is_skipped_not_fatal():
+    http = FakeHttp(resp(rl([rl_post("acmecorp.com")])), CollectorError("response too large"))
+    out = RansomLookCollector().collect("acmecorp.com", http, lambda s: None)
+    assert len(out) == 1 and out.complete is False
+    with pytest.raises(CollectorError):                       # but a failure on the first (domain) query is an error
+        RansomLookCollector().collect("acmecorp.com", FakeHttp(CollectorError("response too large")), lambda s: None)
+
+
+def test_ransomlook_errors_and_garbage():
+    c = RansomLookCollector()
+    for bad in (resp({}, 500), Response(200, b"<html>", {}), resp({"unexpected": 1})):
+        with pytest.raises(CollectorError):
+            c.collect("acmecorp.com", FakeHttp(bad), lambda s: None)
+    with pytest.raises(RateLimited):
+        c.collect("acmecorp.com", FakeHttp(resp({}, 429)), lambda s: None)
+    from backend.exposure.base import NotApplicable
+    with pytest.raises(NotApplicable):
+        c.collect("10.0.0.5", FakeHttp(resp(RL_NONE)), lambda s: None)

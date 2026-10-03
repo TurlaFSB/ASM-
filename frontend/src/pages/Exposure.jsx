@@ -10,7 +10,7 @@ import { useToast } from "../components/toastContext";
 
 const STATUS = [["open", "Open"], ["dismissed", "Dismissed"], ["resolved", "Resolved"]];
 const IMPORTANCE = [["important", "Medium and above"], ["all", "Everything"]];
-const SOURCE_LABEL = { github_code: "GitHub public code", xposedornot: "Breach records", lookalike_domains: "Lookalike domain" };
+const SOURCE_LABEL = { github_code: "GitHub public code", xposedornot: "Breach records", lookalike_domains: "Lookalike domain", ransomlook: "Ransomware leak site" };
 
 function timeAgo(iso) {
   if (!iso) return "";
@@ -52,6 +52,7 @@ function FindingCard({ f, canEdit, onStatus }) {
   const rules = f.evidence?.rules || [];
   const data = f.evidence?.exposed_data || [];
   const lk = f.kind === "lookalike" ? f.evidence : null;
+  const rw = f.kind === "ransomware_listing" ? f.evidence : null;
   return (
     <div className={"finding-card" + (f.status !== "open" ? " dim" : "")}>
       <div className="finding-head">
@@ -74,6 +75,13 @@ function FindingCard({ f, canEdit, onStatus }) {
           {lk.a?.slice(0, 3).map((x, i) => <code key={"a" + i}>A {x}</code>)}
           {lk.mx?.slice(0, 2).map((x, i) => <code key={"m" + i}>MX {x}</code>)}
           {lk.same_infrastructure && <code>same infrastructure as your domain</code>}
+        </div>
+      )}
+      {rw && (
+        <div className="finding-evidence" aria-label="Listing details">
+          <code>group: {rw.group}</code>
+          {rw.discovered && <code>listed {rw.discovered}</code>}
+          <code>listed as: {rw.listed_title}</code>
         </div>
       )}
       <div className="finding-foot">
@@ -221,6 +229,11 @@ export default function Exposure() {
           ))}
         </div>
       </div>
+
+      <p className="muted-note exposure-credit">
+        Ransomware listings: data from <a href="https://www.ransomlook.io" target="_blank" rel="noopener noreferrer">RansomLook.io</a>,
+        licensed CC BY 4.0. A listing is the attacker's claim, not proof of stolen data.
+      </p>
 
       {error && <div className="empty">Could not load exposure data. Check that the API is running.</div>}
       {!error && findings.length === 0 && (

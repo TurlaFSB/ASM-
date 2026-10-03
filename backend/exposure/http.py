@@ -7,7 +7,7 @@ import requests
 
 from backend.exposure.base import CollectorError
 
-ALLOWED_HOSTS = {"api.github.com", "api.xposedornot.com", "ahmia.fi"}
+ALLOWED_HOSTS = {"api.github.com", "api.xposedornot.com", "www.ransomlook.io"}
 MAX_BYTES = 2 * 1024 * 1024
 TIMEOUT = (5, 20)
 USER_AGENT = "ASM-Platform-Exposure/1"
