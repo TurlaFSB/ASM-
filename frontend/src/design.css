@@ -517,3 +517,27 @@ a.attention-item:focus-visible { outline: 2px solid var(--accent); outline-offse
 .login-card .btn { width: 100%; justify-content: center; padding: 10px; font-size: 14px; }
 
 .nav-readonly { margin: 0 0 10px; font-size: 12px; color: var(--text-muted, #8a94a6); text-align: center; }
+
+/* ── Exposure ─────────────────────────────── */
+.exposure-sources { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 10px; margin: 16px 0 20px; }
+.exposure-source {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface);
+}
+.exposure-source-name { font-size: 14px; color: var(--text-primary); margin-bottom: 2px; }
+.exposure-filters { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 4px; }
+.finding-list { width: 100%; max-width: none; margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
+.finding-card { padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.finding-card.dim { opacity: 0.7; }
+.finding-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.finding-title { font-size: 14px; color: var(--text-primary); overflow-wrap: anywhere; }
+.finding-summary { margin: 8px 0 0; font-size: 13px; line-height: 1.5; color: var(--text-secondary); max-width: 90ch; }
+.finding-evidence { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.finding-evidence code {
+  font-family: var(--font-mono); font-size: 11.5px; padding: 2px 8px; border-radius: 6px;
+  background: var(--surface-3); color: var(--text-secondary);
+}
+.finding-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-top: 12px; }
+.finding-link { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; color: var(--accent); text-decoration: none; }
+.finding-link:hover { text-decoration: underline; }
+.finding-foot .btn { margin-left: auto; }

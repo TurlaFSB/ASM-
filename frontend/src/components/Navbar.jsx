@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { getUnreadAlerts, getMe } from "../api";
-import { Shield, Target, Activity, Database, Bell, AlertTriangle, LogOut, Clock, GitCompare } from "lucide-react";
+import { Shield, Target, Activity, Database, Bell, AlertTriangle, LogOut, Clock, GitCompare, Radar } from "lucide-react";
 import turlaLogo from "../assets/TURLA.png";
 
 export default function Navbar({ onLogout }) {
@@ -29,6 +29,7 @@ export default function Navbar({ onLogout }) {
     { path: "/schedules", label: "Schedules", icon: <Clock size={18} /> },
     { path: "/changes", label: "Changes", icon: <GitCompare size={18} /> },
     { path: "/vulnerabilities", label: "Vulnerabilities", icon: <AlertTriangle size={18} /> },
+    { path: "/exposure", label: "Exposure", icon: <Radar size={18} /> },
     { path: "/alerts", label: "Alerts", icon: <Bell size={18} /> },
   ];
 

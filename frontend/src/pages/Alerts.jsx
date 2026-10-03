@@ -51,7 +51,7 @@ function Deliveries({ rows }) {
           <tr key={d.id}>
             <td className="cell-nowrap">{timeAgo(d.created_at)}</td>
             <td>{d.host || "unknown"}</td>
-            <td>{d.kind === "test" ? "Test" : `Scan #${d.scan_id}`}</td>
+            <td>{d.kind === "test" ? "Test" : d.kind === "exposure" ? "Exposure" : `Scan #${d.scan_id}`}</td>
             <td>
               <span className={"badge " + (d.status === "sent" ? "badge-completed" : d.status === "blocked" ? "badge-pending" : "badge-failed")}>
                 {d.status}
@@ -110,7 +110,7 @@ export default function Alerts() {
             <span>{legacy ? (a.asset_subdomain || "Asset") : a.summary}</span>
           </div>
           <div className="alert-sub">
-            {legacy ? legacyText(a) : [a.asset_subdomain, a.category && `${a.category} change`].filter(Boolean).join(" · ")}
+            {legacy ? legacyText(a) : [a.asset_subdomain, a.category === "exposure" ? "exposure" : a.category && `${a.category} change`].filter(Boolean).join(" · ")}
           </div>
         </div>
         <time className="alert-time" dateTime={a.created_at} title={new Date(a.created_at).toLocaleString()}>

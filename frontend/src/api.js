@@ -68,3 +68,10 @@ export const downloadAssetsCsv = (id) =>
 
 export const downloadVulnerabilitiesCsv = (id) =>
   api.get(`/scans/${id}/export/vulnerabilities.csv`, { responseType: "blob" });
+
+export const getExposureSources = (targetId) => api.get(`/exposure/targets/${targetId}/sources`);
+export const setExposureSources = (targetId, sources) => api.put(`/exposure/targets/${targetId}/sources`, { sources });
+export const runExposureNow = (targetId) => api.post(`/exposure/targets/${targetId}/run`);
+export const getExposureFindings = (params) => api.get("/exposure/findings", { params });
+export const setExposureFindingStatus = (id, status) => api.patch(`/exposure/findings/${id}`, { status });
+export const getExposureRuns = (params) => api.get("/exposure/runs", { params });
