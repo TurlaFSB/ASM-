@@ -222,6 +222,7 @@ ASM performs active scanning, so its own security matters.
 - **Authorization gate enforced at the API.** A target cannot be created without `authorized: true`, and a scan cannot start against an unauthorized or deactivated target. This is re-checked at trigger time.
 - **No hardcoded credentials.** The admin account is created interactively; passwords are hashed with bcrypt.
 - **JWT on every route**, with account status re-checked on each request.
+- **Browser sessions use an httpOnly, SameSite=Lax cookie** (never readable by page scripts, so an XSS bug cannot steal the login) plus a CSRF token that every state-changing request must echo in `X-CSRF-Token`. API clients can still send `Authorization: Bearer <token>` from `/auth/token`; those calls need no CSRF header. Set `COOKIE_SECURE=true` when serving over HTTPS. The web app and API must share a host name (different ports are fine).
 - **Login throttling.** Failed logins are counted per IP and username, per IP, and per username across all IPs; unknown usernames cost the same time as wrong passwords.
 - **Admin and viewer roles.** Viewers can read everything but every change route (targets, scans, schedules, audit log) needs an admin.
 - **Untrusted scan data is scrubbed.** NUL bytes from hostile banners are stripped before they reach PostgreSQL, and API docs are switched off when `APP_ENV=production`.
@@ -299,6 +300,7 @@ Set these in `.env.docker`. Only the first two are required.
 |---|---|---|
 | `DATABASE_URL` | none | SQLAlchemy connection string |
 | `SECRET_KEY` | none | JWT signing key (required) |
+| `COOKIE_SECURE` | `false` | Mark the session cookie HTTPS-only; set `true` in production behind TLS |
 | `ASM_ALLOW_PRIVATE_TARGETS` | `false` | Permit scanning private/reserved addresses (lab use) |
 | `NVD_API_KEY` | unset | NVD API key for higher CVE lookup rate limits |
 | `CVE_MIN_CVSS` | `7.0` | Minimum CVSS for version-matched CVE findings |
@@ -329,7 +331,7 @@ Set these in `.env.docker`. Only the first two are required.
 
 ## API
 
-Interactive documentation is served by FastAPI at `http://<host>:8000/docs`. All routes except login require a bearer token.
+Interactive documentation is served by FastAPI at `http://<host>:8000/docs`. All routes except login need a session: the browser cookie, or a bearer token for scripts.
 
 | Area | Endpoints |
 |---|---|

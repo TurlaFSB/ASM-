@@ -89,3 +89,47 @@ def test_protected_routes_need_a_valid_token(env):
     _, _, c = env
     assert c.get("/targets/").status_code == 401
     assert c.get("/targets/", headers={"Authorization": "Bearer junk"}).status_code == 401
+
+
+# ---- cookie sessions + CSRF ----
+
+def _cookie_login(c):
+    r = login(c, "admin1", "correct horse battery")
+    assert r.status_code == 200
+    return r
+
+
+def test_login_sets_httponly_session_and_readable_csrf_cookie(env):
+    _, _, c = env
+    r = _cookie_login(c)
+    raw = r.headers.get_list("set-cookie")
+    session = next(x for x in raw if x.startswith("asm_session="))
+    csrf = next(x for x in raw if x.startswith("asm_csrf="))
+    assert "httponly" in session.lower() and "samesite=lax" in session.lower()
+    assert "httponly" not in csrf.lower()
+
+
+def test_cookie_session_reads_without_header_but_writes_need_csrf(env):
+    _, _, c = env
+    _cookie_login(c)
+    assert c.get("/auth/me").json()["username"] == "admin1"
+    body = {"domain": "example.org"}
+    assert c.post("/targets/", json=body).status_code == 403            # no CSRF header
+    assert c.post("/targets/", json=body, headers={"X-CSRF-Token": "wrong"}).status_code == 403
+    ok = c.post("/targets/", json=body, headers={"X-CSRF-Token": c.cookies.get("asm_csrf")})
+    assert ok.status_code != 403
+
+
+def test_bearer_requests_skip_csrf(env):
+    _, _, c = env
+    tok = login(c, "admin1", "correct horse battery").json()["access_token"]
+    c.cookies.clear()
+    r = c.post("/targets/", json={"domain": "bearer.example"}, headers={"Authorization": f"Bearer {tok}"})
+    assert r.status_code != 403
+
+
+def test_logout_clears_cookies_and_session_stops_working(env):
+    _, _, c = env
+    _cookie_login(c)
+    assert c.post("/auth/logout").status_code == 200
+    assert c.get("/auth/me").status_code == 401

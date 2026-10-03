@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     secret_key: str          # no default — must be set via env/.env, app fails to start otherwise
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 480
+    cookie_secure: bool = False   # set true when served over HTTPS (production)
     cors_origins: str = "http://localhost:5173,http://localhost:5174,http://localhost:3000"  # comma-separated allow-list, override via env per deployment
 
     @field_validator("secret_key")

@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getMe, logout } from "./api";
+import { resetRole } from "./components/useRole";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Navbar from "./components/Navbar";
 import Dashboard from "./pages/Dashboard";
@@ -18,8 +20,14 @@ import PageTitle from "./components/PageTitle";
 import "./App.css";
 
 export default function App() {
-  const [authed, setAuthed] = useState(!!localStorage.getItem("token"));
+  // null = still checking the session cookie, false = show login, true = signed in
+  const [authed, setAuthed] = useState(null);
 
+  useEffect(() => {
+    getMe().then(() => setAuthed(true)).catch(() => setAuthed(false));
+  }, []);
+
+  if (authed === null) return null;
   if (!authed) return <Login onLogin={() => setAuthed(true)} />;
 
   return (
@@ -27,7 +35,7 @@ export default function App() {
       <ToastProvider>
       <PageTitle />
       <div className="app">
-        <Navbar onLogout={() => { localStorage.removeItem("token"); setAuthed(false); }} />
+        <Navbar onLogout={() => { logout().catch(() => {}).finally(() => { resetRole(); setAuthed(false); }); }} />
         <main className="main-content">
           <ErrorBoundary>
           <Routes>

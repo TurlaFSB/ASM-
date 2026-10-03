@@ -1,28 +1,39 @@
 import axios from "axios";
 
-const api = axios.create({
-  baseURL: `http://${window.location.hostname}:8000`
-});
+const API_BASE = `http://${window.location.hostname}:8000`;
+
+// The session lives in an httpOnly cookie the browser attaches by itself, so script code never
+// sees the login token. State-changing calls echo the readable CSRF cookie in a header.
+const api = axios.create({ baseURL: API_BASE, withCredentials: true });
+
+function csrfToken() {
+  const m = document.cookie.match(/(?:^|;\s*)asm_csrf=([^;]+)/);
+  return m ? decodeURIComponent(m[1]) : "";
+}
 
 api.interceptors.request.use(config => {
-  const token = localStorage.getItem("token");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  if (!["get", "head", "options"].includes((config.method || "get").toLowerCase())) {
+    config.headers["X-CSRF-Token"] = csrfToken();
+  }
   return config;
 });
 
 api.interceptors.response.use(
   res => res,
   err => {
-    if (err.response?.status === 401) {
-      localStorage.removeItem("token");
-      window.location.reload();
-    }
+    // An expired session on a normal call sends the user back to the login screen.
+    if (err.response?.status === 401 && !err.config?.url?.startsWith("/auth/")) window.location.reload();
     return Promise.reject(err);
   }
 );
 
 // Named exports for all pages
 export const getMe = () => api.get("/auth/me");
+export const login = (username, password) => {
+  const params = new URLSearchParams({ username, password });
+  return api.post("/auth/token", params);
+};
+export const logout = () => api.post("/auth/logout");
 export const getTargets = () => api.get("/targets/");
 export const getScans = () => api.get("/scans/");
 export const getTargetHistory = (id) => api.get(`/targets/${id}/history`);

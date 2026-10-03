@@ -16,13 +16,17 @@ class _DB:
     def first(self): return self.user
 
 
+class _Req:
+    method, cookies, headers = "GET", {}, {}
+
+
 def _token(payload, key=None, alg="HS256"):
     return jwt.encode(payload, key or settings.secret_key, algorithm=alg)
 
 
 def test_valid_token_roundtrip():
     t = auth.create_access_token({"sub": "pranav"})
-    u = auth.get_current_user(t, _DB(SimpleNamespace(username="pranav")))
+    u = auth.get_current_user(_Req(), t, _DB(SimpleNamespace(username="pranav")))
     assert u.username == "pranav"
     assert jwt.decode(t, settings.secret_key, algorithms=["HS256"])["sub"] == "pranav"
 
@@ -36,10 +40,10 @@ def test_valid_token_roundtrip():
 ])
 def test_bad_tokens_rejected(make):
     with pytest.raises(HTTPException) as e:
-        auth.get_current_user(make(), _DB(SimpleNamespace(username="x")))
+        auth.get_current_user(_Req(), make(), _DB(SimpleNamespace(username="x")))
     assert e.value.status_code == 401
 
 
 def test_unknown_or_inactive_user_rejected():
     with pytest.raises(HTTPException):
-        auth.get_current_user(auth.create_access_token({"sub": "ghost"}), _DB(None))
+        auth.get_current_user(_Req(), auth.create_access_token({"sub": "ghost"}), _DB(None))

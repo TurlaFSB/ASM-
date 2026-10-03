@@ -3,6 +3,8 @@ import { getMe } from "../api";
 
 let cached = null;   // one /auth/me call per page load
 
+export function resetRole() { cached = null; }   // called on login/logout so a new user never sees the old role
+
 // "admin" | "viewer" | null while loading. Viewers see everything but cannot change anything.
 export default function useRole() {
   const [role, setRole] = useState(cached);

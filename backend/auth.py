@@ -1,8 +1,10 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+import hmac
+import secrets
 import jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
@@ -11,7 +13,24 @@ from backend.db import get_db
 from backend.models.user import User
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token", auto_error=False)
+
+SESSION_COOKIE = "asm_session"   # httpOnly: JavaScript (and so any XSS) cannot read it
+CSRF_COOKIE = "asm_csrf"         # readable on purpose: the page echoes it in X-CSRF-Token (double submit)
+CSRF_HEADER = "X-CSRF-Token"
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+
+def set_session_cookies(response: Response, token: str) -> None:
+    age = settings.access_token_expire_minutes * 60
+    common = dict(max_age=age, path="/", secure=settings.cookie_secure, samesite="lax")
+    response.set_cookie(SESSION_COOKIE, token, httponly=True, **common)
+    response.set_cookie(CSRF_COOKIE, secrets.token_urlsafe(32), httponly=False, **common)
+
+
+def clear_session_cookies(response: Response) -> None:
+    for name in (SESSION_COOKIE, CSRF_COOKIE):
+        response.delete_cookie(name, path="/", secure=settings.cookie_secure, samesite="lax")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
@@ -40,12 +59,23 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     return jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
 
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def get_current_user(request: Request, bearer: Optional[str] = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid or expired token",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    token = bearer
+    if token is None:
+        token = request.cookies.get(SESSION_COOKIE)
+        if token and request.method not in SAFE_METHODS:
+            # Cookies are sent automatically by the browser, so state-changing calls must prove
+            # they came from our own page. A Bearer header cannot be forged cross-site, so it is exempt.
+            sent, expected = request.headers.get(CSRF_HEADER), request.cookies.get(CSRF_COOKIE)
+            if not sent or not expected or not hmac.compare_digest(sent, expected):
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="CSRF check failed")
+    if not token:
+        raise credentials_exception
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
         username: str = payload.get("sub")

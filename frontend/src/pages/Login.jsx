@@ -1,8 +1,7 @@
 import { useState } from "react";
-import axios from "axios";
+import { login } from "../api";
+import { resetRole } from "../components/useRole";
 import turlaLogo from "../assets/TURLA.png";
-
-const API = `http://${window.location.hostname}:8000`;
 
 export default function Login({ onLogin }) {
   const [username, setUsername] = useState("");
@@ -15,11 +14,8 @@ export default function Login({ onLogin }) {
     setLoading(true);
     setError("");
     try {
-      const params = new URLSearchParams();
-      params.append("username", username);
-      params.append("password", password);
-      const res = await axios.post(`${API}/auth/token`, params);
-      localStorage.setItem("token", res.data.access_token);
+      await login(username, password);
+      resetRole();
       onLogin();
     } catch (err) {
       // Distinguish "too many attempts" and "server not reachable" from a wrong password

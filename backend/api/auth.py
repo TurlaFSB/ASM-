@@ -1,9 +1,9 @@
 import redis
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
-from backend.auth import authenticate_user, create_access_token, get_current_user
+from backend.auth import authenticate_user, create_access_token, get_current_user, set_session_cookies, clear_session_cookies
 from backend.db import get_db
 from backend.models.user import User
 from backend.config import settings
@@ -23,7 +23,7 @@ def _redis_client():
 
 
 @router.post("/token")
-def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def login(request: Request, response: Response, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     ip = request.client.host if request.client else "unknown"
     rc = _redis_client()
     if is_locked(rc, ip, form_data.username):
@@ -45,6 +45,7 @@ def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db
     clear_failures(rc, ip, form_data.username)
     log_action(db, user.username, "login_success", ip_address=ip)
     token = create_access_token({"sub": user.username})
+    set_session_cookies(response, token)
     return {
         "access_token": token,
         "token_type": "bearer",
@@ -54,3 +55,10 @@ def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db
 @router.get("/me")
 def get_me(current_user: User = Depends(get_current_user)):
     return {"username": current_user.username, "role": current_user.role}
+
+
+@router.post("/logout")
+def logout(response: Response):
+    """Clears the session cookies. Safe to call without a session."""
+    clear_session_cookies(response)
+    return {"ok": True}
