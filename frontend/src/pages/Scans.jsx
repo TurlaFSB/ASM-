@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { Activity, X, Download, ChevronRight } from "lucide-react";
+import { X, Download, ChevronRight } from "lucide-react";
+import Skeleton from "../components/Skeleton";
+import { timeAgo } from "../lib/time";
 import { getScans, getScanProgress, cancelScan, downloadScanReport } from "../api";
 import { ProfileBadge } from "../components/ProfilePicker";
 import Collapse from "../components/Collapse";
@@ -168,13 +170,10 @@ export default function Scans() {
     }
   };
 
-  if (loading) return <div className="loading">Loading...</div>;
-
   return (
     <div className="page">
       <div className="page-header">
         <h1>Scans</h1>
-        <Activity size={20} />
       </div>
 
       <ConfirmDialog open={cancelId !== null} tone="danger" title={`Cancel scan #${cancelId}?`} confirmLabel="Cancel scan"
@@ -182,89 +181,69 @@ export default function Scans() {
         The scan stops at the next safe point. Results found so far are kept, but the scan will not complete.
       </ConfirmDialog>
 
-      <div className="table-container">
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Target</th>
-              <th>Status</th>
-              <th>Assets found</th>
-              <th>New</th>
-              <th>Changed</th>
-              <th>Started</th>
-              <th>Duration</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {scans.map(scan => (
-              <tr key={scan.id}>
-                <td className="mono-dim">
-                  #{scan.id}
-                </td>
-                <td style={{ color: "var(--text-primary)", fontWeight: 500 }}>
-                  {scan.target_domain || "Target #" + scan.target_id}
-                </td>
-                <td>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span className={"badge badge-" + scan.status}>
-                      {scan.status}
-                    </span>
-                    <ProfileBadge name={scan.profile} />
+      {loading ? <Skeleton rows={6} height={64} /> : (
+        <div className="dl" style={{ "--cols": "minmax(150px,1.3fr) minmax(220px,2.4fr) minmax(120px,1fr) minmax(110px,1fr) 110px" }}>
+          <div className="dl-head" aria-hidden="true">
+            <div>Target</div><div>Status</div><div>Results</div><div>Started</div><div />
+          </div>
+          {scans.map(scan => {
+            const running = scan.status === "running";
+            const stage = stages[scan.id];
+            const dur = scanDuration(scan);
+            return (
+              <div className="dl-item" key={scan.id}>
+                <div className="dl-row">
+                  <div className="dl-main">
+                    <div className="dl-title">{scan.target_domain || "Target #" + scan.target_id}</div>
+                    <div className="dl-sub">Scan #{scan.id}</div>
                   </div>
-                  {scan.status !== "running" && (
-                    <StageSummary results={scan.module_results} open={!!openDetails[scan.id]}
-                      onToggle={() => setOpenDetails(o => ({ ...o, [scan.id]: !o[scan.id] }))} />
-                  )}
-                  {scan.status === "running" && stages[scan.id] && (
-                    <>
-                      <div className="progress-stage" style={{ marginTop: 6 }}>
-                        {STAGE_LABELS[stages[scan.id]] || stages[scan.id]}
-                      </div>
-                      <div className="scan-progress" title={`Stage ${Math.max(1, STAGE_ORDER.indexOf(stages[scan.id]) + 1)} of ${STAGE_ORDER.length}`}>
-                        <div style={{ width: `${Math.round(((STAGE_ORDER.indexOf(stages[scan.id]) + 1) / STAGE_ORDER.length) * 100)}%` }} />
-                      </div>
-                    </>
-                  )}
-                </td>
-                <td>{scan.total_assets || 0}</td>
-                <td style={{ color: scan.new_assets ? "var(--green)" : "var(--text-tertiary)" }}>{scan.new_assets || "—"}</td>
-                <td style={{ color: scan.changed_assets ? "var(--orange)" : "var(--text-tertiary)" }}>{scan.changed_assets || "—"}</td>
-                <td className="cell-nowrap" style={{ fontSize: 12 }} title={scan.completed_at ? `Completed ${new Date(scan.completed_at).toLocaleString()}` : ""}>
-                  {scan.started_at ? new Date(scan.started_at).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : "—"}
-                </td>
-                <td className="mono-dim cell-nowrap">{formatDuration(scanDuration(scan))}</td>
-                <td>
-                  <div className="actions">
-                  {(scan.status === "running" || scan.status === "pending") && (
-                    <button
-                      className="btn btn-sm btn-danger"
-                      onClick={() => setCancelId(scan.id)}
-                    >
-                      <X size={14} /> Cancel
-                    </button>
-                  )}
-                  {scan.status === "completed" && (
-                    <button
-                      className="btn btn-sm btn-secondary"
-                      onClick={() => handleDownloadReport(scan.id)}
-                      disabled={downloadingId === scan.id}
-                    >
-                      <Download size={14} />
-                      {downloadingId === scan.id ? "Generating…" : "Report"}
-                    </button>
-                  )}
+                  <div className="dl-main dl-col-wide">
+                    <div className="dl-flags" style={{ alignItems: "center" }}>
+                      <span className={"badge badge-" + scan.status}>{scan.status}</span>
+                      <ProfileBadge name={scan.profile} />
+                    </div>
+                    {!running && (
+                      <StageSummary results={scan.module_results} open={!!openDetails[scan.id]}
+                        onToggle={() => setOpenDetails(o => ({ ...o, [scan.id]: !o[scan.id] }))} />
+                    )}
+                    {running && stage && (
+                      <>
+                        <div className="progress-stage" style={{ marginTop: 6 }}>{STAGE_LABELS[stage] || stage}</div>
+                        <div className="scan-progress" title={`Stage ${Math.max(1, STAGE_ORDER.indexOf(stage) + 1)} of ${STAGE_ORDER.length}`}>
+                          <div style={{ width: `${Math.round(((STAGE_ORDER.indexOf(stage) + 1) / STAGE_ORDER.length) * 100)}%` }} />
+                        </div>
+                      </>
+                    )}
                   </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {scans.length === 0 && (
-          <div className="empty">No scans yet. Add a target and trigger a scan.</div>
-        )}
-      </div>
+                  <div className="dl-main">
+                    <div className="dl-title">{scan.total_assets || 0} assets</div>
+                    <div className="dl-sub">
+                      {scan.new_assets ? <span style={{ color: "var(--green)" }}>+{scan.new_assets} new</span> : "No new"}
+                      {" · "}
+                      {scan.changed_assets ? <span style={{ color: "var(--orange)" }}>{scan.changed_assets} changed</span> : "none changed"}
+                    </div>
+                  </div>
+                  <div className="dl-main" title={scan.started_at ? new Date(scan.started_at).toLocaleString() : ""}>
+                    <div className="dl-title" style={{ fontWeight: 400 }}>{scan.started_at ? timeAgo(scan.started_at) : "Not started"}</div>
+                    <div className="dl-sub">{dur != null ? formatDuration(dur) : "—"}</div>
+                  </div>
+                  <div className="dl-actions">
+                    {(running || scan.status === "pending") && (
+                      <button className="btn btn-sm btn-danger" onClick={() => setCancelId(scan.id)}><X size={14} /> Cancel</button>
+                    )}
+                    {scan.status === "completed" && (
+                      <button className="btn btn-sm btn-secondary" onClick={() => handleDownloadReport(scan.id)} disabled={downloadingId === scan.id}>
+                        <Download size={14} />{downloadingId === scan.id ? "Generating…" : "Report"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {scans.length === 0 && <div className="empty">No scans yet. Add a target and choose Scan to run the first one.</div>}
+        </div>
+      )}
     </div>
   );
 }

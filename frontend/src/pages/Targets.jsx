@@ -3,6 +3,8 @@ import { getTargets, createTarget, deleteTarget, triggerScan, getTargetHistory, 
 import { Plus, Trash2, Play, Shield, History, Globe, Bell } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import RowMenu from "../components/RowMenu";
+import Sheet from "../components/Sheet";
+import Skeleton from "../components/Skeleton";
 import "../components/ToggleSwitch.css";
 import ProfilePicker from "../components/ProfilePicker";
 import NotificationSettings from "../components/NotificationSettings";
@@ -151,7 +153,6 @@ export default function Targets() {
   const [targets, setTargets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [message, setMessage] = useState("");
   const [form, setForm] = useState(emptyForm);
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
@@ -215,24 +216,24 @@ export default function Targets() {
   const handleSubmit = async () => {
     const fieldsOk = runFullValidation();
     if (!form.authorized) {
-      setMessage("You must confirm authorization before adding a target.");
+      toast("You must confirm authorization before adding a target.", "bad");
       return;
     }
     if (!fieldsOk) {
-      setMessage("Please fix the highlighted fields before submitting.");
+      toast("Please fix the highlighted fields before submitting.", "bad");
       return;
     }
     setSubmitting(true);
     try {
       await createTarget(form);
-      setMessage("Target added successfully.");
+      toast("Target added.");
       setShowForm(false);
       setForm(emptyForm);
       setErrors({});
       setTouched({});
       fetchTargets();
     } catch (e) {
-      setMessage(extractErrorMessage(e, "Failed to add target."));
+      toast(extractErrorMessage(e, "Failed to add target."), "bad");
     } finally {
       setSubmitting(false);
     }
@@ -255,9 +256,9 @@ export default function Targets() {
       const t = targets.find(x => x.id === id);
       const profile = profileChoice[id] ?? t?.default_profile ?? "standard";
       await triggerScan({ target_id: id, profile, run_dirbuster: dirbusterEnabled[id] ?? t?.dirbuster_enabled ?? true });
-      setMessage(`${profile.charAt(0).toUpperCase() + profile.slice(1)} scan queued successfully.`);
+      toast(`${profile.charAt(0).toUpperCase() + profile.slice(1)} scan queued.`);
     } catch (e) {
-      setMessage(extractErrorMessage(e, "Failed to trigger scan."));
+      toast(extractErrorMessage(e, "Failed to trigger scan."), "bad");
     }
   };
 
@@ -287,7 +288,7 @@ export default function Targets() {
   const fieldClass = (field) =>
     touched[field] && errors[field] ? "input-error" : touched[field] ? "input-valid" : "";
 
-  if (loading) return <div className="loading">Loading...</div>;
+  if (loading) return <div className="page"><div className="page-header"><h1>Targets</h1></div><Skeleton rows={4} height={64} /></div>;
 
   return (
     <div className="page">
@@ -298,97 +299,87 @@ export default function Targets() {
         </button>
       </div>
 
-      {message && <div className="message">{message}</div>}
-
       <ConfirmDialog open={!!pendingDelete} tone="danger" title={`Remove ${pendingDelete?.domain ?? "target"}?`}
         confirmLabel="Remove target" onConfirm={handleDelete} onCancel={() => setDeleteTarget(null)}>
         Scheduled scans for it stop and it leaves the target list. Past scans, findings and reports are kept.
       </ConfirmDialog>
 
-      {showForm && (
-        <div className="form-card">
-          <h2>Add New Target</h2>
-
-          <div className="form-field">
-            <input
-              className={fieldClass("domain")}
-              placeholder="Domain (e.g. example.com)"
-              value={form.domain}
-              onChange={e => handleChange("domain", e.target.value)}
-              onBlur={() => handleBlur("domain")}
-              maxLength={253}
-            />
-            {touched.domain && errors.domain && <span className="field-error">{errors.domain}</span>}
-          </div>
-
-          <div className="form-field">
-            <input
-              className={fieldClass("authorized_by")}
-              placeholder="Authorized by (your name)"
-              value={form.authorized_by}
-              onChange={e => handleChange("authorized_by", e.target.value)}
-              onBlur={() => handleBlur("authorized_by")}
-              maxLength={100}
-            />
-            {touched.authorized_by && errors.authorized_by && (
-              <span className="field-error">{errors.authorized_by}</span>
-            )}
-            <span className="char-count">{form.authorized_by.length}/100</span>
-          </div>
-
-          <div className="form-field">
-            <input
-              className={fieldClass("scope_note")}
-              placeholder="Scope note (optional)"
-              value={form.scope_note}
-              onChange={e => handleChange("scope_note", e.target.value)}
-              onBlur={() => handleBlur("scope_note")}
-              maxLength={1000}
-            />
-            {touched.scope_note && errors.scope_note && (
-              <span className="field-error">{errors.scope_note}</span>
-            )}
-            <span className="char-count">{form.scope_note.length}/1000</span>
-          </div>
-
-          <div className="form-field">
-            <label className="field-label">Rate Limit (requests/sec)</label>
-            <input
-              type="number"
-              className={fieldClass("rate_limit")}
-              placeholder="e.g. 10"
-              value={form.rate_limit}
-              min={1}
-              max={100}
-              onChange={e => handleChange("rate_limit", e.target.value === "" ? "" : parseInt(e.target.value, 10))}
-              onBlur={() => handleBlur("rate_limit")}
-            />
-            {touched.rate_limit && errors.rate_limit && (
-              <span className="field-error">{errors.rate_limit}</span>
-            )}
-          </div>
-
-          <label className="auth-checkbox">
-            <input
-              type="checkbox"
-              checked={form.authorized}
-              onChange={e => setForm({ ...form, authorized: e.target.checked })}
-            />
-            I confirm I have explicit permission to scan this domain
-          </label>
-
-          <div className="form-actions">
-            <button
-              className="btn btn-primary"
-              onClick={handleSubmit}
-              disabled={submitting || !isFormValid}
-            >
-              {submitting ? "Adding..." : "Add Target"}
-            </button>
-            <button className="btn btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
-          </div>
+      <Sheet open={showForm} title="Add target" onClose={() => setShowForm(false)}
+        footer={<>
+          <button className="btn btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting || !isFormValid}>{submitting ? "Adding..." : "Add target"}</button>
+        </>}>
+        <div className="form-field">
+          <label htmlFor="t-domain">Domain or IP address</label>
+          <input
+            className={fieldClass("domain")}
+            id="t-domain" placeholder="example.com"
+            value={form.domain}
+            onChange={e => handleChange("domain", e.target.value)}
+            onBlur={() => handleBlur("domain")}
+            maxLength={253}
+          />
+          {touched.domain && errors.domain && <span className="field-error">{errors.domain}</span>}
         </div>
-      )}
+
+        <div className="form-field">
+          <label htmlFor="t-auth">Authorized by</label>
+          <input
+            className={fieldClass("authorized_by")}
+            id="t-auth" placeholder="Your name"
+            value={form.authorized_by}
+            onChange={e => handleChange("authorized_by", e.target.value)}
+            onBlur={() => handleBlur("authorized_by")}
+            maxLength={100}
+          />
+          {touched.authorized_by && errors.authorized_by && (
+            <span className="field-error">{errors.authorized_by}</span>
+          )}
+        </div>
+
+        <div className="form-field">
+          <label htmlFor="t-scope">Scope note</label>
+          <input
+            className={fieldClass("scope_note")}
+            id="t-scope" placeholder="Optional"
+            value={form.scope_note}
+            onChange={e => handleChange("scope_note", e.target.value)}
+            onBlur={() => handleBlur("scope_note")}
+            maxLength={1000}
+          />
+          {touched.scope_note && errors.scope_note && (
+            <span className="field-error">{errors.scope_note}</span>
+          )}
+        </div>
+
+        <div className="form-field">
+          <label htmlFor="t-rate">Rate limit (requests per second)</label>
+          <input
+            id="t-rate"
+            type="number"
+            className={fieldClass("rate_limit")}
+            placeholder="e.g. 10"
+            value={form.rate_limit}
+            min={1}
+            max={100}
+            onChange={e => handleChange("rate_limit", e.target.value === "" ? "" : parseInt(e.target.value, 10))}
+            onBlur={() => handleBlur("rate_limit")}
+          />
+          {touched.rate_limit && errors.rate_limit && (
+            <span className="field-error">{errors.rate_limit}</span>
+          )}
+        </div>
+
+        <label className="auth-checkbox">
+          <input
+            type="checkbox"
+            checked={form.authorized}
+            onChange={e => setForm({ ...form, authorized: e.target.checked })}
+          />
+          I confirm I have explicit permission to scan this domain
+        </label>
+
+      </Sheet>
 
       {targets.length === 0 && <div className="empty">No targets yet. Choose Add Target to start monitoring a domain you are authorized to scan.</div>}
       <div className="target-list">
@@ -432,7 +423,7 @@ export default function Targets() {
                     value={profileChoice[target.id] ?? target.default_profile ?? "standard"}
                     onChange={(val) => {
                       setProfileChoice(prev => ({ ...prev, [target.id]: val }));
-                      updateTargetProfile(target.id, val).catch(() => setMessage("Could not save default profile."));
+                      updateTargetProfile(target.id, val).catch(() => toast("Could not save default profile.", "bad"));
                     }}
                   />
                   <button className="btn btn-primary" onClick={() => handleScan(target.id)}>

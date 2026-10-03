@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { CheckCheck, ChevronRight } from "lucide-react";
 import { getAlerts, getDeliveries, markAlertRead, markAllAlertsRead } from "../api";
 import Collapse from "../components/Collapse";
+import Skeleton from "../components/Skeleton";
 
 const FILTERS = ["all", "critical", "high", "medium", "low"];
 const LEGACY_LABELS = {
@@ -121,7 +122,7 @@ export default function Alerts() {
   };
   const failedRecently = deliveries.slice(0, 5).some(d => d.status !== "sent");
 
-  if (loading) return <div className="page"><div className="loading">Loading...</div></div>;
+  if (loading) return <div className="page"><div className="page-header"><h1>Alerts</h1></div><Skeleton rows={5} height={64} /></div>;
 
   return (
     <div className="page">

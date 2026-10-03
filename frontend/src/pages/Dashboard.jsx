@@ -2,7 +2,16 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { getTargets, getScans, getAssets, getVulnSummary, getUnreadAlerts, getScanChanges } from "../api";
 import { ProfileBadge } from "../components/ProfilePicker";
-import { Shield, Activity, AlertTriangle, CheckCircle, Flame } from "lucide-react";
+import Skeleton from "../components/Skeleton";
+import { timeAgo } from "../lib/time";
+
+const Stat = ({ value, label, tone }) => (
+  <div className={"tile static" + (tone ? " tone-" + tone : "")}>
+    <span className="tile-num">{value}</span>
+    <span className="tile-label">{label}</span>
+  </div>
+);
+
 
 export default function Dashboard() {
   const [targets, setTargets] = useState([]);
@@ -12,7 +21,6 @@ export default function Dashboard() {
   const [unread, setUnread] = useState(0);
   const [latestChanges, setLatestChanges] = useState(null);   // { scanId, counts, total, pending, baseline }
   const [loading, setLoading] = useState(true);
-  const [now] = useState(() => Date.now());  // relative times are computed against page-load time
 
   useEffect(() => {
     Promise.all([getTargets(), getScans(), getAssets(), getVulnSummary().catch(() => ({ data: {} }))])
@@ -60,48 +68,18 @@ export default function Dashboard() {
     .sort((a, b) => (b.risk_score || 0) - (a.risk_score || 0))
     .slice(0, 5);
 
-  if (loading) return <div className="loading">Loading...</div>;
+  if (loading) return <div className="dashboard"><h1>Overview</h1><Skeleton rows={5} height={56} /></div>;
 
   return (
     <div className="dashboard">
-      <h1>Attack Surface Overview</h1>
+      <h1>Overview</h1>
 
-      <div className="stats-grid">
-        <div className="stat-card">
-          <Shield size={24} />
-          <div>
-            <h3>{targets.length}</h3>
-            <p>Targets</p>
-          </div>
-        </div>
-        <div className="stat-card">
-          <Activity size={24} />
-          <div>
-            <h3>{totalAssets}</h3>
-            <p>Live Assets</p>
-          </div>
-        </div>
-        <div className="stat-card">
-          <CheckCircle size={24} />
-          <div>
-            <h3>{completedScans}</h3>
-            <p>Completed Scans</p>
-          </div>
-        </div>
-        <div className="stat-card">
-          <AlertTriangle size={24} style={{ color: critHighVulns > 0 ? "var(--red)" : undefined }} />
-          <div>
-            <h3 style={{ color: critHighVulns > 0 ? "var(--red)" : undefined }}>{critHighVulns}</h3>
-            <p>Critical/High Vulns</p>
-          </div>
-        </div>
-        <div className="stat-card">
-          <Flame size={24} style={{ color: highRiskCount > 0 ? "var(--red)" : undefined }} />
-          <div>
-            <h3 style={{ color: highRiskCount > 0 ? "var(--red)" : undefined }}>{highRiskCount}</h3>
-            <p>High/Critical Risk Assets</p>
-          </div>
-        </div>
+      <div className="tiles">
+        <Stat value={targets.length} label="Targets" />
+        <Stat value={totalAssets} label="Live assets" />
+        <Stat value={completedScans} label="Completed scans" />
+        <Stat value={critHighVulns} label="Critical and high findings" tone={critHighVulns > 0 ? "bad" : ""} />
+        <Stat value={highRiskCount} label="High-risk assets" tone={highRiskCount > 0 ? "bad" : ""} />
       </div>
 
       <div className="attention">
@@ -128,88 +106,56 @@ export default function Dashboard() {
       </div>
 
       {topRiskAssets.length > 0 && (
-        <div className="recent-scans" style={{ marginBottom: 32 }}>
-          <h2>Top Risk-Scored Assets</h2>
-          <table>
-            <thead>
-              <tr>
-                <th>Subdomain</th>
-                <th>Target</th>
-                <th>Risk Level</th>
-                <th>Score</th>
-              </tr>
-            </thead>
-            <tbody>
-              {topRiskAssets.map(a => (
-                <tr key={a.id}>
-                  <td className="mono">{a.subdomain}</td>
-                  <td>{targetMap[a.target_id] || `Target #${a.target_id}`}</td>
-                  <td>
-                    <span className={`badge badge-risk-${(a.risk_level || "low").toLowerCase()}`}>
-                      {a.risk_level}
-                    </span>
-                  </td>
-                  <td style={{ fontFamily: "monospace" }}>{a.risk_score}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <section className="dash-section">
+          <h2>Highest-risk assets</h2>
+          <div className="dl" style={{ "--cols": "minmax(0,2fr) minmax(0,1.2fr) 110px 60px" }}>
+            {topRiskAssets.map(a => (
+              <div className="dl-item" key={a.id}>
+                <div className="dl-row">
+                  <div className="dl-main"><div className="dl-title mono">{a.subdomain}</div></div>
+                  <div className="dl-main">{targetMap[a.target_id] || `Target #${a.target_id}`}</div>
+                  <div><span className={`badge badge-risk-${(a.risk_level || "low").toLowerCase()}`}>{a.risk_level}</span></div>
+                  <div className="dl-num">{a.risk_score}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
 
-      <div className="recent-scans">
-        <h2>Recent Scans {scans.length > 8 && <Link to="/scans" className="see-all">View all {scans.length}</Link>}</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Domain</th>
-              <th>Status</th>
-              <th>Profile</th>
-              <th>Assets</th>
-              <th>New</th>
-              <th>Changed</th>
-              <th>Duration</th>
-              <th>Started</th>
-            </tr>
-          </thead>
-          <tbody>
-            {scans.slice(0, 8).map(scan => {
-              const noResults = scan.status === "completed" && !(scan.total_assets > 0);
-              const duration = (scan.started_at && scan.completed_at)
-                ? Math.round((new Date(scan.completed_at) - new Date(scan.started_at)) / 1000)
-                : null;
-              const durationLabel = duration == null ? "—"
-                : duration < 60 ? `${duration}s`
-                : `${Math.floor(duration / 60)}m ${duration % 60}s`;
-              const started = scan.started_at ? new Date(scan.started_at) : null;
-              const minsAgo = started ? Math.round((now - started) / 60000) : null;
-              const relTime = minsAgo == null ? "—"
-                : minsAgo < 1 ? "just now"
-                : minsAgo < 60 ? `${minsAgo}m ago`
-                : minsAgo < 1440 ? `${Math.floor(minsAgo / 60)}h ago`
-                : started.toLocaleDateString();
-              return (
-                <tr key={scan.id} style={noResults ? { opacity: 0.45 } : undefined}>
-                  <td style={{ color: "var(--text-primary)", fontWeight: 500 }}>
-                    {scan.target_domain || targetMap[scan.target_id] || "Target #" + scan.target_id}
-                  </td>
-                  <td>
-                    <span className={"badge badge-" + scan.status}>
-                      {scan.status}
-                    </span>
-                  </td>
-                  <td><ProfileBadge name={scan.profile} /></td>
-                  <td>{scan.total_assets || 0}</td>
-                  <td>{scan.new_assets || 0}</td>
-                  <td>{scan.changed_assets || 0}</td>
-                  <td style={{ fontFamily: "monospace", fontSize: 12 }}>{durationLabel}</td>
-                  <td title={started ? started.toLocaleString() : ""}>{relTime}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      <section className="dash-section">
+        <h2>Recent scans {scans.length > 8 && <Link to="/scans" className="see-all">View all {scans.length}</Link>}</h2>
+        <div className="dl" style={{ "--cols": "minmax(0,1.6fr) minmax(0,1.4fr) minmax(90px,1fr) minmax(90px,1fr)" }}>
+          {scans.slice(0, 8).map(scan => {
+            const noResults = scan.status === "completed" && !(scan.total_assets > 0);
+            const duration = (scan.started_at && scan.completed_at)
+              ? Math.round((new Date(scan.completed_at) - new Date(scan.started_at)) / 1000) : null;
+            const durationLabel = duration == null ? "—" : duration < 60 ? `${duration}s` : `${Math.floor(duration / 60)}m ${duration % 60}s`;
+            return (
+              <div className="dl-item" key={scan.id} style={noResults ? { opacity: 0.55 } : undefined}>
+                <div className="dl-row">
+                  <div className="dl-main">
+                    <div className="dl-title">{scan.target_domain || targetMap[scan.target_id] || "Target #" + scan.target_id}</div>
+                    <div className="dl-sub">Scan #{scan.id} · {durationLabel}</div>
+                  </div>
+                  <div className="dl-flags" style={{ alignItems: "center" }}>
+                    <span className={"badge badge-" + scan.status}>{scan.status}</span>
+                    <ProfileBadge name={scan.profile} />
+                  </div>
+                  <div className="dl-main">
+                    <div className="dl-title" style={{ fontWeight: 400 }}>{scan.total_assets || 0} assets</div>
+                    <div className="dl-sub">+{scan.new_assets || 0} new · {scan.changed_assets || 0} changed</div>
+                  </div>
+                  <div className="dl-main" title={scan.started_at ? new Date(scan.started_at).toLocaleString() : ""}>
+                    {scan.started_at ? timeAgo(scan.started_at) : "—"}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {scans.length === 0 && <div className="empty">No scans yet. Add a target on the Targets page and run the first scan.</div>}
+        </div>
+      </section>
     </div>
   );
 }

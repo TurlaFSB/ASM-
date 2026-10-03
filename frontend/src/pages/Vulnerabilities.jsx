@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from "react";
-import { AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
-import ScrollHint from "../components/ScrollHint";
+import { useState, useEffect } from "react";
+import { ChevronRight } from "lucide-react";
+import Skeleton from "../components/Skeleton";
+import Segmented from "../components/Segmented";
 import { getVulnRollup, getVulnSummary } from "../api";
 
 const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
@@ -17,7 +18,6 @@ export default function Vulnerabilities() {
   const [severity, setSeverity] = useState("all");
   const [source, setSource] = useState("all");   // all | verified | version
   const [scope, setScope] = useState("latest");  // latest scan per target | all history
-  const tableContainerRef = useRef(null);
 
   useEffect(() => {
     const params = { scope };
@@ -49,149 +49,100 @@ export default function Vulnerabilities() {
   const cveUrl = (cveId) => "https://nvd.nist.gov/vuln/detail/" + cveId;
   const isKev = (v) => (v.tags || []).includes("kev");
 
-  const chip = (active) => ({
-    padding: "4px 12px", borderRadius: 14, fontSize: 12, cursor: "pointer",
-    border: "1px solid var(--border)", background: active ? "var(--surface-3)" : "transparent",
-    color: active ? "var(--text-primary)" : "var(--text-secondary)",
-  });
+  const SOURCES = [["all", "All"], ["verified", "Scanner-verified"], ["version", `Version match${unverifiedCount ? ` (${unverifiedCount})` : ""}`]];
+  const SCOPES = [["latest", "Latest scan"], ["all", "All history"]];
+
+  const flagsFor = (it) => (
+    <div className="dl-flags">
+      {it.is_exploitable_confirmed && <span className="badge badge-sev-critical" title={(it.exploitability_reasons || []).join(" · ")}>Exploitable</span>}
+      {(it.kev_count > 0 || isKev(it)) && <span className="badge badge-sev-critical" title="Listed in CISA Known Exploited Vulnerabilities">KEV{it.kev_count > 1 ? ` ${it.kev_count}` : ""}</span>}
+      {!isVerified(it) && <span className="badge badge-sev-info" title="Inferred from a service version; not confirmed by a scanner check">Unverified</span>}
+    </div>
+  );
 
   return (
     <div className="page">
       <div className="page-header">
         <h1>Vulnerabilities</h1>
-        <AlertTriangle size={24} color="#f87171" />
       </div>
 
-      <div className="vuln-summary">
+      <div className="tiles">
         {["critical", "high", "medium", "low"].map(sev => (
-          <div
-            key={sev}
-            className={"vuln-stat sev-" + sev + (severity === sev ? " active" : "")}
-            onClick={() => setSeverity(severity === sev ? "all" : sev)}
-          >
-            <span className="vuln-count">{summary[sev] || 0}</span>
-            <span className="vuln-label">{sev.toUpperCase()}</span>
-          </div>
+          <button type="button" key={sev} className={"tile sev-" + sev + (severity === sev ? " active" : "")}
+            aria-pressed={severity === sev} onClick={() => setSeverity(severity === sev ? "all" : sev)}>
+            <span className="tile-num">{summary[sev] || 0}</span>
+            <span className="tile-label">{sev}</span>
+          </button>
         ))}
       </div>
 
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 16, alignItems: "center" }}>
-        <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>Source</span>
-        <button style={chip(source === "all")} onClick={() => setSource("all")}>All</button>
-        <button style={chip(source === "verified")} onClick={() => setSource("verified")}>Scanner-verified</button>
-        <button style={chip(source === "version")} onClick={() => setSource("version")}>
-          Version match ({unverifiedCount})
-        </button>
-        <span style={{ fontSize: 12, color: "var(--text-tertiary)", marginLeft: 12 }}>Showing</span>
-        <button style={chip(scope === "latest")} onClick={() => changeScope("latest")}>Latest scan</button>
-        <button style={chip(scope === "all")} onClick={() => changeScope("all")}>All history</button>
+      <div className="filters">
+        <span className="field-label">Source</span>
+        <Segmented value={source} onChange={setSource} options={SOURCES} label="Source" />
+        <span className="field-label" style={{ marginLeft: 8 }}>Showing</span>
+        <Segmented value={scope} onChange={changeScope} options={SCOPES} label="Scope" />
       </div>
       {!loading && stats.findings > stats.lines && (
-        <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 8 }}>
-          {stats.findings} findings shown as {stats.lines} lines: version-matched CVEs are grouped per component and host.
-          Click a component to see its CVEs.
-        </div>
+        <p className="dl-note">{stats.findings} findings shown as {stats.lines} lines: version-matched CVEs are grouped per component and host. Select a component to see its CVEs.</p>
       )}
       {source !== "verified" && unverifiedCount > 0 && (
-        <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 8 }}>
-          Version-match findings are inferred from service version strings and are unverified: distributions often
-          backport fixes without changing the version. Treat them as leads to confirm.
-        </div>
+        <p className="dl-note">Version-match findings are inferred from service version strings and are unverified: distributions often backport fixes without changing the version. Treat them as leads to confirm.</p>
       )}
 
-      <ScrollHint containerRef={tableContainerRef} />
-
-      <div className="table-container" ref={tableContainerRef} style={{ marginTop: 16 }}>
-        {loading ? <div className="loading">Loading...</div> : (
-        <table>
-          <thead>
-            <tr>
-              <th>Severity</th>
-              <th>Flags</th>
-              <th>Finding</th>
-              <th>Location</th>
-              <th>CVSS</th>
-              <th>CVE</th>
-            </tr>
-          </thead>
-          <tbody>
+      <div style={{ marginTop: 16 }}>
+        {loading ? <Skeleton rows={6} /> : (
+          <div className="dl" style={{ "--cols": "84px minmax(0,3fr) minmax(120px,1.2fr) 52px minmax(120px,1fr)" }}>
+            <div className="dl-head" aria-hidden="true">
+              <div>Severity</div><div>Finding</div><div>Flags</div><div className="dl-num">CVSS</div><div>CVE</div>
+            </div>
             {sorted.map(it => it.kind === "component" ? (
-              <React.Fragment key={rowKey(it)}>
-                <tr style={{ cursor: "pointer" }} onClick={() => setOpen(o => ({ ...o, [rowKey(it)]: !o[rowKey(it)] }))}>
-                  <td><span className={"badge badge-sev-" + it.severity}>{it.severity}</span></td>
-                  <td>
-                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                      {it.kev_count > 0 && (
-                        <span className="badge badge-sev-critical" title="Listed in CISA Known Exploited Vulnerabilities">KEV {it.kev_count}</span>
-                      )}
-                      <span className="badge badge-sev-info" title="Inferred from a service version; not confirmed by a scanner check">Unverified</span>
+              <div key={rowKey(it)} className={"dl-item" + (open[rowKey(it)] ? " open" : "")}>
+                <div className="dl-row clickable" role="button" tabIndex={0} aria-expanded={!!open[rowKey(it)]}
+                  onClick={() => setOpen(o => ({ ...o, [rowKey(it)]: !o[rowKey(it)] }))}
+                  onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(o => ({ ...o, [rowKey(it)]: !o[rowKey(it)] })); } }}>
+                  <div><span className={"badge badge-sev-" + it.severity}>{it.severity}</span></div>
+                  <div className="dl-main">
+                    <div className="dl-title"><ChevronRight size={14} className="dl-caret" />{it.component}
+                      <span style={{ color: "var(--text-secondary)", fontWeight: 400 }}>
+                        {" "}· {it.capped ? `${it.shown} of ${it.total}` : it.shown} CVE{it.shown === 1 && !it.capped ? "" : "s"}{it.capped ? ", highest risk shown" : ""}
+                      </span>
                     </div>
-                  </td>
-                  <td className="wrap" style={{ color: "var(--text-primary)", fontWeight: 500, minWidth: 260 }}>
-                    {open[rowKey(it)] ? <ChevronDown size={14} /> : <ChevronRight size={14} />}{" "}
-                    {it.component}
-                    <span style={{ color: "var(--text-secondary)", fontWeight: 400 }}>
-                      {" "}— {it.capped ? `${it.shown} of ${it.total}` : it.shown} CVE{it.shown === 1 && !it.capped ? "" : "s"}
-                      {it.capped ? " (highest-risk shown)" : ""}
-                    </span>
-                  </td>
-                  <td style={{ fontFamily: "monospace", fontSize: 12, whiteSpace: "nowrap" }}>{it.host}</td>
-                  <td style={{ fontVariantNumeric: "tabular-nums" }}>{it.max_cvss ? Number(it.max_cvss).toFixed(1) : "—"}</td>
-                  <td style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                    {Object.entries(it.by_severity).map(([k, n]) => `${n} ${k}`).join(" · ")}
-                  </td>
-                </tr>
-                {open[rowKey(it)] && it.cves.map(c => (
-                  <tr key={`${rowKey(it)}-${c.id}`} style={{ background: "var(--surface-2, transparent)" }}>
-                    <td style={{ paddingLeft: 24 }}><span className={"badge badge-sev-" + c.severity}>{c.severity}</span></td>
-                    <td>{c.kev && <span className="badge badge-sev-critical" title="Listed in CISA Known Exploited Vulnerabilities">KEV</span>}</td>
-                    <td className="wrap" colSpan={2} style={{ fontSize: 12, color: "var(--text-secondary)" }}>{c.summary || "—"}</td>
-                    <td style={{ fontVariantNumeric: "tabular-nums" }}>{c.cvss != null ? Number(c.cvss).toFixed(1) : "—"}</td>
-                    <td>
-                      {c.cve_id ? (
-                        <a href={cveUrl(c.cve_id)} target="_blank" rel="noreferrer" className="cve-link">{c.cve_id}</a>
-                      ) : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </React.Fragment>
-            ) : (
-              <tr key={rowKey(it)}>
-                <td><span className={"badge badge-sev-" + it.severity}>{it.severity}</span></td>
-                <td>
-                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                    {it.is_exploitable_confirmed && (
-                      <span className="badge badge-sev-critical" title={(it.exploitability_reasons || []).join(" · ")}>Exploitable</span>
-                    )}
-                    {isKev(it) && (
-                      <span className="badge badge-sev-critical" title="Listed in CISA Known Exploited Vulnerabilities">KEV</span>
-                    )}
-                    {!it.verified && (
-                      <span className="badge badge-sev-info" title="Inferred from a service version; not confirmed by a scanner check">Unverified</span>
-                    )}
+                    <div className="dl-sub mono">{it.host}</div>
                   </div>
-                </td>
-                <td className="wrap" title={it.template_id} style={{ color: "var(--text-primary)", fontWeight: 500, minWidth: 260 }}>
-                  {(it.name || "").startsWith(VM_PREFIX) ? it.name.slice(VM_PREFIX.length) : it.name}
-                </td>
-                <td style={{ fontFamily: "monospace", fontSize: 12, whiteSpace: "nowrap" }}>
-                  {it.matched_at || (it.host + (it.port ? ":" + it.port : ""))}
-                </td>
-                <td style={{ fontVariantNumeric: "tabular-nums" }}>
-                  {it.cvss_score != null ? Number(it.cvss_score).toFixed(1) : "—"}
-                </td>
-                <td>
-                  {it.cve_id ? (
-                    <a href={cveUrl(it.cve_id)} target="_blank" rel="noreferrer" className="cve-link">{it.cve_id}</a>
-                  ) : "—"}
-                </td>
-              </tr>
+                  {flagsFor(it)}
+                  <div className="dl-num">{it.max_cvss ? Number(it.max_cvss).toFixed(1) : "—"}</div>
+                  <div className="dl-sub" style={{ marginTop: 0 }}>{Object.entries(it.by_severity).map(([k, n]) => `${n} ${k}`).join(" · ")}</div>
+                </div>
+                {open[rowKey(it)] && (
+                  <div className="dl-sub-row">
+                    {it.cves.map(c => (
+                      <div className="dl-row" key={`${rowKey(it)}-${c.id}`}>
+                        <div style={{ paddingLeft: 14 }}><span className={"badge badge-sev-" + c.severity}>{c.severity}</span></div>
+                        <div className="dl-main"><div className="dl-sub" style={{ whiteSpace: "normal", color: "var(--text-secondary)" }}>{c.summary || "No description"}</div></div>
+                        <div className="dl-flags">{c.kev && <span className="badge badge-sev-critical" title="Listed in CISA Known Exploited Vulnerabilities">KEV</span>}</div>
+                        <div className="dl-num">{c.cvss != null ? Number(c.cvss).toFixed(1) : "—"}</div>
+                        <div>{c.cve_id ? <a href={cveUrl(c.cve_id)} target="_blank" rel="noreferrer" className="cve-link">{c.cve_id}</a> : "—"}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div key={rowKey(it)} className="dl-item">
+                <div className="dl-row">
+                  <div><span className={"badge badge-sev-" + it.severity}>{it.severity}</span></div>
+                  <div className="dl-main">
+                    <div className="dl-title wrap" title={it.template_id}>{(it.name || "").startsWith(VM_PREFIX) ? it.name.slice(VM_PREFIX.length) : it.name}</div>
+                    <div className="dl-sub mono">{it.matched_at || (it.host + (it.port ? ":" + it.port : ""))}</div>
+                  </div>
+                  {flagsFor(it)}
+                  <div className="dl-num">{it.cvss_score != null ? Number(it.cvss_score).toFixed(1) : "—"}</div>
+                  <div>{it.cve_id ? <a href={cveUrl(it.cve_id)} target="_blank" rel="noreferrer" className="cve-link">{it.cve_id}</a> : "—"}</div>
+                </div>
+              </div>
             ))}
-          </tbody>
-        </table>
-        )}
-        {!loading && sorted.length === 0 && (
-          <div className="empty">No vulnerabilities match. Run a scan or change the filters.</div>
+            {sorted.length === 0 && <div className="empty">No vulnerabilities match. Run a scan or change the filters.</div>}
+          </div>
         )}
       </div>
     </div>
