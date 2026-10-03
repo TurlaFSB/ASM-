@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { GitCompare, ChevronDown, ChevronRight } from "lucide-react";
+import { GitCompare, ChevronDown, ChevronRight, Globe } from "lucide-react";
+import Picker from "../components/Picker";
 import { getScans, getScanChanges, getChanges } from "../api";
 
 const SEVERITIES = ["critical", "high", "medium", "low", "info"];
@@ -96,18 +97,10 @@ export default function Changes() {
       ) : (
         <>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-            <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>Target</span>
-            <select className="wordlist-select" value={targetId ?? ""} onChange={e => changeTarget(Number(e.target.value))}>
-              {targets.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-            </select>
-            <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>Scan</span>
-            <select className="wordlist-select" value={scanId ?? ""} onChange={e => selectScan(Number(e.target.value))}>
-              {targetScans.map(s => (
-                <option key={s.id} value={s.id}>
-                  #{s.id} · {s.profile || "standard"} · {fmtTime(s.completed_at || s.started_at)}
-                </option>
-              ))}
-            </select>
+            <Picker value={targetId} onChange={changeTarget} icon={Globe} ariaLabel="Target" minWidth={260}
+              options={targets.map(([id, name]) => ({ value: id, label: name }))} />
+            <Picker value={scanId} onChange={selectScan} ariaLabel="Scan" minWidth={300}
+              options={targetScans.map(s => ({ value: s.id, label: `Scan #${s.id} · ${s.profile || "standard"}`, hint: fmtTime(s.completed_at || s.started_at) }))} />
           </div>
 
           {error && <div className="empty" style={{ marginTop: 16 }}>Could not load the changes for this scan.</div>}

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import { Play, ExternalLink } from "lucide-react";
+import { Play, ExternalLink, Globe } from "lucide-react";
+import Picker from "../components/Picker";
 import {
   getTargets, getExposureSources, setExposureSources, runExposureNow,
   getExposureFindings, setExposureFindingStatus, getExposureRuns,
@@ -195,11 +196,10 @@ export default function Exposure() {
       <div className="page-header">
         <h1>Exposure</h1>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <select className="wordlist-select" value={targetId || ""} onChange={e => setTargetId(Number(e.target.value))} aria-label="Target">
-            {targets.map(t => <option key={t.id} value={t.id}>{t.domain}</option>)}
-          </select>
+          <Picker value={targetId} onChange={setTargetId} icon={Globe} ariaLabel="Target" minWidth={300}
+            options={targets.map(t => ({ value: t.id, label: t.domain, hint: t.authorized_by ? `Authorized by ${t.authorized_by}` : undefined }))} />
           {canEdit && (
-            <button type="button" className="btn btn-primary" onClick={runNow} disabled={busy || enabledCount === 0 || running}
+            <button type="button" className="btn btn-primary btn-lg" onClick={runNow} disabled={busy || enabledCount === 0 || running}
               title={enabledCount === 0 ? "Turn on a source first" : "Check the enabled sources now"}>
               <Play size={14} /> {running ? "Checking..." : "Check now"}
             </button>
@@ -207,7 +207,7 @@ export default function Exposure() {
         </div>
       </div>
 
-      <p className="muted-note" style={{ marginTop: 0 }}>
+      <p className="muted-note exposure-intro">
         Looks outside your own infrastructure for leaked credentials in public code and for public breach records.
         Only masked traces are stored, never a full secret. A mention is not proof of a leak, so review before you rotate anything.
       </p>

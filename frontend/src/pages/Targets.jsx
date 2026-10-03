@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { getTargets, createTarget, deleteTarget, triggerScan, getTargetHistory, getTargetInfrastructure, updateDirbusterToggle, getScanProfiles, updateTargetProfile } from "../api";
 import { Plus, Trash2, Play, Shield, History, Globe, Bell } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import ScrollHint from "../components/ScrollHint";
+import RowMenu from "../components/RowMenu";
 import ProfilePicker from "../components/ProfilePicker";
-import ToggleSwitch from "../components/ToggleSwitch";
 import NotificationSettings from "../components/NotificationSettings";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { useToast } from "../components/toastContext";
@@ -157,8 +156,7 @@ export default function Targets() {
   const [touched, setTouched] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
-  const tableContainerRef = useRef(null);
-  const [historyData, setHistoryData] = useState({});
+    const [historyData, setHistoryData] = useState({});
   const [profileChoice, setProfileChoice] = useState({});
   const [profiles, setProfiles] = useState([]);
   const [dirbusterEnabled, setDirbusterEnabled] = useState({});
@@ -263,10 +261,6 @@ export default function Targets() {
   };
 
   const toggleHistory = async (id) => {
-    if (expandedId === id) {
-      setExpandedId(null);
-      return;
-    }
     setExpandedId(id);
     if (!historyData[id]) {
       try {
@@ -278,10 +272,6 @@ export default function Targets() {
     }
   };
   const toggleInfra = async (id) => {
-    if (infraExpandedId === id) {
-      setInfraExpandedId(null);
-      return;
-    }
     setInfraExpandedId(id);
     if (!infraData[id]) {
       try {
@@ -399,149 +389,132 @@ export default function Targets() {
         </div>
       )}
 
-      <ScrollHint containerRef={tableContainerRef} />
-      <div className="table-container" ref={tableContainerRef}>
-        <table>
-          <thead>
-            <tr>
-              <th>Domain</th>
-              <th>Authorized By</th>
-              <th>Rate Limit</th>
-              <th>Scope Note</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {targets.map(target => (
-              <React.Fragment key={target.id}>
-                <tr>
-                  <td><Shield size={14} /> {target.domain}</td>
-                  <td>{target.authorized_by}</td>
-                  <td>{target.rate_limit} req/s</td>
-                  <td>{target.scope_note || "—"}</td>
-                  <td className="actions">
-                    <div style={{ marginRight: "6px" }}>
-                      <ProfilePicker
-                        profiles={profiles}
-                        value={profileChoice[target.id] ?? target.default_profile ?? "standard"}
-                        onChange={(val) => {
-                          setProfileChoice(prev => ({ ...prev, [target.id]: val }));
-                          updateTargetProfile(target.id, val).catch(() => setMessage("Could not save default profile."));
-                        }}
-                      />
-                    </div>
-                    <div style={{ marginRight: "6px" }}>
-                      <ToggleSwitch
-                        checked={dirbusterEnabled[target.id] ?? target.dirbuster_enabled ?? true}
-                        onChange={(val) => { setDirbusterEnabled(prev => ({ ...prev, [target.id]: val })); updateDirbusterToggle(target.id, val).catch(console.error); }}
-                        label="Dir Scan"
-                      />
-                    </div>
-                    <button className="btn btn-success btn-sm" onClick={() => handleScan(target.id)}>
-                      <Play size={14} /> Scan
-                    </button>
-                    <button className="btn btn-secondary btn-sm" onClick={() => toggleHistory(target.id)}>
-                      <History size={14} /> History
-                    </button>
-                    <button className="btn btn-secondary btn-sm" onClick={() => toggleInfra(target.id)}>
-                      <Globe size={14} /> Infrastructure
-                    </button>
-                    <button className="btn btn-secondary btn-sm" onClick={() => setNotifExpandedId(notifExpandedId === target.id ? null : target.id)}
-                      aria-expanded={notifExpandedId === target.id}>
-                      <Bell size={14} /> Notifications
-                    </button>
-                    <button className="btn btn-danger btn-sm" onClick={() => setDeleteTarget(target)} aria-label={`Remove ${target.domain}`}>
-                      <Trash2 size={14} />
-                    </button>
-                  </td>
-                </tr>
-                {notifExpandedId === target.id && (
-                  <tr>
-                    <td colSpan={5}><NotificationSettings target={target} /></td>
-                  </tr>
-                )}
-                {expandedId === target.id && (
-                  <tr>
-                    <td colSpan={5}>
-                      {!historyData[target.id] ? (
-                        <div className="loading">Loading history...</div>
-                      ) : historyData[target.id].length === 0 ? (
-                        <div className="loading">No completed scans yet.</div>
-                      ) : (
-                        <div style={{ padding: "1rem 0" }}>
-                          {historyData[target.id].length >= 2 && (() => {
-                            const scans = historyData[target.id];
-                            const latest = scans[scans.length - 1];
-                            const prev = scans[scans.length - 2];
-                            const parts = [];
-                            if (latest.new_assets > 0) parts.push(`+${latest.new_assets} new asset${latest.new_assets > 1 ? "s" : ""}`);
-                            if (latest.disappeared_assets > 0) parts.push(`${latest.disappeared_assets} asset${latest.disappeared_assets > 1 ? "s" : ""} disappeared`);
-                            if (latest.changed_assets > 0) parts.push(`${latest.changed_assets} changed`);
-                            const critDelta = latest.vuln_counts.critical - prev.vuln_counts.critical;
-                            const highDelta = latest.vuln_counts.high - prev.vuln_counts.high;
-                            if (critDelta > 0) parts.push(`${critDelta} new critical finding${critDelta > 1 ? "s" : ""}`);
-                            if (critDelta < 0) parts.push(`${-critDelta} critical finding${-critDelta > 1 ? "s" : ""} resolved`);
-                            if (highDelta > 0) parts.push(`${highDelta} new high finding${highDelta > 1 ? "s" : ""}`);
-                            if (highDelta < 0) parts.push(`${-highDelta} high finding${-highDelta > 1 ? "s" : ""} resolved`);
-                            return (
-                              <div className="message" style={{ marginBottom: "1rem" }}>
-                                {parts.length > 0 ? `Since last scan: ${parts.join(", ")}.` : "No change in attack surface since last scan."}
-                              </div>
-                            );
-                          })()}
-                          <div style={{ width: "100%", height: 300 }}>
-                            <ResponsiveContainer width="100%" height="100%">
-                              <LineChart data={historyData[target.id]}>
-                                <CartesianGrid strokeDasharray="0" stroke="rgba(255,255,255,0.06)" vertical={false} />
-                                <XAxis
-                                  dataKey="scan_date"
-                                  tickFormatter={formatDate}
-                                  stroke="rgba(255,255,255,0.35)"
-                                  fontSize={11}
-                                  tickLine={false}
-                                  axisLine={{ stroke: "rgba(255,255,255,0.08)" }}
-                                />
-                                <YAxis
-                                  stroke="rgba(255,255,255,0.35)"
-                                  fontSize={11}
-                                  tickLine={false}
-                                  axisLine={false}
-                                  width={28}
-                                />
-                                <Tooltip content={<CustomTooltip />} cursor={{ stroke: "rgba(255,255,255,0.15)" }} />
-                                <Legend
-                                  iconType="circle"
-                                  iconSize={8}
-                                  wrapperStyle={{ fontSize: "12px", color: "rgba(255,255,255,0.6)", paddingTop: "12px" }}
-                                />
-                                <Line type="monotone" dataKey="total_assets" name="Total Assets" stroke="#8b5cf6" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
-                                <Line type="monotone" dataKey="new_assets" name="New Assets" stroke="#34d399" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
-                                <Line type="monotone" dataKey="changed_assets" name="Changed" stroke="#fbbf24" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
-                                <Line type="monotone" dataKey="vuln_counts.critical" name="Critical Vulns" stroke="#f87171" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
-                                <Line type="monotone" dataKey="vuln_counts.high" name="High Vulns" stroke="#fb923c" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
-                              </LineChart>
-                            </ResponsiveContainer>
+      {targets.length === 0 && <div className="empty">No targets yet. Choose Add Target to start monitoring a domain you are authorized to scan.</div>}
+      <div className="target-list">
+        {targets.map(target => {
+          const dirOn = dirbusterEnabled[target.id] ?? target.dirbuster_enabled ?? true;
+          const open = (id) => (expandedId === id ? "history" : infraExpandedId === id ? "infra" : notifExpandedId === id ? "notif" : null);
+          const panel = open(target.id);
+          const show = (name) => {
+            const toggleOff = panel === name;
+            setExpandedId(null); setInfraExpandedId(null); setNotifExpandedId(null);
+            if (toggleOff) return;
+            if (name === "history") toggleHistory(target.id, true);
+            if (name === "infra") toggleInfra(target.id, true);
+            if (name === "notif") setNotifExpandedId(target.id);
+          };
+          return (
+            <div className="target-row" key={target.id}>
+              <div className="target-main">
+                <div className="target-glyph"><Shield size={20} /></div>
+                <div className="target-id">
+                  <div className="target-domain">{target.domain}</div>
+                  <div className="target-meta">
+                    Authorized by {target.authorized_by} · {target.rate_limit} req/s{target.scope_note ? ` · ${target.scope_note}` : ""}
+                  </div>
+                </div>
+                <div className="target-controls">
+                  <ProfilePicker
+                    profiles={profiles}
+                    value={profileChoice[target.id] ?? target.default_profile ?? "standard"}
+                    onChange={(val) => {
+                      setProfileChoice(prev => ({ ...prev, [target.id]: val }));
+                      updateTargetProfile(target.id, val).catch(() => setMessage("Could not save default profile."));
+                    }}
+                  />
+                  <button className="btn btn-primary" onClick={() => handleScan(target.id)}>
+                    <Play size={15} /> Scan
+                  </button>
+                  <RowMenu label={`More actions for ${target.domain}`} items={[
+                    { label: "Scan history", icon: History, active: panel === "history", onClick: () => show("history") },
+                    { label: "Infrastructure", icon: Globe, active: panel === "infra", onClick: () => show("infra") },
+                    { label: "Notifications", icon: Bell, active: panel === "notif", onClick: () => show("notif") },
+                    { type: "divider" },
+                    { type: "switch", label: "Directory scan", checked: dirOn,
+                      onToggle: (val) => { setDirbusterEnabled(prev => ({ ...prev, [target.id]: val })); updateDirbusterToggle(target.id, val).catch(console.error); } },
+                    { type: "divider" },
+                    { label: "Remove target", icon: Trash2, danger: true, onClick: () => setDeleteTarget(target) },
+                  ]} />
+                </div>
+              </div>
+              {panel === "notif" && <div className="target-panel"><NotificationSettings target={target} /></div>}
+              {panel === "history" && (
+                <div className="target-panel">
+        {!historyData[target.id] ? (
+                          <div className="loading">Loading history...</div>
+                        ) : historyData[target.id].length === 0 ? (
+                          <div className="loading">No completed scans yet.</div>
+                        ) : (
+                          <div style={{ padding: "1rem 0" }}>
+                            {historyData[target.id].length >= 2 && (() => {
+                              const scans = historyData[target.id];
+                              const latest = scans[scans.length - 1];
+                              const prev = scans[scans.length - 2];
+                              const parts = [];
+                              if (latest.new_assets > 0) parts.push(`+${latest.new_assets} new asset${latest.new_assets > 1 ? "s" : ""}`);
+                              if (latest.disappeared_assets > 0) parts.push(`${latest.disappeared_assets} asset${latest.disappeared_assets > 1 ? "s" : ""} disappeared`);
+                              if (latest.changed_assets > 0) parts.push(`${latest.changed_assets} changed`);
+                              const critDelta = latest.vuln_counts.critical - prev.vuln_counts.critical;
+                              const highDelta = latest.vuln_counts.high - prev.vuln_counts.high;
+                              if (critDelta > 0) parts.push(`${critDelta} new critical finding${critDelta > 1 ? "s" : ""}`);
+                              if (critDelta < 0) parts.push(`${-critDelta} critical finding${-critDelta > 1 ? "s" : ""} resolved`);
+                              if (highDelta > 0) parts.push(`${highDelta} new high finding${highDelta > 1 ? "s" : ""}`);
+                              if (highDelta < 0) parts.push(`${-highDelta} high finding${-highDelta > 1 ? "s" : ""} resolved`);
+                              return (
+                                <div className="message" style={{ marginBottom: "1rem" }}>
+                                  {parts.length > 0 ? `Since last scan: ${parts.join(", ")}.` : "No change in attack surface since last scan."}
+                                </div>
+                              );
+                            })()}
+                            <div style={{ width: "100%", height: 300 }}>
+                              <ResponsiveContainer width="100%" height="100%">
+                                <LineChart data={historyData[target.id]}>
+                                  <CartesianGrid strokeDasharray="0" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                                  <XAxis
+                                    dataKey="scan_date"
+                                    tickFormatter={formatDate}
+                                    stroke="rgba(255,255,255,0.35)"
+                                    fontSize={11}
+                                    tickLine={false}
+                                    axisLine={{ stroke: "rgba(255,255,255,0.08)" }}
+                                  />
+                                  <YAxis
+                                    stroke="rgba(255,255,255,0.35)"
+                                    fontSize={11}
+                                    tickLine={false}
+                                    axisLine={false}
+                                    width={28}
+                                  />
+                                  <Tooltip content={<CustomTooltip />} cursor={{ stroke: "rgba(255,255,255,0.15)" }} />
+                                  <Legend
+                                    iconType="circle"
+                                    iconSize={8}
+                                    wrapperStyle={{ fontSize: "12px", color: "rgba(255,255,255,0.6)", paddingTop: "12px" }}
+                                  />
+                                  <Line type="monotone" dataKey="total_assets" name="Total Assets" stroke="#8b5cf6" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                                  <Line type="monotone" dataKey="new_assets" name="New Assets" stroke="#34d399" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                                  <Line type="monotone" dataKey="changed_assets" name="Changed" stroke="#fbbf24" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                                  <Line type="monotone" dataKey="vuln_counts.critical" name="Critical Vulns" stroke="#f87171" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                                  <Line type="monotone" dataKey="vuln_counts.high" name="High Vulns" stroke="#fb923c" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                                </LineChart>
+                              </ResponsiveContainer>
+                            </div>
                           </div>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                )}
-                {infraExpandedId === target.id && (
-                  <tr>
-                    <td colSpan={5}>
-                      {!infraData[target.id] ? (
-                        <div className="loading">Loading infrastructure data...</div>
-                      ) : (
-                        <InfrastructurePanel data={infraData[target.id]} />
-                      )}
-                    </td>
-                  </tr>
-                )}
-              </React.Fragment>
-            ))}
-          </tbody>
-        </table>
+                        )}
+                </div>
+              )}
+              {panel === "infra" && (
+                <div className="target-panel">
+        {!infraData[target.id] ? (
+                          <div className="loading">Loading infrastructure data...</div>
+                        ) : (
+                          <InfrastructurePanel data={infraData[target.id]} />
+                        )}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
