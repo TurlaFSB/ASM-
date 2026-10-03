@@ -221,3 +221,14 @@ def test_adjust_is_only_worth_enabling_when_the_model_actually_helps():
     up = json.dumps({"severity": "critical", "summary": "Redis newly reachable.", "recommended_action": "Restrict it."})
     helps = run_eval(MockProvider({"6379": up}), cases)                 # rules said high, label is critical
     assert helps["metrics"]["improved_vs_rules"] == 1 and helps["adjust_worth_enabling"]
+
+
+def test_backfill_script_triages_an_existing_scan_and_force_redoes_it(db, monkeypatch):
+    from backend.scripts.ai_triage_scan import run
+    monkeypatch.setenv("ASM_LLM_PROVIDER", "mock")
+    ev(db, "6379/tcp", "high")
+    first = run(db, 1)
+    assert first["result"]["classified"] == 1 and first["events"][0]["ai_status"] == "ok" and first["events"][0]["summary"]
+    assert run(db, 1)["result"]["classified"] == 0                       # idempotent
+    assert run(db, 1, force=True)["result"]["classified"] == 1           # --force redoes it
+    assert run(db, 99)["error"]
