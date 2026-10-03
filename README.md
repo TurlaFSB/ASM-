@@ -200,9 +200,12 @@ How it behaves:
 - **Polite by design.** Each source has a minimum interval per target (GitHub 6 hours, XposedOrNot 24 hours), requests are paced, "run now" cannot hammer a source, and a rate-limited run keeps everything already found.
 - **Alerts reuse your settings.** New, escalated or reappeared findings at or above the target's alert severity create in-app alerts and one webhook message (`exposure.new`).
 - **Findings are tracked.** A finding that stops being returned is marked resolved after 3 runs in a row; one you dismiss never alerts again.
+- **Exposure page.** Choose a target, switch sources on, run a check, review findings with their masked evidence, and dismiss or reopen them. Viewers see everything but cannot change anything.
 - **Control from the API:** `GET /exposure/sources`, `PUT /exposure/targets/{id}/sources`, `POST /exposure/targets/{id}/run`, `GET /exposure/findings`, `PATCH /exposure/findings/{id}` (dismiss or reopen), `GET /exposure/runs`.
 
 XposedOrNot's free tier allows about 100 domain lookups a day, so very large target lists will see some runs rate-limited (they retry within the hour and keep earlier results). Documentation, test and example files are capped at low severity unless they contain a real token format, because they are full of fake passwords.
+
+Dark-web search is deliberately not automated: Ahmia's robots.txt disallows its search pages and its terms forbid scraping without permission, so ASM does not query it.
 
 A mention is not proof of a leak: a public file that names your domain may be documentation. Review before you rotate anything.
 
