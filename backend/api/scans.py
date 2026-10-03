@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
@@ -127,8 +128,11 @@ def trigger_scan(scan: ScanCreate, request: Request, db: Session = Depends(get_d
     }
 
 @router.get("/")
-def list_scans(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
-    scans = db.query(Scan).options(joinedload(Scan.target)).order_by(Scan.created_at.desc()).all()
+def list_scans(response: Response, limit: int = Query(500, ge=1, le=2000), offset: int = Query(0, ge=0),
+               db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    response.headers["X-Total-Count"] = str(db.query(func.count(Scan.id)).scalar() or 0)
+    scans = (db.query(Scan).options(joinedload(Scan.target)).order_by(Scan.created_at.desc(), Scan.id.desc())
+             .limit(limit).offset(offset).all())
     result = []
     for s in scans:
         row = {c.name: getattr(s, c.name) for c in s.__table__.columns}

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from pydantic import BaseModel, ConfigDict, field_validator
@@ -109,8 +109,11 @@ def create_target(target: TargetCreate, request: Request, db: Session = Depends(
     return db_target
 
 @router.get("/", response_model=list[TargetResponse])
-def list_targets(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
-    targets = db.query(Target).filter(Target.is_active == True).all()
+def list_targets(response: Response, limit: int = Query(1000, ge=1, le=5000), offset: int = Query(0, ge=0),
+                 db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    q = db.query(Target).filter(Target.is_active == True)
+    response.headers["X-Total-Count"] = str(q.count())
+    targets = q.order_by(Target.id).limit(limit).offset(offset).all()
     return targets
 
 @router.get("/{target_id}", response_model=TargetResponse)

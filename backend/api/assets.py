@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.db import get_db
@@ -12,8 +13,10 @@ router = APIRouter(prefix="/assets", tags=["assets"])
 
 
 @router.get("/")
-def list_assets(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
-    return db.query(Asset).order_by(Asset.created_at.desc()).all()
+def list_assets(response: Response, limit: int = Query(1000, ge=1, le=5000), offset: int = Query(0, ge=0),
+                db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    response.headers["X-Total-Count"] = str(db.query(func.count(Asset.id)).scalar() or 0)
+    return (db.query(Asset).order_by(Asset.created_at.desc(), Asset.id.desc()).limit(limit).offset(offset).all())
 
 
 @router.get("/{asset_id}/paths")

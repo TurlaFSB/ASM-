@@ -79,3 +79,13 @@ def test_require_admin_function():
     with pytest.raises(HTTPException):
         require_admin(SimpleNamespace(role="viewer"))
     assert require_admin(SimpleNamespace(role="admin")).role == "admin"
+
+
+def test_list_endpoints_paginate_with_total_header():
+    c, t = _client("viewer")
+    r = c.get("/targets/?limit=1")
+    assert r.status_code == 200 and len(r.json()) == 1
+    assert r.headers["X-Total-Count"] == "1"
+    assert c.get("/targets/?limit=0").status_code == 422
+    assert c.get("/scans/?limit=5&offset=0").headers["X-Total-Count"] == "0"
+    assert c.get("/assets/?limit=5").headers["X-Total-Count"] == "0"
