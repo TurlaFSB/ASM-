@@ -1,6 +1,7 @@
 """Policy applied AFTER the model answers. The model is advisory: rules decide the floor."""
+import os
 import re
-from typing import Dict
+from typing import Dict, Optional
 
 from backend.ai.schema import SEVERITIES
 
@@ -37,11 +38,21 @@ def text_is_safe(text: str) -> bool:
     return not (_URL.search(text) or _CODE.search(text))
 
 
-def apply(event: Dict, parsed) -> Dict:
+def adjust_enabled() -> bool:
+    """ASM_LLM_SEVERITY_MODE=advise (default): the model explains and recommends, the rules decide severity.
+    =adjust: the model may refine severity within the policy above. Turn it on only for a model that passes the
+    evaluation gates (python -m backend.scripts.ai_eval)."""
+    return os.getenv("ASM_LLM_SEVERITY_MODE", "advise").strip().lower() == "adjust"
+
+
+def apply(event: Dict, parsed, adjust: Optional[bool] = None) -> Dict:
     kev = bool((event.get("after") or {}).get("kev"))
+    allowed = final_severity(event.get("severity", "info"), parsed.severity, kev)
+    adjust = adjust_enabled() if adjust is None else adjust
     return {
         "ai_severity": parsed.severity,
-        "final_severity": final_severity(event.get("severity", "info"), parsed.severity, kev),
+        "policy_severity": allowed,                 # what adjust mode would use; always used for the conflict check
+        "final_severity": allowed if adjust else (event.get("severity") if event.get("severity") in SEVERITIES else "info"),
         "ai_summary": parsed.summary,
         "ai_action": parsed.recommended_action,
     }

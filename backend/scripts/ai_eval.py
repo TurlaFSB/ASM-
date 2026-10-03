@@ -20,6 +20,8 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="/app/scan_output/ai_eval", help="directory for the JSON report")
     ap.add_argument("--tag", default=None, help="label for the report file (default: provider and model)")
+    ap.add_argument("--mode", choices=["adjust", "advise"], default="adjust",
+                    help="adjust (default) scores the model's severity changes; advise scores explanations only")
     args = ap.parse_args()
     provider = provider_from_env()
     if provider is None:
@@ -33,7 +35,7 @@ def main() -> int:
               f"final={str(r['effective']):<8} {r['seconds']:>5.1f}s{flag}", flush=True)
 
     t0 = time.time()
-    report = run_eval(provider, progress=progress)
+    report = run_eval(provider, adjust=args.mode == "adjust", progress=progress)
     report["total_seconds"] = round(time.time() - t0, 1)
     report["generated_at"] = datetime.now(timezone.utc).isoformat()
     out = Path(args.out); out.mkdir(parents=True, exist_ok=True)

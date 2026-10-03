@@ -99,8 +99,9 @@ def test_triage_disabled_changes_nothing(db, monkeypatch):
     db.refresh(e); assert e.ai_status is None and effective_severity(e) == "low"
 
 
-def test_triage_stores_result_and_effective_severity_drives_threshold(db):
+def test_triage_stores_result_and_effective_severity_drives_threshold(db, monkeypatch):
     e = ev(db, "6379/tcp", "medium")
+    monkeypatch.setenv("ASM_LLM_SEVERITY_MODE", "adjust")
     reply = json.dumps({"severity": "high", "summary": "Redis newly exposed.", "recommended_action": "Restrict it."})
     out = triage_scan_events(db, SimpleNamespace(id=1), MockProvider({"6379": reply}))
     db.refresh(e)
@@ -201,3 +202,13 @@ def test_reaper_task_runs_end_to_end(db, monkeypatch):
     monkeypatch.setattr("redis.Redis.from_url", classmethod(lambda cls, *a, **k: R()))
     from backend.tasks import reap_stuck_scans_task
     assert reap_stuck_scans_task.run() == {"running": 0, "pending": 0}
+
+
+def test_triage_in_advise_mode_keeps_rule_severity(db, monkeypatch):
+    monkeypatch.delenv("ASM_LLM_SEVERITY_MODE", raising=False)
+    e = ev(db, "6379/tcp", "medium")
+    reply = json.dumps({"severity": "high", "summary": "Redis newly exposed.", "recommended_action": "Restrict it."})
+    triage_scan_events(db, SimpleNamespace(id=1), MockProvider({"6379": reply}))
+    db.refresh(e)
+    assert e.ai_severity == "high" and e.final_severity == "medium" and effective_severity(e) == "medium"
+    assert e.ai_summary == "Redis newly exposed."

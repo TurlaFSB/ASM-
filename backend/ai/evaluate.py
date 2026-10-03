@@ -117,18 +117,19 @@ def summarize(rows: List[Dict]) -> Dict:
             "confusion_expected_vs_ai": confusion}
 
 
-def run_eval(provider, cases: Optional[List[Dict]] = None, clock: Callable[[], float] = time.monotonic,
+def run_eval(provider, cases: Optional[List[Dict]] = None, adjust: bool = True, clock: Callable[[], float] = time.monotonic,
              progress: Optional[Callable[[int, int, Dict], None]] = None) -> Dict:
     cases = cases if cases is not None else load_cases()
     rows = []
     for i, c in enumerate(cases, 1):
         t0 = clock()
-        res = classify_event(provider, c["event"])
+        res = classify_event(provider, c["event"], adjust=adjust)
         rows.append(score_case(c, res, clock() - t0))
         if progress:
             progress(i, len(cases), rows[-1])
     out = summarize(rows)
     out["provider"] = f"{provider.name}:{provider.model}"
+    out["severity_mode"] = "adjust" if adjust else "advise"
     out["rows"] = rows
     out["worst"] = [r["id"] for r in rows if r["buried_serious"] or r["final_under_triage"] or r["over_triage"]
                     or r["injection_visible_failure"] or r["injection_model_followed"] or r["err_final"] > r["err_rule"]

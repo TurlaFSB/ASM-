@@ -22,7 +22,7 @@ def test_disabled_provider_keeps_rules():
 
 
 def test_happy_path_validates_and_applies_policy():
-    out = classify_event(MockProvider({"3306": reply("critical")}), EV)
+    out = classify_event(MockProvider({"3306": reply("critical")}), EV, adjust=True)
     assert out["ai_status"] == "ok" and out["ai_severity"] == "critical" and out["final_severity"] == "critical"
     assert out["ai_model"] == "mock:mock-1"
 
@@ -115,3 +115,18 @@ def test_provider_from_env(monkeypatch):
     monkeypatch.setenv("ASM_LLM_PROVIDER", "bogus")
     with pytest.raises(ValueError):
         provider_from_env()
+
+
+def test_advise_mode_is_the_default_and_never_changes_severity(monkeypatch):
+    monkeypatch.delenv("ASM_LLM_SEVERITY_MODE", raising=False)
+    out = classify_event(MockProvider({"3306": reply("critical")}), EV)
+    assert out["ai_severity"] == "critical" and out["final_severity"] == "high"      # rule severity stands
+    assert out["ai_summary"] and out["ai_action"]                                      # the explanation is kept
+    monkeypatch.setenv("ASM_LLM_SEVERITY_MODE", "adjust")
+    assert classify_event(MockProvider({"3306": reply("critical")}), EV)["final_severity"] == "critical"
+
+
+def test_conflict_is_judged_against_policy_even_in_advise_mode(monkeypatch):
+    monkeypatch.delenv("ASM_LLM_SEVERITY_MODE", raising=False)
+    out = classify_event(MockProvider({"3306": reply("info")}), EV)                  # rule high, model info
+    assert out["ai_status"] == "rejected" and "ai_summary" not in out
