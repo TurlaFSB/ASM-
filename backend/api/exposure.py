@@ -9,7 +9,7 @@ from backend.audit import log_action
 from backend.auth import get_current_user, require_admin
 from backend.db import get_db
 from backend.exposure import registry
-from backend.exposure.base import SEVERITIES
+from backend.exposure.base import SEVERITIES, applies_to
 from backend.models.exposure import CollectorRun, ExposureFinding
 from backend.models.target import Target
 
@@ -57,18 +57,22 @@ class SourcesUpdate(BaseModel):
 def get_target_sources(target_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     t = _active_target(db, target_id)
     on = set(t.exposure_sources or [])
-    return [{**s, "enabled": s["name"] in on} for s in _sources_view()]
+    ok = applies_to(t.domain)       # these sources look for a public domain; an IP or internal host has nothing to find
+    return [{**s, "enabled": s["name"] in on, "applicable": ok} for s in _sources_view()]
 
 
 @router.put("/targets/{target_id}/sources")
 def set_target_sources(target_id: int, payload: SourcesUpdate, request: Request, db: Session = Depends(get_db),
                        current_user=Depends(require_admin)):
     t = _active_target(db, target_id)
+    added = set(payload.sources) - set(t.exposure_sources or [])
+    if added and not applies_to(t.domain):
+        raise HTTPException(status_code=409, detail="Exposure sources look for a public domain name. This target is an IP address or internal host, so there is nothing for them to find.")
     t.exposure_sources = payload.sources
     db.commit()
     log_action(db, current_user.username, "exposure_sources_set", target_id=t.id, detail={"sources": payload.sources},
                ip_address=request.client.host if request.client else None)
-    return [{**s, "enabled": s["name"] in set(payload.sources)} for s in _sources_view()]
+    return [{**s, "enabled": s["name"] in set(payload.sources), "applicable": applies_to(t.domain)} for s in _sources_view()]
 
 
 @router.post("/targets/{target_id}/run", status_code=202)

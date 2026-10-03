@@ -1,10 +1,13 @@
 """Collector interface, shared errors and input hygiene for data from third-party sources."""
 import hashlib
+import ipaddress
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Protocol
+from typing import Dict, List, Optional, Protocol, Tuple
 
 SEVERITIES = ("critical", "high", "medium", "low", "info")
+INTERNAL_SUFFIXES = (".local", ".internal", ".lan", ".corp", ".home", ".localhost", ".test", ".example")
+CC_SECOND_LEVEL = {"co", "com", "org", "net", "gov", "ac", "edu", "ltd", "plc", "nic", "mil", "gen", "res"}
 _CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f\u200b-\u200f\u202a-\u202e\u2066-\u2069]")
 
 
@@ -33,6 +36,34 @@ class RateLimited(CollectorError):
     def __init__(self, retry_after: Optional[int] = None):
         super().__init__("rate limited")
         self.retry_after = retry_after
+
+
+def registrable_parts(domain: str) -> Optional[Tuple[str, str]]:
+    """('acme', 'co.uk') for www.acme.co.uk; None for IPs, internal names and single labels."""
+    d = (domain or "").strip().lower().rstrip(".")
+    if not d or d.endswith(INTERNAL_SUFFIXES) or "." not in d:
+        return None
+    try:
+        ipaddress.ip_address(d)
+        return None
+    except ValueError:
+        pass
+    labels = d.split(".")
+    if len(labels) >= 3 and len(labels[-1]) == 2 and labels[-2] in CC_SECOND_LEVEL:
+        return labels[-3], ".".join(labels[-2:])
+    return labels[-2], labels[-1]
+
+
+def require_public_domain(domain: str) -> None:
+    """Every exposure source looks for a domain on the public internet (public code, breach records, listings,
+    DNS look-alikes). An IP address or an internal name has nothing to find there, and searching for it would only
+    produce unrelated matches, so such targets are skipped with a clear reason."""
+    if registrable_parts(domain) is None:
+        raise NotApplicable("needs a public domain name, not an IP or internal host")
+
+
+def applies_to(domain: str) -> bool:
+    return registrable_parts(domain) is not None
 
 
 def clean_text(value, limit: int) -> str:

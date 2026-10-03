@@ -521,3 +521,25 @@ def test_hudsonrock_clean_domain_and_bad_responses(monkeypatch):
     from backend.exposure.base import NotApplicable
     with pytest.raises(NotApplicable):
         c.collect("10.1.1.1", FakeHttp(resp(clean)), lambda s: None)
+
+
+def test_every_source_skips_ip_and_internal_targets_without_a_request():
+    import pytest as _pt
+    from backend.exposure import registry
+    from backend.exposure.base import NotApplicable
+
+    class NoHttp:
+        def get(self, *a, **k):
+            raise AssertionError("a request was made for an IP target")
+
+    import os
+    os.environ["ASM_GITHUB_TOKEN"] = "x"
+    os.environ["ASM_HUDSONROCK_ACK"] = "true"
+    try:
+        for c in registry.all_sources():
+            for bad in ("192.168.16.128", "intranet.local", "localhost"):
+                with _pt.raises(NotApplicable):
+                    c.collect(bad, NoHttp(), lambda s: None)
+    finally:
+        os.environ.pop("ASM_GITHUB_TOKEN", None)
+        os.environ.pop("ASM_HUDSONROCK_ACK", None)

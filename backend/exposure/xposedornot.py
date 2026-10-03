@@ -6,7 +6,7 @@ The response format is parsed defensively; anything unrecognised is reported as 
 """
 from typing import List
 
-from backend.exposure.base import CollectorError, Finding, RateLimited, clean_text, safe_https_url
+from backend.exposure.base import CollectorError, Finding, RateLimited, clean_text, require_public_domain, safe_https_url
 
 API = "https://api.xposedornot.com/v1/breaches"
 LIST_KEYS = ("exposedBreaches", "breaches", "data", "Breaches")
@@ -31,6 +31,7 @@ class XposedOrNotCollector:
         return True
 
     def collect(self, domain: str, http, sleep) -> List[Finding]:
+        require_public_domain(domain)
         r = http.get(API, params={"domain": domain.lower()}, headers={"Accept": "application/json"})
         if r.status == 429:
             raise RateLimited(None)

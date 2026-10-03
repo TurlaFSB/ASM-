@@ -32,8 +32,9 @@ function SafeLink({ url }) {
 }
 
 function RunChip({ source, run }) {
+  if (source.applicable === false) return <span className="stage-chip">Needs a public domain name</span>;
   if (!source.configured) return <span className="stage-chip">Needs {source.needs || "setup"}</span>;
-  if (!run) return <span className="muted-note">Not checked yet</span>;
+  if (!run) return <span className="muted-note">{source.enabled ? "On. Waiting for the first check" : "Off"}</span>;
   if (run.status === "ok") return <span className="muted-note">Checked {timeAgo(run.finished_at || run.started_at)}, {run.found} found</span>;
   if (run.status === "skipped") return <span className="muted-note">Not applicable: {run.error || "skipped"}</span>;
   if (run.status === "running") return <span className="badge badge-running">running</span>;
@@ -219,6 +220,14 @@ export default function Exposure() {
         Only masked traces are stored, never a full secret. A mention is not proof of a leak, so review before you rotate anything.
       </p>
 
+      {sources.length > 0 && sources.every(s => s.applicable === false) && (
+        <p className="muted-note exposure-intro" role="note">
+          This target is an IP address or an internal host. Exposure sources search the public internet for a domain name
+          (public code, breach records, look-alike domains, ransomware listings), so none of them apply here. Pick a target
+          with a public domain name.
+        </p>
+      )}
+
       <div className="exposure-sources">
         {sources.map(s => (
           <div key={s.name} className="exposure-source">
@@ -228,7 +237,7 @@ export default function Exposure() {
               <div style={{ marginTop: 6 }}><RunChip source={s} run={lastRun(s.name)} /></div>
             </div>
             {canEdit
-              ? <ToggleSwitch checked={!!s.enabled} disabled={saving.has(s.name) || (!s.configured && !s.enabled)} onChange={on => toggle(s.name, on)} label="" ariaLabel={`Check ${s.label}`} />
+              ? <ToggleSwitch checked={!!s.enabled} disabled={saving.has(s.name) || ((!s.configured || s.applicable === false) && !s.enabled)} onChange={on => toggle(s.name, on)} label="" ariaLabel={`Check ${s.label}`} />
               : <span className="muted-note">{s.enabled ? "On" : "Off"}</span>}
           </div>
         ))}

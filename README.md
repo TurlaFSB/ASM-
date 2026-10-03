@@ -211,6 +211,8 @@ Looks for things about a target that live OUTSIDE its own infrastructure. Every 
 | Infostealer logs | How many employee and customer credential sets for the domain appear in Hudson Rock's free infostealer database (counts and dates only, never credentials). Off until you read [Hudson Rock's terms](https://www.hudsonrock.com/terms-of-use) and set `ASM_HUDSONROCK_ACK=true` | the acknowledgement variable |
 | Lookalike domains | Registered typosquats, character swaps (including look-alike letters from other alphabets) and login-style names such as `acme-login.com` | nothing: plain DNS lookups, no third party |
 
+All sources look for a **public domain name**. A target that is an IP address or an internal host (for example `192.168.x.x` or `intranet.local`) has nothing to find in public code, breach records or ransomware listings, so the Exposure page shows its sources as not applicable and the API refuses to enable them. Use a target with a real domain name.
+
 How it behaves:
 - **Masked evidence only.** Credential-like text is detected in memory and only a masked trace is stored (rule name, at most 4 leading characters of long values, and the length). A full secret or password is never written to the database, API or logs.
 - **Lookalike checks are local.** Candidate names are generated on the platform and checked with ordinary DNS (a few hundred lookups, rate-bounded). A name is reported only if it resolves; one that points at your own servers or name servers is marked info. Domains registered without any DNS records cannot be seen this way, and many hits are parked domains, so review before acting.

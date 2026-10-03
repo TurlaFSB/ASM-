@@ -7,7 +7,7 @@ only masked traces are kept.
 import os
 from typing import Dict, List
 
-from backend.exposure.base import CollectorError, Finding, RateLimited, clean_text, safe_https_url
+from backend.exposure.base import CollectorError, Finding, RateLimited, clean_text, require_public_domain, safe_https_url
 from backend.exposure.masking import HARD_RULES, is_doc_path, path_severity, scan_fragment
 
 API = "https://api.github.com/search/code"
@@ -35,6 +35,7 @@ class GitHubCodeCollector:
         token = os.environ.get("ASM_GITHUB_TOKEN", "").strip()
         if not token:
             raise CollectorError("not configured")
+        require_public_domain(domain)
         headers = {"Accept": "application/vnd.github.text-match+json", "Authorization": f"Bearer {token}",
                    "X-GitHub-Api-Version": "2022-11-28"}
         dom = domain.lower()

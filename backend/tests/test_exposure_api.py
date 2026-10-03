@@ -93,3 +93,23 @@ def test_runs_listing(env):
     db.add(CollectorRun(target_id=t.id, source="xposedornot", status="failed", error="timeout")); db.commit()
     r = c.get(f"/exposure/runs?target_id={t.id}").json()
     assert r[0]["error"] == "timeout" and r[0]["status"] == "failed"
+
+
+def test_ip_and_internal_targets_cannot_enable_sources(env):
+    db, _, c = env
+    ip = Target(domain="192.168.16.128", authorized=True, authorized_by="me", is_active=True)
+    db.add(ip); db.commit()
+    listing = c.get(f"/exposure/targets/{ip.id}/sources").json()
+    assert listing and all(s["applicable"] is False for s in listing)
+    r = c.put(f"/exposure/targets/{ip.id}/sources", json={"sources": ["xposedornot"]})
+    assert r.status_code == 409 and "public domain" in r.json()["detail"]
+    db.refresh(ip)
+    assert not ip.exposure_sources
+    # turning things off is always allowed
+    ip.exposure_sources = ["xposedornot"]; db.commit()
+    assert c.put(f"/exposure/targets/{ip.id}/sources", json={"sources": []}).status_code == 200
+
+
+def test_public_domain_targets_are_applicable(env):
+    _, t, c = env
+    assert all(s["applicable"] is True for s in c.get(f"/exposure/targets/{t.id}/sources").json())

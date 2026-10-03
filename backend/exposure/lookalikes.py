@@ -9,22 +9,19 @@ Limits worth knowing: a domain that is registered but has no DNS records cannot 
 registrable-domain detection is a heuristic (it knows the common country second-level suffixes, not the full
 public suffix list).
 """
-import ipaddress
 import random
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
-from backend.exposure.base import CollectorError, Finding, Findings, NotApplicable, clean_text
+from backend.exposure.base import CollectorError, Finding, Findings, NotApplicable, clean_text, registrable_parts  # noqa: F401  (re-exported)
 
 MAX_CANDIDATES = 1200
 WORKERS = 12
 DEADLINE_SECONDS = 150
 MAX_ERROR_RATE = 0.5
 
-INTERNAL_SUFFIXES = (".local", ".internal", ".lan", ".corp", ".home", ".localhost", ".test", ".example")
-CC_SECOND_LEVEL = {"co", "com", "org", "net", "gov", "ac", "edu", "ltd", "plc", "nic", "mil", "gen", "res"}
 LABEL_OK = re.compile(r"^(?!-)[a-z0-9-]{1,63}(?<!-)$")
 ASCII_NAME_OK = re.compile(r"^(?=.{4,253}$)([a-z0-9-]{1,63}\.)+[a-z0-9-]{2,63}$")
 
@@ -46,22 +43,6 @@ VOWELS = "aeiou"
 
 _ascii_priority = {"homoglyph": 0, "idn": 0, "keyword": 1, "tld": 1, "transposition": 2, "omission": 2, "repetition": 2,
                    "replacement": 3, "insertion": 3, "hyphenation": 3, "vowel-swap": 3, "bitsquat": 4, "addition": 4}
-
-
-def registrable_parts(domain: str) -> Optional[Tuple[str, str]]:
-    """('acme', 'co.uk') for www.acme.co.uk; None for IPs, internal names and single labels."""
-    d = (domain or "").strip().lower().rstrip(".")
-    if not d or d.endswith(INTERNAL_SUFFIXES) or "." not in d:
-        return None
-    try:
-        ipaddress.ip_address(d)
-        return None
-    except ValueError:
-        pass
-    labels = d.split(".")
-    if len(labels) >= 3 and len(labels[-1]) == 2 and labels[-2] in CC_SECOND_LEVEL:
-        return labels[-3], ".".join(labels[-2:])
-    return labels[-2], labels[-1]
 
 
 def _label_variants(label: str) -> Dict[str, str]:
