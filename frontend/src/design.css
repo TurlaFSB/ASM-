@@ -526,7 +526,7 @@ a.attention-item:focus-visible { outline: 2px solid var(--accent); outline-offse
 }
 .exposure-source-name { font-size: 14px; color: var(--text-primary); margin-bottom: 2px; }
 .exposure-filters { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 4px; }
-.finding-list { width: 100%; max-width: none; margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
+.exposure-list { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
 .finding-card { padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
 .finding-card.dim { opacity: 0.7; }
 .finding-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }

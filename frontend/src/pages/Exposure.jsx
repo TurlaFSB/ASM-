@@ -222,7 +222,7 @@ export default function Exposure() {
               : `No ${status} findings.`}
         </div>
       )}
-      <div className="finding-list">
+      <div className="exposure-list">
         {findings.map(f => <FindingCard key={f.id} f={f} canEdit={canEdit} onStatus={changeStatus} />)}
       </div>
     </div>
