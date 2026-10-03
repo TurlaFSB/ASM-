@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Play, ExternalLink, Globe } from "lucide-react";
 import Picker from "../components/Picker";
+import { timeAgo } from "../lib/time";
 import {
   getTargets, getExposureSources, setExposureSources, runExposureNow,
   getExposureFindings, setExposureFindingStatus, getExposureRuns,
@@ -12,15 +13,6 @@ import { useToast } from "../components/toastContext";
 const STATUS = [["open", "Open"], ["dismissed", "Dismissed"], ["resolved", "Resolved"]];
 const IMPORTANCE = [["important", "Medium and above"], ["all", "Everything"]];
 const SOURCE_LABEL = { github_code: "GitHub public code", xposedornot: "Breach records", lookalike_domains: "Lookalike domain", ransomlook: "Ransomware leak site", hudsonrock: "Infostealer logs" };
-
-function timeAgo(iso) {
-  if (!iso) return "";
-  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-  if (s < 60) return "just now";
-  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
-  return `${Math.floor(s / 86400)} d ago`;
-}
 
 function errorText(e, fallback) {
   const d = e?.response?.data?.detail;

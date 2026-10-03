@@ -3,6 +3,7 @@ import { getTargets, createTarget, deleteTarget, triggerScan, getTargetHistory, 
 import { Plus, Trash2, Play, Shield, History, Globe, Bell } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import RowMenu from "../components/RowMenu";
+import "../components/ToggleSwitch.css";
 import ProfilePicker from "../components/ProfilePicker";
 import NotificationSettings from "../components/NotificationSettings";
 import ConfirmDialog from "../components/ConfirmDialog";
@@ -414,6 +415,18 @@ export default function Targets() {
                   </div>
                 </div>
                 <div className="target-controls">
+                  <div className="seg target-seg" role="group" aria-label={`Details for ${target.domain}`}>
+                    <button type="button" className={"seg-item" + (panel === "history" ? " active" : "")} aria-pressed={panel === "history"} onClick={() => show("history")}><History size={14} /> History</button>
+                    <button type="button" className={"seg-item" + (panel === "infra" ? " active" : "")} aria-pressed={panel === "infra"} onClick={() => show("infra")}><Globe size={14} /> Infrastructure</button>
+                    <button type="button" className={"seg-item" + (panel === "notif" ? " active" : "")} aria-pressed={panel === "notif"} onClick={() => show("notif")}><Bell size={14} /> Notifications</button>
+                  </div>
+                  <label className="target-dir" title="Also discover directories and files on web servers (slower, more thorough)">
+                    <span>Dir scan</span>
+                    <span className="ios-toggle">
+                      <input type="checkbox" checked={dirOn} onChange={e => { const val = e.target.checked; setDirbusterEnabled(prev => ({ ...prev, [target.id]: val })); updateDirbusterToggle(target.id, val).catch(console.error); }} />
+                      <span className="ios-toggle-track"><span className="ios-toggle-knob" /></span>
+                    </span>
+                  </label>
                   <ProfilePicker
                     profiles={profiles}
                     value={profileChoice[target.id] ?? target.default_profile ?? "standard"}
@@ -423,16 +436,9 @@ export default function Targets() {
                     }}
                   />
                   <button className="btn btn-primary" onClick={() => handleScan(target.id)}>
-                    <Play size={15} /> Scan
+                    <Play size={14} /> Scan
                   </button>
                   <RowMenu label={`More actions for ${target.domain}`} items={[
-                    { label: "Scan history", icon: History, active: panel === "history", onClick: () => show("history") },
-                    { label: "Infrastructure", icon: Globe, active: panel === "infra", onClick: () => show("infra") },
-                    { label: "Notifications", icon: Bell, active: panel === "notif", onClick: () => show("notif") },
-                    { type: "divider" },
-                    { type: "switch", label: "Directory scan", checked: dirOn,
-                      onToggle: (val) => { setDirbusterEnabled(prev => ({ ...prev, [target.id]: val })); updateDirbusterToggle(target.id, val).catch(console.error); } },
-                    { type: "divider" },
                     { label: "Remove target", icon: Trash2, danger: true, onClick: () => setDeleteTarget(target) },
                   ]} />
                 </div>
