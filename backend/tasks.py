@@ -751,6 +751,7 @@ def prebuild_report(scan_id: int):
 
 @celery_app.task(name="reap_stuck_scans")
 def reap_stuck_scans_task():
+    from backend.db import SessionLocal
     from backend.watchdog import reap_stuck_scans
     _db = SessionLocal()
     try:

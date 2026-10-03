@@ -1,6 +1,7 @@
 """Run AI triage over one scan's confirmed change events and store the result on each event.
 
 Bounded on purpose: a local model is slow and can be down, and a scan must never wait on it.
+ - answers that contradict the rules by 2+ severity steps are 'rejected' and their text is dropped
  - at most ASM_LLM_MAX_EVENTS events per scan, most severe first
  - at most ASM_LLM_BUDGET_SECONDS of model time per scan
  - stops after ASM_LLM_MAX_CONSECUTIVE_FAILURES failures in a row (provider down)
@@ -35,7 +36,7 @@ def event_dict(e: ChangeEvent) -> Dict:
 
 
 def triage_scan_events(db, scan, provider: Optional[LLMProvider] = None, clock=time.monotonic) -> Dict:
-    out = {"status": "disabled", "classified": 0, "failed": 0, "skipped": 0}
+    out = {"status": "disabled", "classified": 0, "rejected": 0, "failed": 0, "skipped": 0}
     try:
         if provider is None:
             provider = provider_from_env()
@@ -62,6 +63,10 @@ def triage_scan_events(db, scan, provider: Optional[LLMProvider] = None, clock=t
                 r.ai_status, r.ai_severity, r.final_severity = "ok", res["ai_severity"], res["final_severity"]
                 r.ai_summary, r.ai_action, r.ai_model = res["ai_summary"], res["ai_action"], res["ai_model"]
                 out["classified"] += 1
+            elif res.get("ai_status") == "rejected":
+                consecutive = 0                       # the model is up; its answer just was not trusted
+                r.ai_status, r.ai_error = "rejected", res.get("ai_error")
+                out["rejected"] += 1
             else:
                 consecutive += 1
                 r.ai_status, r.ai_error = "failed", res.get("ai_error")

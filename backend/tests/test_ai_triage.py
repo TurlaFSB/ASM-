@@ -72,7 +72,8 @@ def test_injection_text_is_data_and_cannot_move_severity_below_floor():
     msgs = build_messages(evil)
     assert msgs[1]["content"].startswith("<event>") and "UNTRUSTED" in msgs[0]["content"]
     out = classify_event(MockProvider({"ignore": reply("info", "Nothing to see.")}), evil)
-    assert out["ai_status"] == "ok" and out["final_severity"] == "high"      # floor holds
+    # the model was talked down two steps from the rules: its answer and text are dropped, rules stand
+    assert out["ai_status"] == "rejected" and "final_severity" not in out and "ai_summary" not in out
 
 
 def test_sanitizer_truncates_strips_and_whitelists():

@@ -167,7 +167,7 @@ docker compose exec backend python -m backend.scripts.rediff <scan_id>
 
 With a local model enabled, each confirmed change also gets a one-line summary and a recommended next step. The rule-based severity stays the source of truth: the model may move it by one step, and it can never lower a high or critical change or one tied to a known-exploited CVE (`rule_severity` and the AI's own answer are both kept). Nothing leaves your machine with the `ollama` provider.
 
-- Model output must match a strict schema; anything else, or text containing links or commands, is discarded and the rules stand.
+- Model output must match a strict schema; anything else, text containing links or commands, or an answer two or more severity steps away from what the rules allow (the sign of a model that was talked into something) is discarded together with its text, and the rules stand.
 - Scanned content reaches the model only as short, whitelisted, sanitized fields, and the prompt treats it as untrusted data.
 - Per scan it is bounded (`ASM_LLM_MAX_EVENTS`, `ASM_LLM_BUDGET_SECONDS`) and stops early when the model is down, so a scan never waits on it.
 - The Changes page marks AI notes as advisory. Alerts and webhooks use the adjusted severity.
@@ -178,7 +178,7 @@ Check the setup with `docker compose exec backend python -m backend.scripts.ai_s
 docker compose exec backend python -m backend.scripts.ai_eval
 ```
 
-It writes a JSON report and exits non-zero unless every quality gate passes: at least 95% valid answers, no prompt-injection failures, no serious change judged below high, and at least 85% within one severity step of the labelled answer.
+It writes a JSON report and exits non-zero unless every quality gate passes: at least 95% valid answers, no visible prompt-injection effect, no serious change lowered by the model, at least 85% of final severities within one step of the labelled answer, and severities no worse than the rules alone. The case inputs use the severities the diff engine really assigns, and a test keeps them in sync.
 
 ---
 

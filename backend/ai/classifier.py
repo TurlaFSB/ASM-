@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 
 
 def classify_event(provider: Optional[LLMProvider], event: Dict, retries: int = 1) -> Dict:
-    """Never raises. Returns {'ai_status': 'ok'|'failed'|'disabled', ...}; on anything but 'ok' the
-    rule-based severity stands unchanged."""
+    """Never raises. Returns {'ai_status': 'ok'|'rejected'|'failed'|'disabled', ...}; on anything but 'ok' the
+    rule-based severity stands unchanged and no model text is kept."""
     if provider is None:
         return {"ai_status": "disabled"}
     messages = build_messages(event)
@@ -32,6 +32,11 @@ def classify_event(provider: Optional[LLMProvider], event: Dict, retries: int = 
             last_err = "output rejected by guardrails"
             continue
         out = guardrails.apply(event, parsed)
+        if guardrails.conflicts_with_rules(event.get("severity", "info"), parsed.severity, out["final_severity"]):
+            logger.warning(f"[ai] triage rejected for {event.get('fingerprint')}: model said {parsed.severity}, "
+                           f"rules allow {out['final_severity']}")
+            return {"ai_status": "rejected", "ai_severity": parsed.severity,
+                    "ai_error": f"model said {parsed.severity}, rules said {event.get('severity', 'info')}"}
         out.update(ai_status="ok", ai_model=f"{provider.name}:{provider.model}")
         return out
     logger.warning(f"[ai] triage failed for {event.get('fingerprint')}: {last_err}")

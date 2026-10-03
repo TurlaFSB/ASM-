@@ -29,8 +29,8 @@ def main() -> int:
 
     def progress(i, n, r):
         flag = "" if r["status"] == "ok" else f"  [{r['status']}: {r['error']}]"
-        print(f"[{i:02d}/{n}] {r['id']:<28} expected={r['expected']:<8} rule={r['rule']:<8} ai={str(r['ai']):<8} "
-              f"final={str(r['final']):<8} {r['seconds']:>5.1f}s{flag}", flush=True)
+        print(f"[{i:02d}/{n}] {r['id']:<28} expected={r['expected']:<8} rule={r['rule']:<8} ai={str(r["ai"]):<8} "
+              f"final={str(r['effective']):<8} {r['seconds']:>5.1f}s{flag}", flush=True)
 
     t0 = time.time()
     report = run_eval(provider, progress=progress)

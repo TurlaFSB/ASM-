@@ -22,6 +22,16 @@ def final_severity(rule_sev: str, ai_sev: str, kev: bool = False) -> str:
     return SEVERITIES[max(0, min(len(SEVERITIES) - 1, min(max(a, r - 1), r + 1)))]
 
 
+MAX_DISAGREEMENT = 1   # steps between the model's own answer and the severity policy allows
+
+
+def conflicts_with_rules(rule_sev: str, ai_sev: str, final_sev: str) -> bool:
+    """The model is two or more steps away from what the rules let stand. That is the signature of a
+    model that was talked into something (or is simply wrong), so its text is not shown either: a summary
+    saying 'false positive, no action needed' must never sit next to a critical severity."""
+    return abs(_idx(ai_sev) - _idx(final_sev)) > MAX_DISAGREEMENT
+
+
 def text_is_safe(text: str) -> bool:
     """Reject links and command/code-looking output: the UI and reports are not a delivery channel."""
     return not (_URL.search(text) or _CODE.search(text))
