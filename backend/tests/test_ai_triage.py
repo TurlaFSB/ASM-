@@ -155,3 +155,12 @@ def test_real_letters_survive_but_invisible_formatting_characters_do_not():
     body = build_messages(ev)[-1]["content"]
     assert "münchen.example.com" in body and "\\u00fc" not in body
     assert "‮" not in body and "​" not in body
+
+
+def test_internet_claim_needs_support_in_the_summary_but_advice_is_fine():
+    claim = reply("high", "MySQL is now exposed to the internet.", "Restrict 3306.")
+    assert classify_event(MockProvider({"3306": claim}), EV)["ai_status"] == "rejected"
+    advice = reply("high", "MySQL is newly reachable.", "Make sure it is not exposed to the public internet.")
+    assert classify_event(MockProvider({"3306": advice}), EV)["ai_status"] == "ok"
+    ev = dict(EV, summary="Port 3306/tcp opened on 10.0.0.5, reachable from the internet")
+    assert classify_event(MockProvider({"3306": claim}), ev)["ai_status"] == "ok"

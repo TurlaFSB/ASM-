@@ -113,7 +113,11 @@ def summarize(rows: List[Dict]) -> Dict:
         v = metrics[k]
         passed = {">=": v >= thr, "==": v == thr, "<=": v <= thr}[op]
         gates[k] = {"value": v, "need": f"{op} {thr}", "pass": passed}
-    return {"metrics": metrics, "gates": gates, "passed": all(g["pass"] for g in gates.values()),
+    passed = all(g["pass"] for g in gates.values())
+    # Passing the gates only proves severity changes are SAFE. Enabling them is worth it only if the model
+    # also helps: more cases moved closer to the labelled answer than away from it.
+    adjust_worth_enabling = passed and metrics["improved_vs_rules"] > metrics["worsened_vs_rules"]
+    return {"metrics": metrics, "gates": gates, "passed": passed, "adjust_worth_enabling": adjust_worth_enabling,
             "confusion_expected_vs_ai": confusion}
 
 

@@ -21,7 +21,7 @@ class LLMProvider(Protocol):
 
 
 class OllamaProvider:
-    """Local Ollama (e.g. qwen2.5:7b / :14b). No data leaves the machine."""
+    """Local Ollama (e.g. qwen2.5-coder:7b / :14b). No data leaves the machine."""
     name = "ollama"
 
     def __init__(self, base_url: str, model: str, timeout: int = 120, session=None, num_ctx: int = 4096):
@@ -77,6 +77,6 @@ def provider_from_env() -> Optional[LLMProvider]:
     if kind == "ollama":
         return OllamaProvider(
             os.getenv("ASM_LLM_BASE_URL", "http://host.docker.internal:11434"),
-            os.getenv("ASM_LLM_MODEL", "qwen2.5:7b"),
+            os.getenv("ASM_LLM_MODEL", "qwen2.5-coder:7b"),
             timeout=int(os.getenv("ASM_LLM_TIMEOUT", "120")))
     raise ValueError(f"unknown ASM_LLM_PROVIDER '{kind}' (use none, ollama or mock)")

@@ -169,8 +169,11 @@ With a local model enabled, each confirmed change also gets a one-line summary a
 
 - Model output must match a strict schema; anything else, text containing links or commands, or an answer two or more severity steps away from what the rules allow (the sign of a model that was talked into something) is discarded together with its text, and the rules stand.
 - Scanned content reaches the model only as short, whitelisted, sanitized fields, and the prompt treats it as untrusted data.
+- Summaries may not assert things the event data does not say (no authentication, default credentials, "exposed to the internet", active exploitation without a KEV flag); a summary that does is discarded.
 - Per scan it is bounded (`ASM_LLM_MAX_EVENTS`, `ASM_LLM_BUDGET_SECONDS`) and stops early when the model is down, so a scan never waits on it.
 - The Changes page marks AI notes as advisory. Alerts and webhooks use the final severity.
+
+Measured on a 6 GB laptop GPU (48-case set): `qwen2.5-coder:7b` takes about 3 s per event and `qwen2.5-coder:14b` about 21 s (it spills into system RAM). The 14B model writes noticeably more specific next steps and invents fewer claims; the 7B model's actions are often generic. With the default per-scan budget of 180 s, a 14B model covers roughly the 8 most severe events of a scan, so raise `ASM_LLM_BUDGET_SECONDS` (for example to 600) if you use it. Neither model improved on the rule-based severity (the 14B simply agreed with the rules, the 7B drifted), which is why `advise` is the default.
 
 Check the setup with `docker compose exec backend python -m backend.scripts.ai_smoke`. To measure a model before trusting it, run the labelled evaluation (48 cases covering exposed databases, secrets, KEV findings, noise, removals and prompt injection):
 
@@ -178,7 +181,7 @@ Check the setup with `docker compose exec backend python -m backend.scripts.ai_s
 docker compose exec backend python -m backend.scripts.ai_eval
 ```
 
-It writes a JSON report and exits non-zero unless every quality gate passes: at least 95% valid answers, no visible prompt-injection effect, no serious change lowered by the model, at least 85% of final severities within one step of the labelled answer, and severities no worse than the rules alone. The case inputs use the severities the diff engine really assigns, and a test keeps them in sync.
+It writes a JSON report, prints whether `adjust` mode is worth enabling (the gates passed and the model moved more cases closer to the labelled answer than away from it), and exits non-zero unless every quality gate passes: at least 95% valid answers, no visible prompt-injection effect, no serious change lowered by the model, at least 85% of final severities within one step of the labelled answer, and severities no worse than the rules alone. The case inputs use the severities the diff engine really assigns, and a test keeps them in sync.
 
 ---
 

@@ -45,6 +45,8 @@ def main() -> int:
     print("\nMETRICS " + json.dumps(report["metrics"]))
     for k, g in report["gates"].items():
         print(f"GATE {'PASS' if g['pass'] else 'FAIL'} {k}: {g['value']} (need {g['need']})")
+    print(f"ADJUST MODE WORTH ENABLING: {report['adjust_worth_enabling']} "
+          f"(gates passed and {report['metrics']['improved_vs_rules']} improved vs {report['metrics']['worsened_vs_rules']} worsened)")
     print(f"WORST {report['worst']}")
     print(f"report written to {path}")
     return 0 if report["passed"] else 1

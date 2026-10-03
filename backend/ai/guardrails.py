@@ -35,8 +35,18 @@ _CLAIMS = [re.compile(p, re.I) for p in (
     r"(already|been) (compromised|breached)", r"\bbackdoor|\bmalware|\bransomware")]
 
 
-def unsupported_claim(text: str, event_text: str, kev: bool = False) -> Optional[str]:
-    """Return the first assertion in `text` that the event data does not support, else None."""
+# The model cannot know where a host sits on the network, so it may not say a service is on "the internet"
+# unless the event says so. Checked on the summary only: advice like "not exposed to the public internet" is fine.
+_SUMMARY_CLAIMS = [re.compile(r"\b(?:to|on|from) the (?:public )?internet\b", re.I)]
+
+
+def unsupported_claim(text: str, event_text: str, kev: bool = False, summary: str = "") -> Optional[str]:
+    """Return the first assertion in `text` (or `summary`, for summary-only rules) that the event data does not
+    support, else None."""
+    for rx in _SUMMARY_CLAIMS:
+        m = rx.search(summary)
+        if m and not rx.search(event_text):
+            return m.group(0).lower()
     for rx in _CLAIMS:
         m = rx.search(text)
         if m and not rx.search(event_text) and not (kev and "exploited" in m.group(0).lower()):

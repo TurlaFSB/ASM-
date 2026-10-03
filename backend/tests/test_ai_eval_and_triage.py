@@ -212,3 +212,12 @@ def test_triage_in_advise_mode_keeps_rule_severity(db, monkeypatch):
     db.refresh(e)
     assert e.ai_severity == "high" and e.final_severity == "medium" and effective_severity(e) == "medium"
     assert e.ai_summary == "Redis newly exposed."
+
+
+def test_adjust_is_only_worth_enabling_when_the_model_actually_helps():
+    cases = [c for c in load_cases() if c["id"] in ("port-redis-added", "port-ssh-added")]
+    echo = run_eval(MockProvider(), cases)                              # safe, but changes nothing
+    assert echo["passed"] and not echo["adjust_worth_enabling"]
+    up = json.dumps({"severity": "critical", "summary": "Redis newly reachable.", "recommended_action": "Restrict it."})
+    helps = run_eval(MockProvider({"6379": up}), cases)                 # rules said high, label is critical
+    assert helps["metrics"]["improved_vs_rules"] == 1 and helps["adjust_worth_enabling"]

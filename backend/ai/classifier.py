@@ -35,7 +35,7 @@ def classify_event(provider: Optional[LLMProvider], event: Dict, retries: int = 
             continue
         claim = guardrails.unsupported_claim(
             f"{parsed.summary} {parsed.recommended_action}", json.dumps(event_view(event), ensure_ascii=False),
-            kev=bool((event.get("after") or {}).get("kev")))
+            kev=bool((event.get("after") or {}).get("kev")), summary=parsed.summary)
         if claim:
             logger.warning(f"[ai] triage rejected for {event.get('fingerprint')}: unsupported claim '{claim}'")
             return {"ai_status": "rejected", "ai_error": f"unsupported claim: {claim}"}
