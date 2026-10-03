@@ -147,12 +147,14 @@ def _error_label(e: Exception) -> str:
         return "tls error"
     if isinstance(e, requests.exceptions.ConnectionError):
         return "connection error"
+    if isinstance(e, ValueError):
+        return "blocked address"
     return "request error"
 
 
 def _post(url: str, body: bytes, headers: Dict[str, str]):
-    import requests
-    return requests.post(url, data=body, headers=headers, timeout=WEBHOOK_TIMEOUT, allow_redirects=False)
+    from backend.safe_http import pinned_post
+    return pinned_post(url, body, headers, timeout=WEBHOOK_TIMEOUT)
 
 
 def deliver(db: Session, target: Target, payload: Dict, *, scan_id: Optional[int], kind: str,

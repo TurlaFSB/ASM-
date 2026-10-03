@@ -79,20 +79,9 @@ def validate_target(value: str) -> str:
 def validate_webhook_url(url: str) -> str:
     """Webhook destinations must be https and resolve only to public addresses
     (blocks SSRF to cloud metadata / internal services). Raises ValueError.
-    Note: DNS can change between check and use; callers should also disable redirects."""
-    import socket
-    from urllib.parse import urlparse
+    Delivery itself re-resolves and pins the address (backend.safe_http), so a DNS change
+    between this check and the connection cannot redirect it to an internal host."""
+    from backend.safe_http import resolve_public_ips
 
-    u = urlparse((url or "").strip())
-    if u.scheme != "https" or not u.hostname:
-        raise ValueError("Webhook URL must be https")
-    try:
-        infos = socket.getaddrinfo(u.hostname, u.port or 443, proto=socket.IPPROTO_TCP)
-    except socket.gaierror:
-        raise ValueError("Webhook host does not resolve")
-    for info in infos:
-        ip = ipaddress.ip_address(info[4][0])
-        # is_global also rejects ranges the individual flags miss, e.g. carrier-grade NAT 100.64.0.0/10
-        if not ip.is_global or ip.is_multicast:
-            raise ValueError("Webhook host resolves to a non-public address")
+    resolve_public_ips(url)
     return url.strip()
