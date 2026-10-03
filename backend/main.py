@@ -16,6 +16,7 @@ from backend.api.audit import router as audit_router
 from backend.api.assets import router as assets_router
 from backend.api.changes import router as changes_router
 from backend.api.exposure import router as exposure_router
+from backend.api.integrity import router as integrity_router
 from backend.auth import get_current_user
 from backend.security import SECURITY_HEADERS
 
@@ -57,6 +58,7 @@ app.include_router(audit_router)
 app.include_router(assets_router)
 app.include_router(changes_router)
 app.include_router(exposure_router)
+app.include_router(integrity_router)
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next):

@@ -358,7 +358,14 @@ def build_report_context(db: Session, scan_id: int):
 
     technologies = sorted({t for a in assets for t in clean_technologies(a.technologies)})
 
+    try:
+        from backend.integrity import verify_scan_seal
+        seal = verify_scan_seal(db, scan_id)
+    except Exception:  # noqa: BLE001 - a report must never fail because of the integrity footer
+        seal = None
+
     return {
+        "seal": seal,
         "report_id": f"ASM-{scan.id:05d}",
         "target": target, "scan": scan, "profile": profile, "duration": duration,
         "assets": assets, "vulnerabilities": vulns,

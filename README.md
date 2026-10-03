@@ -41,6 +41,7 @@ Every scan is stored as a point-in-time **snapshot** and compared with the previ
 - [Scan profiles](#scan-profiles)
 - [Change detection](#change-detection)
 - [Exposure monitoring](#exposure-monitoring-leaks-breaches-mentions)
+- [Scan integrity](#scan-integrity-tamper-evident-history)
 - [Security posture](#security-posture)
 - [Quick start](#quick-start)
 - [Configuration](#configuration)
@@ -214,6 +215,18 @@ XposedOrNot's free tier allows about 100 domain lookups a day, so very large tar
 Dark-web search is deliberately not automated: Ahmia's robots.txt disallows its search pages and its terms forbid scraping without permission, so ASM does not query it.
 
 A mention is not proof of a leak: a public file that names your domain may be documentation. Review before you rotate anything.
+
+## Scan integrity (tamper-evident history)
+
+Every completed scan is sealed: a SHA-256 hash of its stored snapshot, chained to the previous seal for the same target and signed with Ed25519. Editing a snapshot, editing or forging a seal, or deleting a seal from the middle of the history makes verification fail, and the PDF report shows the seal it was generated from.
+
+| Endpoint | Returns |
+|---|---|
+| `GET /integrity/scans/{id}` | Verification of one scan's seal (`valid`, `valid_unverified_signature`, `tampered`) with each check |
+| `GET /integrity/targets/{id}` | Verification of the whole chain for a target, the first broken position and the head hash |
+| `GET /integrity/public-key` | The Ed25519 public key, for checking signatures outside ASM |
+
+The signing key is derived from `SECRET_KEY`, so there is nothing extra to manage. If you rotate `SECRET_KEY`, older seals still check structurally but report that their signature can no longer be confirmed. Seals show the stored record was not altered after the scan finished; they do not prove the scanners saw the whole truth, and someone who controls both the database and `SECRET_KEY` could re-seal history. If that matters, copy a target's head hash somewhere you trust (a ticket, an email) after important scans.
 
 ## Security posture
 

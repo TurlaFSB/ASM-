@@ -510,6 +510,17 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                 logger.exception("[diff] failed to record changes")
                 module_results["diff"] = f"failed: {e}"
 
+        # Seal the finished record (signed hash chained to the target's previous seal). Never fatal.
+        if scan:
+            try:
+                from backend.integrity import seal_scan
+                seal = seal_scan(db, scan)
+                module_results["integrity"] = f"sealed #{seal.seq}" if seal else "not sealed (no snapshot)"
+            except Exception as e:  # noqa: BLE001
+                db.rollback()
+                logger.exception("[integrity] sealing failed")
+                module_results["integrity"] = f"failed: {e}"
+
         # Stage 8: Risk scoring
         checkpoint()
         self.update_state(state="PROGRESS", meta={"stage": "risk_scoring"})

@@ -411,6 +411,7 @@
 <h2 class="section break"><span class="section-num">02</span>Scope &amp; Coverage</h2>
 <table class="kv">
   <tr><td>Report ID</td><td class="mono">{{ report_id }} (scan #{{ scan.id }})</td></tr>
+  {% if seal %}<tr><td>Integrity seal</td><td class="mono">#{{ seal.seq }} · {{ seal.seal_hash[:16] }}… · {{ 'verified at generation' if seal.status == 'valid' else 'could not be fully verified' }}</td></tr>{% endif %}
   <tr><td>Target</td><td class="mono">{{ target.domain }}</td></tr>
   <tr><td>Authorized by</td><td>{{ target.authorized_by or '—' }}{% if target.authorized_at %} on {{ target.authorized_at.strftime('%d %B %Y') }}{% endif %}</td></tr>
   {% if target.scope_note %}<tr><td>Scope note</td><td>{{ target.scope_note }}</td></tr>{% endif %}
