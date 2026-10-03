@@ -19,7 +19,7 @@ FINDING_STATUSES = ("open", "dismissed", "resolved")
 
 
 def _sources_view():
-    return [{"name": c.name, "label": c.label, "description": c.description, "configured": c.configured(),
+    return [{"name": c.name, "label": c.label, "description": c.description, "configured": c.configured(), "needs": getattr(c, "needs", None),
              "min_interval_seconds": c.min_interval_seconds} for c in registry.all_sources()]
 
 

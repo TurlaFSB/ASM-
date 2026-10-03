@@ -196,6 +196,7 @@ Looks for things about a target that live OUTSIDE its own infrastructure. Every 
 | GitHub public code | Public files that mention the domain next to passwords, keys or tokens | a free GitHub token in `ASM_GITHUB_TOKEN` (no scopes) |
 | XposedOrNot | Public breach records for the domain's own service | nothing |
 | Ransomware leak sites | Whether the domain or organisation name is listed as a victim on ransomware leak sites (data from [RansomLook.io](https://www.ransomlook.io), CC BY 4.0) | nothing |
+| Infostealer logs | How many employee and customer credential sets for the domain appear in Hudson Rock's free infostealer database (counts and dates only, never credentials). Off until you read [Hudson Rock's terms](https://www.hudsonrock.com/terms-of-use) and set `ASM_HUDSONROCK_ACK=true` | the acknowledgement variable |
 | Lookalike domains | Registered typosquats, character swaps (including look-alike letters from other alphabets) and login-style names such as `acme-login.com` | nothing: plain DNS lookups, no third party |
 
 How it behaves:
@@ -416,6 +417,8 @@ docker exec asm_postgres pg_restore -U asm_user -d asm_db --clean --if-exists -v
 ## Credits
 
 Ransomware leak-site listings: [RansomLook.io](https://www.ransomlook.io), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+
+Infostealer exposure counts: free OSINT lookup by [Hudson Rock](https://www.hudsonrock.com).
 
 ## Roadmap
 

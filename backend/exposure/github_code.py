@@ -23,6 +23,7 @@ def _worst(a: str, b: str) -> str:
 
 class GitHubCodeCollector:
     name = "github_code"
+    needs = "ASM_GITHUB_TOKEN"
     label = "GitHub public code"
     description = "Public GitHub files that mention the domain next to passwords, keys or tokens. Needs a free GitHub token."
     min_interval_seconds = 6 * 3600

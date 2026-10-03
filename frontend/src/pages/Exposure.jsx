@@ -10,7 +10,7 @@ import { useToast } from "../components/toastContext";
 
 const STATUS = [["open", "Open"], ["dismissed", "Dismissed"], ["resolved", "Resolved"]];
 const IMPORTANCE = [["important", "Medium and above"], ["all", "Everything"]];
-const SOURCE_LABEL = { github_code: "GitHub public code", xposedornot: "Breach records", lookalike_domains: "Lookalike domain", ransomlook: "Ransomware leak site" };
+const SOURCE_LABEL = { github_code: "GitHub public code", xposedornot: "Breach records", lookalike_domains: "Lookalike domain", ransomlook: "Ransomware leak site", hudsonrock: "Infostealer logs" };
 
 function timeAgo(iso) {
   if (!iso) return "";
@@ -39,7 +39,7 @@ function SafeLink({ url }) {
 }
 
 function RunChip({ source, run }) {
-  if (!source.configured) return <span className="stage-chip">Needs ASM_GITHUB_TOKEN</span>;
+  if (!source.configured) return <span className="stage-chip">Needs {source.needs || "setup"}</span>;
   if (!run) return <span className="muted-note">Not checked yet</span>;
   if (run.status === "ok") return <span className="muted-note">Checked {timeAgo(run.finished_at || run.started_at)}, {run.found} found</span>;
   if (run.status === "skipped") return <span className="muted-note">Not applicable: {run.error || "skipped"}</span>;
@@ -53,6 +53,7 @@ function FindingCard({ f, canEdit, onStatus }) {
   const data = f.evidence?.exposed_data || [];
   const lk = f.kind === "lookalike" ? f.evidence : null;
   const rw = f.kind === "ransomware_listing" ? f.evidence : null;
+  const st = f.kind === "infostealer" ? f.evidence : null;
   return (
     <div className={"finding-card" + (f.status !== "open" ? " dim" : "")}>
       <div className="finding-head">
@@ -82,6 +83,15 @@ function FindingCard({ f, canEdit, onStatus }) {
           <code>group: {rw.group}</code>
           {rw.discovered && <code>listed {rw.discovered}</code>}
           <code>listed as: {rw.listed_title}</code>
+        </div>
+      )}
+      {st && (
+        <div className="finding-evidence" aria-label="Infostealer details">
+          <code>{st.employees.toLocaleString()} employee</code>
+          <code>{st.users.toLocaleString()} customer</code>
+          {st.last_employee_compromised && <code>last employee capture {st.last_employee_compromised}</code>}
+          {st.last_user_compromised && <code>last customer capture {st.last_user_compromised}</code>}
+          {st.stealer_families?.map((x, i) => <code key={"s" + i}>{x.name} {x.count.toLocaleString()}</code>)}
         </div>
       )}
       <div className="finding-foot">

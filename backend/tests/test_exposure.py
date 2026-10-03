@@ -457,3 +457,67 @@ def test_ransomlook_errors_and_garbage():
     from backend.exposure.base import NotApplicable
     with pytest.raises(NotApplicable):
         c.collect("10.0.0.5", FakeHttp(resp(RL_NONE)), lambda s: None)
+
+
+# ------------------------------------------------------------------ hudson rock (shape recorded from the live endpoint; personal data never present)
+
+from backend.exposure.hudsonrock import HudsonRockCollector, rate  # noqa: E402
+
+REAL_HR = {"total": 51022, "totalStealers": 47265, "employees": 1022, "users": 50000, "third_parties": 0, "logo": "x",
+           "data": [{"url": "https://leak.example/a?token=SECRETVALUE", "type": "employee", "occurrence": 3,
+                     "email": "someone@example.com", "password": "hunter2hunter2"}],
+           "totalUrls": 13915,
+           "stats": {"employees_urls": ["https://auth.services.example.com/login", "ftp://ftp.example.com",
+                                          "https://user:pw@evil.example/x"], "clients_urls": []},
+           "last_employee_compromised": "2026-09-30T22:04:47.493Z", "last_user_compromised": "2026-09-30T22:20:41.258Z",
+           "employeePasswords": {"totalPass": 1022, "too_weak": {"qty": 94, "perc": 9.2}, "weak": {"qty": 610, "perc": 59.69},
+                                 "medium": {"qty": 34, "perc": 3.33}, "strong": {"qty": 284, "perc": 27.79}},
+           "stealerFamilies": {"total": 50000, "Vidar": 4612, "RedLine": 21706, "Raccoon": 11003, "KPOT": 27, "Azorult": 8917, "Taurus": 406}}
+NOW = datetime(2026, 10, 3, tzinfo=timezone.utc)
+
+
+def test_hudsonrock_off_until_terms_acknowledged(monkeypatch):
+    monkeypatch.delenv("ASM_HUDSONROCK_ACK", raising=False)
+    c = HudsonRockCollector()
+    assert not c.configured()
+    with pytest.raises(CollectorError):
+        c.collect("acme.com", FakeHttp(resp(REAL_HR)), lambda s: None)
+    monkeypatch.setenv("ASM_HUDSONROCK_ACK", "true")
+    assert c.configured()
+
+
+def test_hudsonrock_real_response_aggregates_only(monkeypatch):
+    monkeypatch.setenv("ASM_HUDSONROCK_ACK", "true")
+    out = HudsonRockCollector().collect("www.acme.com", FakeHttp(resp(REAL_HR)), lambda s: None, now=NOW)
+    assert len(out) == 1
+    f = out[0]
+    assert f.severity == "critical" and f.kind == "infostealer" and f.url == "https://www.hudsonrock.com/search/domain/acme.com"
+    ev = f.evidence
+    assert ev["employees"] == 1022 and ev["users"] == 50000 and ev["last_employee_compromised"] == "2026-09-30"
+    assert ev["employee_password_strength"] == {"too_weak": 94, "weak": 610, "medium": 34, "strong": 284}
+    assert [x["name"] for x in ev["stealer_families"]][:2] == ["RedLine", "Raccoon"]
+    assert ev["employee_portal_urls"] == ["https://auth.services.example.com/login"]       # https only, no credentials in URLs
+    blob = json.dumps([f.__dict__ for f in out])
+    for forbidden in ("someone@example.com", "hunter2hunter2", "SECRETVALUE", "leak.example"):
+        assert forbidden not in blob                                                         # per-credential data is never read
+
+
+def test_hudsonrock_severity_rules():
+    assert rate(5, 0, 10, None) == "critical" and rate(5, 0, 100, None) == "high" and rate(5, 0, 900, None) == "medium"
+    assert rate(5, 0, None, None) == "medium"
+    assert rate(0, 50, None, 30) == "medium" and rate(0, 50, None, 400) == "low" and rate(0, 0, None, None) is None
+
+
+def test_hudsonrock_clean_domain_and_bad_responses(monkeypatch):
+    monkeypatch.setenv("ASM_HUDSONROCK_ACK", "1")
+    c = HudsonRockCollector()
+    clean = {"total": 0, "employees": 0, "users": 0, "third_parties": 0, "data": [], "stats": {}}
+    assert c.collect("acme.com", FakeHttp(resp(clean)), lambda s: None) == []
+    for bad in (resp({}, 500), Response(200, b"<html>", {}), resp({"unrelated": 1}), resp([1, 2])):
+        with pytest.raises(CollectorError):
+            c.collect("acme.com", FakeHttp(bad), lambda s: None)
+    with pytest.raises(RateLimited):
+        c.collect("acme.com", FakeHttp(resp({}, 429)), lambda s: None)
+    from backend.exposure.base import NotApplicable
+    with pytest.raises(NotApplicable):
+        c.collect("10.1.1.1", FakeHttp(resp(clean)), lambda s: None)
