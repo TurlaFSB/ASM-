@@ -1,7 +1,7 @@
 import subprocess
 import logging
 import time
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET   # nmap output carries text from scanned hosts: parse it defensively
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List
 

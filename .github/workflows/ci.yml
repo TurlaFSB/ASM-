@@ -48,3 +48,29 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run build
+
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Static analysis (bandit, medium and above)
+        run: |
+          pip install bandit
+          bandit -q -r backend -x backend/tests -ll
+      - name: Python dependency audit
+        # Accepted risks and reasons are listed in SECURITY.md
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt \
+            --ignore-vuln PYSEC-2026-3552 --ignore-vuln PYSEC-2026-3553 \
+            --ignore-vuln PYSEC-2026-3554 --ignore-vuln GHSA-537c-gmf6-5ccf
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Frontend dependency audit
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high

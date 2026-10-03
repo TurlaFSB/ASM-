@@ -28,7 +28,7 @@ from backend.rollup import COMPONENT_RE as _COMPONENT_RE  # noqa: E402
 
 
 def _fp(category: str, change_type: str, asset: str, subject: str) -> str:
-    return hashlib.sha1(f"{category}|{change_type}|{asset}|{subject}".encode()).hexdigest()[:20]
+    return hashlib.sha1(f"{category}|{change_type}|{asset}|{subject}".encode(), usedforsecurity=False).hexdigest()[:20]
 
 
 def _event(category, change_type, section, asset, subject, severity, summary,

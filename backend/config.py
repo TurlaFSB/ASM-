@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     database_url: str
     redis_url: str
     app_env: str = "development"
-    app_host: str = "0.0.0.0"
+    app_host: str = "0.0.0.0"  # nosec B104
     app_port: int = 8000
     default_rate_limit: int = 10
     scan_timeout: int = 300

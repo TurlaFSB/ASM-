@@ -7,10 +7,11 @@ passlib==1.7.4
 pydantic==2.13.4
 pydantic_settings==2.14.2
 python-dotenv==1.2.2
-python_jose==3.5.0
+PyJWT>=2.10,<3
+defusedxml>=0.7.1,<1
 Requests==2.34.2
 SQLAlchemy==2.0.36
-weasyprint==69.0
+weasyprint==70.0
 bcrypt==4.0.1
 # Previously unpinned: bounded to the versions this code is tested against
 uvicorn[standard]>=0.52,<0.53
