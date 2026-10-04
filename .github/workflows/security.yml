@@ -78,6 +78,25 @@ jobs:
             --format sarif --output /out/${{ matrix.name }}.sarif --no-progress asm-${{ matrix.name }}:scan
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.cache/trivy:/root/.cache" \
             aquasec/trivy:latest image --severity HIGH,CRITICAL --ignore-unfixed --no-progress asm-${{ matrix.name }}:scan || true
+      - name: List fixable findings as annotations
+        if: always()
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.cache/trivy:/root/.cache" \
+            -v "$PWD/trivy-out:/out" aquasec/trivy:latest image --severity HIGH,CRITICAL --ignore-unfixed \
+            --format json --output /out/${{ matrix.name }}.json --no-progress asm-${{ matrix.name }}:scan || true
+          python3 - <<'PY'
+          import json, os
+          path = "trivy-out/${{ matrix.name }}.json"
+          if os.path.exists(path):
+              data = json.load(open(path))
+              rows = [(v["Severity"], v["PkgName"], v["InstalledVersion"], v.get("FixedVersion", ""), v["VulnerabilityID"], r.get("Target", ""))
+                      for r in data.get("Results", []) for v in r.get("Vulnerabilities", []) or []]
+              rows.sort(key=lambda x: (x[0] != "CRITICAL", x[1]))
+              for sev, pkg, inst, fix, vid, tgt in rows[:40]:
+                  level = "error" if sev == "CRITICAL" else "warning"
+                  print(f"::{level} title=Trivy {sev} {vid}::{pkg} {inst} -> {fix} ({tgt})")
+              print(f"{len(rows)} fixable HIGH/CRITICAL findings")
+          PY
       - uses: github/codeql-action/upload-sarif@v3
         continue-on-error: true   # read-only token on Dependabot PRs
         if: always() && hashFiles(format('trivy-out/{0}.sarif', matrix.name)) != ''
