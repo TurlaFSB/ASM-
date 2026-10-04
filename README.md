@@ -15,7 +15,7 @@ Discover what you expose to the internet, find what is vulnerable, and get told 
 
 [Quick start](#quick-start) · [Features](#features) · [Documentation](#table-of-contents) · [Changelog](CHANGELOG.md) · [Security policy](SECURITY.md)
 
-<img src="docs/screenshots/dashboard.png" alt="ASM Platform dashboard showing targets, live assets, completed scans, critical and high findings, latest changes and the highest-risk assets" width="100%">
+<img src="docs/images/dashboard.png" alt="ASM Platform dashboard showing targets, live assets, completed scans, critical and high findings, latest changes and the highest-risk assets" width="100%">
 
 </div>
 
@@ -59,39 +59,35 @@ It runs entirely on your own infrastructure with Docker Compose. There is no Saa
 
 ## Screenshots
 
-**Dashboard.** Posture at a glance: targets, live assets, findings, latest changes and the highest-risk assets.
-
-<img src="docs/screenshots/dashboard.png" alt="Dashboard" width="100%">
-
 **Targets.** Add authorized targets, choose a scan profile, and set notifications, tags and directory scanning per target.
 
-<img src="docs/screenshots/targets.png" alt="Targets list with profile picker, scan button and per-target notification settings" width="100%">
+<img src="docs/images/targets.png" alt="Targets list with profile picker, scan button and per-target notification settings" width="100%">
 
 **Scans.** Per-stage results for every run, with the report, exports and screenshots from each scan's menu.
 
-<img src="docs/screenshots/scans.png" alt="Scans list showing status, profile, stage summary, results and report download" width="100%">
+<img src="docs/images/scans.png" alt="Scans list showing status, profile, stage summary, results and report download" width="100%">
 
 **Assets.** A searchable inventory with technologies, open ports, risk and what is new or changed.
 
-<img src="docs/screenshots/assets.png" alt="Asset inventory with web status, technologies, open ports and risk level" width="100%">
+<img src="docs/images/assets.png" alt="Asset inventory with web status, technologies, open ports and risk level" width="100%">
 
 **Vulnerabilities.** Scanner-confirmed findings and version-matched CVEs grouped per component, with KEV flags and triage.
 
-<img src="docs/screenshots/vulnerabilities.png" alt="Vulnerabilities page with severity counts, source filters and grouped CVE findings" width="100%">
+<img src="docs/images/vulnerabilities.png" alt="Vulnerabilities page with severity counts, source filters and grouped CVE findings" width="100%">
 
 **Exposure.** Switch on the sources you want per target: GitHub code, breach records, lookalike domains, ransomware listings and infostealer counts.
 
-<img src="docs/screenshots/exposure.png" alt="Exposure monitoring sources for a target" width="100%">
+<img src="docs/images/exposure.png" alt="Exposure monitoring sources for a target" width="100%">
 
 **Alerts.** Confirmed changes at or above each target's severity, plus a delivery log for webhooks and email.
 
-<img src="docs/screenshots/alerts.png" alt="Alerts page" width="100%">
+<img src="docs/images/alerts.png" alt="Alerts page" width="100%">
 
 **Schedules and account.** Recurring scans by cron or preset, and API tokens for scripts and CI.
 
-<img src="docs/screenshots/schedules.png" alt="New schedule panel with hourly, daily, weekly and custom cron options" width="100%">
+<img src="docs/images/schedules.png" alt="New schedule panel with hourly, daily, weekly and custom cron options" width="100%">
 
-<img src="docs/screenshots/account.png" alt="Account page with password change and API tokens" width="100%">
+<img src="docs/images/account.png" alt="Account page with password change and API tokens" width="100%">
 
 A sample of the client-ready report generated for every scan: [asm_report_scan_91.pdf](https://github.com/user-attachments/files/30161571/asm_report_scan_91.pdf).
 
