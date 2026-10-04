@@ -737,7 +737,8 @@ a.attention-item:focus-visible { outline: 2px solid var(--accent); outline-offse
 .dl-note { font-size: 12.5px; color: var(--text-tertiary); margin: 10px 0 0; max-width: 78ch; line-height: 1.55; }
 
 /* ── Compact stat tiles ───────────────────── */
-.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 14px 0 16px; }
+.dl-note + .filters, .dl-note + .dl-note { margin-top: 12px; }
 .tile { text-align: left; padding: 14px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); color: inherit; cursor: pointer; transition: border-color var(--dur-1) var(--ease), background var(--dur-1) var(--ease); }
 .tile:hover { border-color: var(--border-strong); background: var(--surface-2); }
 .tile.active { border-color: var(--accent-border); background: var(--accent-dim); }

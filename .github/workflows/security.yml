@@ -79,6 +79,7 @@ jobs:
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.cache/trivy:/root/.cache" \
             aquasec/trivy:latest image --severity HIGH,CRITICAL --ignore-unfixed --no-progress asm-${{ matrix.name }}:scan || true
       - uses: github/codeql-action/upload-sarif@v3
+        continue-on-error: true   # read-only token on Dependabot PRs
         if: always() && hashFiles(format('trivy-out/{0}.sarif', matrix.name)) != ''
         with:
           sarif_file: trivy-out/${{ matrix.name }}.sarif
