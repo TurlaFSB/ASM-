@@ -41,8 +41,9 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
              wordlist: str = None, enable_dirbuster: bool = True, profile: str = None):
     """
     Full ASM pipeline task.
-    Runs all scanner modules sequentially.
-    Updates scan record in DB at each stage.
+    Runs all scanner modules and updates the scan record in the DB at each stage.
+    The decisions and data transforms live in backend.pipeline_stages; this function owns the lock,
+    the guard thread and the commit/failure bookkeeping.
     """
     from backend.scanner.subdomain import enumerate_subdomains
     from backend.scanner.dns import resolve_subdomains
@@ -52,14 +53,19 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
     from backend.scanner.whatweb import run_whatweb
     from backend.scanner.dirbuster import run_dirbuster
     from backend.scanner.sslyze_scan import run_sslyze
-    from backend.scanner.vuln import run_nuclei
+    from backend.scanner.vuln import run_nuclei, network_tags_from_services
     from backend.scanner.screenshot import run_eyewitness
+    from backend.scanner.cve_match import run_cve_match
     from backend.scan_persist import upsert_assets, save_discovered_paths
     from backend.db import SessionLocal
     from backend.models.scan import Scan
-    from backend.models.vulnerability import Vulnerability
     from backend.models.scan_asset import ScanAsset
     from backend.models.target import Target
+    from backend import pipeline_stages as ps
+    from backend.pipeline_utils import (
+        build_web_targets, tls_targets_from_urls, urls_in_scope, run_stages_parallel, effective_rate,
+    )
+    import os as _os
     import time
     from datetime import datetime, timezone
 
@@ -89,28 +95,12 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
 
     # thread_local=False: the ScanGuard thread renews this lock, and redis-py
     # keeps the lock token in thread-local storage by default.
-    lock = redis_client.lock(
-        cx.lock_key(target_id), timeout=cx.LOCK_TTL, thread_local=False
-    )
+    lock = redis_client.lock(cx.lock_key(target_id), timeout=cx.LOCK_TTL, thread_local=False)
     have_lock = lock.acquire(blocking=False)
     if not have_lock:
-        # A lock whose owner scan is no longer active is stale (worker killed, restarted, OOM).
-        stale = False
-        try:
-            raw = redis_client.get(cx.owner_key(target_id))
-            owner_id = int(raw) if raw else None
-        except Exception:  # noqa: BLE001
-            owner_id = None
         _db = SessionLocal()
         try:
-            if owner_id:
-                _o = _db.query(Scan).filter(Scan.id == owner_id).first()
-                stale = _o is None or _o.status not in ("pending", "running")
-            else:
-                # Lock taken by code that predates the owner marker (or the marker expired): it is
-                # stale unless some OTHER scan of this target is actually running right now.
-                stale = (_db.query(Scan).filter(Scan.target_id == target_id, Scan.status == "running",
-                                                Scan.id != scan_id).first() is None)
+            stale, owner_id = ps.lock_is_stale(redis_client, _db, target_id, scan_id, cx)
         finally:
             _db.close()
         if stale:
@@ -132,8 +122,11 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
     scan = None
     overall_start = time.time()
 
+    def stage(name):
+        checkpoint()
+        ps.enter_stage(self, db, scan, name)
+
     try:
-        # Update scan status to running
         if scan_id:
             scan = db.query(Scan).filter(Scan.id == scan_id).first()
             if scan:
@@ -147,95 +140,39 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                 db.commit()
 
         stage_start = time.time()
-
-        import ipaddress
-        from backend.validators import classify_target, INTERNAL_SUFFIXES
-
-        def _is_internal_target(d):
-            return classify_target(d) == "ip" or d.lower().endswith(INTERNAL_SUFFIXES)
-
-        internal_target = _is_internal_target(domain)
+        internal_target = ps.is_internal_target(domain)
 
         if internal_target:
-            # Raw IP or internal/lab hostname -- public subdomain discovery
-            # (subfinder/amass query CT logs, passive DNS, etc.) cannot find
-            # anything for a target that's never been publicly indexed.
-            # Skip straight to treating the target itself as the sole live host.
-            checkpoint()
-            self.update_state(state="PROGRESS", meta={"stage": "subdomain_enumeration"})
-            if scan:
-                scan.current_stage = "subdomain_enumeration"
-                db.commit()
+            # Raw IP or internal/lab hostname: subfinder/amass query public sources that cannot know it.
+            # Treat the target itself as the sole live host.
+            stage("subdomain_enumeration")
             module_results["subfinder"] = "skipped (internal/IP target)"
             module_results["amass"] = "skipped (internal/IP target)"
-            subdomains = [domain]
-            stage_timings["subdomain"] = round(time.time()-stage_start,2)
+            stage_timings["subdomain"] = round(time.time() - stage_start, 2)
             logger.info(f"[pipeline] Subdomain skipped for internal target {domain}")
 
-            checkpoint()
-
-            self.update_state(state="PROGRESS", meta={"stage": "dns_resolution"})
-            if scan:
-                scan.current_stage = "dns_resolution"
-                db.commit()
+            stage("dns_resolution")
             stage_start = time.time()
-
-            try:
-                ipaddress.ip_address(domain)
-                resolved_ip = domain
-            except ValueError:
-                import socket
-                try:
-                    resolved_ip = socket.gethostbyname(domain)
-                except socket.gaierror as e:
-                    resolved_ip = None
-                    logger.warning(f"[pipeline] Could not resolve internal hostname {domain}: {e}")
-
-            if resolved_ip:
-                live_hosts = [{"subdomain": domain, "ip": resolved_ip}]
-                module_results["dns"] = "resolved directly (internal target)"
-            else:
-                live_hosts = []
-                module_results["dns"] = "resolution failed"
-
-            stage_timings["dns"] = round(time.time()-stage_start,2)
-            logger.info(f"[pipeline] DNS completed in {stage_timings['dns']}s ({len(live_hosts)} live hosts)")
+            live_hosts, module_results["dns"] = ps.internal_live_hosts(domain)
         else:
-            # Stage 1: Subdomain enumeration
-            checkpoint()
-            self.update_state(state="PROGRESS", meta={"stage": "subdomain_enumeration"})
-            if scan:
-                scan.current_stage = "subdomain_enumeration"
-                db.commit()
+            stage("subdomain_enumeration")
             subdomain_data = enumerate_subdomains(domain, rate_limit)
             module_results["subfinder"] = subdomain_data["module_status"]["subfinder"]
             module_results["amass"] = subdomain_data["module_status"]["amass"]
             subdomains = subdomain_data["subdomains"]
-
-            stage_timings["subdomain"] = round(time.time()-stage_start,2)
+            stage_timings["subdomain"] = round(time.time() - stage_start, 2)
             logger.info(f"[pipeline] Subdomain completed in {stage_timings['subdomain']}s ({len(subdomains)} subdomains)")
 
-            # Stage 2: DNS resolution
-            checkpoint()
-            self.update_state(state="PROGRESS", meta={"stage": "dns_resolution"})
-            if scan:
-                scan.current_stage = "dns_resolution"
-                db.commit()
+            stage("dns_resolution")
             stage_start = time.time()
-
             dns_data = resolve_subdomains(subdomains)
             module_results["dns"] = dns_data["module_status"]
             live_hosts = dns_data["live"]
+        stage_timings["dns"] = round(time.time() - stage_start, 2)
+        logger.info(f"[pipeline] DNS completed in {stage_timings['dns']}s ({len(live_hosts)} live hosts)")
 
-            stage_timings["dns"] = round(time.time()-stage_start,2)
-            logger.info(f"[pipeline] DNS completed in {stage_timings['dns']}s ({len(live_hosts)} live hosts)")
-
-        # Stage 2.5: WHOIS + ASN lookup
-        checkpoint()
-        self.update_state(state="PROGRESS", meta={"stage": "whois_asn_lookup"})
-        if scan:
-            scan.current_stage = "whois_asn_lookup"
-            db.commit()
+        # WHOIS + ASN
+        stage("whois_asn_lookup")
         stage_start = time.time()
         first_ip = next((h["ip"] for h in live_hosts if h.get("ip")), None)
         whois_result = run_whois_asn(domain, resolved_ip=first_ip, is_internal=internal_target)
@@ -244,93 +181,54 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             target_row.whois_data = whois_result
             db.commit()
         module_results["whois_asn"] = "completed" if (whois_result.get("domain_whois") or whois_result.get("asn")) else "no data"
-        stage_timings["whois_asn"] = round(time.time()-stage_start,2)
+        stage_timings["whois_asn"] = round(time.time() - stage_start, 2)
         logger.info(f"[pipeline] WHOIS/ASN completed in {stage_timings['whois_asn']}s")
 
-        # Stage 3: Port scanning
-        checkpoint()
-        self.update_state(state="PROGRESS", meta={"stage": "port_scanning"})
-        if scan:
-            scan.current_stage = "port_scanning"
-            db.commit()
+        # Port scanning
+        stage("port_scanning")
         stage_start = time.time()
-
         port_data = scan_multiple_hosts(live_hosts, rate_limit, prof.nmap_ports, prof.nmap_host_timeout,
-                                       prof.nmap_version_intensity)
+                                        prof.nmap_version_intensity)
         module_results["portscan"] = port_data["module_status"]
+        stage_timings["portscan"] = round(time.time() - stage_start, 2)
+        logger.info(f"[pipeline] PortScan completed in {stage_timings['portscan']}s ({len(port_data['hosts'])} hosts scanned)")
 
-        stage_timings["portscan"] = round(time.time()-stage_start,2)
-        logger.info(
-            f"[pipeline] PortScan completed in {stage_timings['portscan']}s "
-            f"({len(port_data['hosts'])} hosts scanned)"
-        )
-
-        # Stage 4: HTTP probing
-        checkpoint()
-        self.update_state(state="PROGRESS", meta={"stage": "http_probing"})
-        if scan:
-            scan.current_stage = "http_probing"
-            db.commit()
-        # Feed HTTPX bare hostnames -- it determines http/https itself via
-        # -follow-redirects, so we don't need to force a scheme upfront.
+        # HTTP probing: every web-looking port nmap found, bare host names (httpx picks the scheme itself)
+        stage("http_probing")
         stage_start = time.time()
-
-        from backend.pipeline_utils import (
-            build_web_targets, tls_targets_from_urls,
-        )
         bare_hosts = [h["subdomain"] for h in live_hosts]
-        # Probe every web-looking port nmap found (not just 80/443)
         web_targets = build_web_targets(port_data["hosts"], bare_hosts)
         http_data = run_httpx(web_targets, rate_limit)
         module_results["httpprobe"] = http_data["module_status"]
 
-        # Use CONFIRMED live URLs (with correct scheme) from HTTPX output for
-        # downstream tools, instead of the original guessed http:// list.
-        # Falls back to bare hostnames only if HTTPX found nothing, so
-        # nuclei/eyewitness don't get an empty target list on partial failure.
+        # Downstream tools get the CONFIRMED URLs (correct scheme) that stay inside the target's scope.
+        # With no confirmed web service the web stages get nothing: bare hosts have no scheme and would
+        # make feroxbuster/nuclei/eyewitness error out.
         confirmed_urls = list(dict.fromkeys(h["url"] for h in http_data["hosts"] if h.get("url")))
-        from backend.pipeline_utils import urls_in_scope
         scope_names = [h["subdomain"] for h in live_hosts] + [h.get("ip") for h in live_hosts]
         confirmed_urls, out_of_scope = urls_in_scope(confirmed_urls, scope_names, domain)
         if out_of_scope:
             logger.warning(f"[pipeline] dropped {len(out_of_scope)} URL(s) outside the target scope "
                            f"(redirected away): {out_of_scope[:5]}")
             module_results["scope_filter"] = f"dropped {len(out_of_scope)} out-of-scope redirect URL(s)"
-        # No confirmed web service -> web stages get nothing (bare hosts have no scheme
-        # and would make feroxbuster/nuclei/eyewitness error out).
         host_urls = confirmed_urls
+        stage_timings["httpx"] = round(time.time() - stage_start, 2)
+        logger.info(f"[pipeline] HTTPX completed in {stage_timings['httpx']}s ({len(http_data['hosts'])} live web services)")
 
-        stage_timings["httpx"] = round(time.time()-stage_start,2)
-        logger.info(
-            f"[pipeline] HTTPX completed in {stage_timings['httpx']}s "
-            f"({len(http_data['hosts'])} live web services)"
-        )
-
-        # Stages 4.5-6: independent web-facing modules run CONCURRENTLY
-        # (whatweb, directory discovery, nuclei, sslyze, screenshots). Total time becomes
-        # the slowest module instead of the sum. They only read host_urls/TLS targets and
-        # never touch the DB, so this is thread-safe. ASM_PARALLEL_STAGES=false disables it.
-        import os as _os
-        from backend.pipeline_utils import run_stages_parallel, effective_rate
-        # nuclei and feroxbuster run at the same time against the same hosts: split the budget
-        # so combined load stays within the configured ceiling (overloading a host makes
-        # nuclei abandon it as 'unresponsive').
+        # Independent web-facing modules run CONCURRENTLY; total time becomes the slowest module instead of
+        # the sum. They only read host_urls/TLS targets and never touch the DB. ASM_PARALLEL_STAGES=false
+        # runs them one after another. nuclei and feroxbuster hit the same hosts at the same time, so split
+        # the rate budget between them (overloading a host makes nuclei abandon it as 'unresponsive').
         n_heavy = int(enable_dirbuster) + int(prof.run_nuclei) + int(prof.run_nuclei_network)
         heavy_rate = max(1, effective_rate(rate_limit) // max(1, n_heavy))
-        checkpoint()
-        self.update_state(state="PROGRESS", meta={"stage": "web_analysis"})
-        if scan:
-            scan.current_stage = "web_analysis"
-            db.commit()
+        stage("web_analysis")
         stage_start = time.time()
-        from backend.scanner.cve_match import run_cve_match
 
         def _cve_cache():
             try:
                 return redis.Redis.from_url(settings.redis_url, socket_timeout=2)
             except Exception:  # noqa: BLE001
                 return None
-        from backend.scanner.vuln import network_tags_from_services
         net_tags = network_tags_from_services(port_data["hosts"])
         tls_targets = tls_targets_from_urls(confirmed_urls)
         stage_results, stage_dts = run_stages_parallel(
@@ -365,178 +263,44 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
         stage_timings["web_analysis_wall"] = round(time.time() - stage_start, 2)
         checkpoint()                 # cancelled during web analysis: persist nothing from this scan
 
-        skipped = f"skipped (profile: {prof.name})"
-        module_results["profile"] = prof.name
-        whatweb_data = stage_results.get("whatweb") or {"hosts": {}, "module_status": skipped}
-        module_results["whatweb"] = whatweb_data["module_status"]
-        for entry in http_data["hosts"]:
-            ww_result = whatweb_data["hosts"].get(entry.get("url", ""))
-            if ww_result:
-                merged = set(entry.get("technologies", [])) | set(ww_result.get("technologies", []))
-                entry["technologies"] = sorted(merged)
-
-        if enable_dirbuster:
-            dirbuster_data = stage_results["dirbuster"]
-            module_results["dirbuster"] = dirbuster_data["module_status"]
-        else:
-            dirbuster_data = {"hosts": {}, "module_status": "skipped"}
-            module_results["dirbuster"] = skipped if not prof.run_dirbuster else "skipped"
-
-        vuln_data = stage_results.get("nuclei") or {"findings": [], "module_status": skipped}
-        module_results["vuln"] = vuln_data["module_status"]
-        net_data = stage_results.get("nuclei_network")
-        if net_data is not None:
-            module_results["nuclei_network"] = net_data["module_status"]
-            if net_data.get("degraded"):
-                module_results["nuclei_network_degraded"] = net_data["degraded"]   # host:ports not fully tested
-            vuln_data["findings"] = list(vuln_data.get("findings", [])) + net_data.get("findings", [])
-        else:
-            module_results["nuclei_network"] = (
-                skipped if not prof.run_nuclei_network else "skipped (no recognised network services)")
-        cve_data = stage_results.get("cve_match") or {"findings": [], "module_status": skipped}
-        module_results["cve_match"] = cve_data["module_status"]
-        if cve_data.get("truncated"):
-            module_results["cve_truncated"] = cve_data["truncated"]      # report says "N of M shown"
-        # version-matched CVEs flow through the same save/score/KEV path as nuclei findings
-        vuln_data.setdefault("findings", [])
-        vuln_data["findings"] = list(vuln_data["findings"]) + cve_data.get("findings", [])
-        module_results["nuclei_templates"] = vuln_data.get("template_count")
-        sslyze_data = stage_results.get("sslyze") or {"findings": [], "module_status": skipped}
-        module_results["sslyze"] = sslyze_data["module_status"]
-        screenshot_data = stage_results.get("screenshot") or {"screenshots": [], "module_status": skipped}
-        module_results["screenshot"] = screenshot_data["module_status"]
+        web = ps.collect_web_results(stage_results, prof, enable_dirbuster, http_data, module_results)
+        dirbuster_data, vuln_data, sslyze_data = web["dirbuster"], web["vuln"], web["sslyze"]
         logger.info(
             f"[pipeline] web analysis done in {stage_timings['web_analysis_wall']}s wall "
             f"(per-module: {stage_dts}); nuclei findings={len(vuln_data.get('findings', []))}, "
             f"sslyze findings={len(sslyze_data.get('findings', []))}"
         )
 
-        # Save Nuclei findings to DB
-        for finding in vuln_data.get("findings", []):
-            tags = finding.get("tags", [])
-            template_id = finding.get("template_id", "")
-
-            # Prefer real CVE from Nuclei's classification block; fall back to
-            # tag/template-id pattern matching only if classification is absent.
-            cve_id = finding.get("cve_id")
-            if not cve_id and isinstance(tags, list):
-                for tag in tags:
-                    if str(tag).upper().startswith("CVE-"):
-                        cve_id = str(tag).upper()
-                        break
-            if not cve_id and template_id.upper().startswith("CVE-"):
-                cve_id = template_id.upper()
-
-            vuln = Vulnerability(
-                target_id=target_id,
-                scan_id=scan_id,
-                template_id=template_id,
-                name=finding.get("name", ""),
-                severity=finding.get("severity", "info"),
-                description=finding.get("description", ""),
-                matched_at=finding.get("matched_at", ""),
-                vuln_type=finding.get("type", ""),
-                tags=tags,
-                host=finding.get("host", ""),
-                cve_id=cve_id,
-                cvss_score=finding.get("cvss_score")
-            )
-            db.add(vuln)
-
+        db.add_all(ps.build_vulnerabilities(vuln_data.get("findings", []), target_id, scan_id))
+        db.commit()
+        db.add_all(ps.build_vulnerabilities(sslyze_data.get("findings", []), target_id, scan_id,
+                                            type_key="vuln_type", derive_cve=False))
         db.commit()
 
-        # Save sslyze findings
-        for finding in sslyze_data.get("findings", []):
-            vuln = Vulnerability(
-                target_id=target_id,
-                scan_id=scan_id,
-                template_id=finding.get("template_id", ""),
-                name=finding.get("name", ""),
-                severity=finding.get("severity", "info"),
-                description=finding.get("description", ""),
-                matched_at=finding.get("matched_at", ""),
-                vuln_type=finding.get("vuln_type", ""),
-                tags=finding.get("tags", []),
-                host=finding.get("host", ""),
-                cve_id=finding.get("cve_id"),
-                cvss_score=finding.get("cvss_score")
-            )
-            db.add(vuln)
-        db.commit()
-        # Stage 7: Save assets to DB with upsert + change detection
-        checkpoint()
-        self.update_state(state="PROGRESS", meta={"stage": "saving_results"})
-        if scan:
-            scan.current_stage = "saving_results"
-            db.commit()
-
+        # Save assets with upsert + change detection
+        stage("saving_results")
         new_count, changed_count, disappeared_count, scanned_assets_this_run = upsert_assets(
             db, target_id, live_hosts, port_data, http_data, prof, module_results, internal_target)
 
         # Link dirbuster hits to assets (looked up fresh now that every asset has a real id).
         save_discovered_paths(db, target_id, scan_id, dirbuster_data)
 
-        # Record which assets were actually observed in this scan, for
-        # point-in-time report scoping (independent of Asset's mutable state)
+        # Record which assets were observed in this scan, for point-in-time report scoping
         for a in scanned_assets_this_run:
             db.add(ScanAsset(scan_id=scan_id, asset_id=a.id))
         db.commit()
 
-        # Historical diff: snapshot this scan and record structured changes vs the previous
-        # comparable scan. A diff bug must never turn a finished scan into a failed one.
         if scan:
-            try:
-                from backend.diffing.service import record_scan_changes
-                diff_summary = record_scan_changes(db, scan, module_results)
-                module_results["diff"] = ("baseline recorded" if diff_summary.get("baseline")
-                                          else f"ok ({diff_summary['events']} changes, "
-                                               f"{diff_summary['pending']} pending)")
-                module_results["diff_detail"] = diff_summary
-                logger.info(f"[diff] {module_results['diff']}")
-                # AI triage is advisory and bounded; failures leave the rule-based severities in place.
-                from backend.ai.triage import triage_scan_events
-                ai = triage_scan_events(db, scan)
-                module_results["ai_triage"] = ai
-                if ai["status"] != "disabled":
-                    logger.info(f"[ai] {ai}")
-                # Alerts and the webhook digest come from the CONFIRMED events just recorded.
-                from backend.notifications import notify_scan_changes
-                note = notify_scan_changes(db, scan)
-                module_results["notify"] = (f"ok ({note['alerts']} alerts, webhook {note['webhook']})"
-                                            if note["qualifying"] else "nothing to announce")
-                logger.info(f"[notify] {module_results['notify']}")
-            except Exception as e:  # noqa: BLE001
-                db.rollback()
-                logger.exception("[diff] failed to record changes")
-                module_results["diff"] = f"failed: {e}"
+            ps.record_changes_and_alerts(db, scan, module_results)
+            ps.seal_record(db, scan, module_results)
 
-        # Seal the finished record (signed hash chained to the target's previous seal). Never fatal.
-        if scan:
-            try:
-                from backend.integrity import seal_scan
-                seal = seal_scan(db, scan)
-                module_results["integrity"] = f"sealed #{seal.seq}" if seal else "not sealed (no snapshot)"
-            except Exception as e:  # noqa: BLE001
-                db.rollback()
-                logger.exception("[integrity] sealing failed")
-                module_results["integrity"] = f"failed: {e}"
-
-        # Stage 8: Risk scoring
-        checkpoint()
-        self.update_state(state="PROGRESS", meta={"stage": "risk_scoring"})
-        if scan:
-            scan.current_stage = "risk_scoring"
-            db.commit()
+        # Risk scoring
+        stage("risk_scoring")
         from backend.risk_scoring import score_all_assets
-
         stage_start = time.time()
         score_all_assets(db, target_id, scan_id)
         stage_timings["risk_scoring"] = round(time.time() - stage_start, 2)
-
-        logger.info(
-            f"[pipeline] Risk scoring completed in "
-            f"{stage_timings['risk_scoring']}s"
-        )
+        logger.info(f"[pipeline] Risk scoring completed in {stage_timings['risk_scoring']}s")
 
         if scan:
             scan.status = "completed"
@@ -557,10 +321,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             except Exception:  # noqa: BLE001
                 logger.warning("[pipeline] could not queue report pre-build", exc_info=True)
 
-        logger.info(
-            f"[pipeline] Total scan completed in "
-            f"{round(time.time()-overall_start,2)}s"
-        )
+        logger.info(f"[pipeline] Total scan completed in {round(time.time()-overall_start,2)}s")
 
         return {
             "status": "completed",
