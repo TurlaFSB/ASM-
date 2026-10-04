@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,13 +18,33 @@ from backend.api.assets import router as assets_router
 from backend.api.changes import router as changes_router
 from backend.api.exposure import router as exposure_router
 from backend.api.integrity import router as integrity_router
+from backend.api.users import router as users_router
 from backend.auth import get_current_user
 from backend.security import SECURITY_HEADERS
+
+def _announce_first_run():
+    """With no accounts yet, print the code the web setup screen asks for."""
+    try:
+        from backend.db import SessionLocal
+        from backend.models.user import User
+        from backend.sessions import setup_code
+        db = SessionLocal()
+        try:
+            if db.query(User.id).first() is None:
+                logging.getLogger("uvicorn.error").warning(
+                    "FIRST RUN: no accounts exist yet. Open the web app and create the first admin with setup code %s "
+                    "(or run: python3 -m backend.scripts.create_admin).", setup_code())
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001  never block start-up on this
+        pass
+
 
 @asynccontextmanager
 async def lifespan(app):
     # Schema is owned by Alembic (the `migrate` compose service / `alembic upgrade head`),
     # not create_all: create_all silently skips changes to existing tables.
+    _announce_first_run()
     yield
 
 
@@ -59,6 +80,7 @@ app.include_router(assets_router)
 app.include_router(changes_router)
 app.include_router(exposure_router)
 app.include_router(integrity_router)
+app.include_router(users_router)
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next):

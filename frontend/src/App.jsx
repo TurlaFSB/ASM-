@@ -12,6 +12,7 @@ import Vulnerabilities from "./pages/Vulnerabilities";
 import Changes from "./pages/Changes";
 import Schedules from "./pages/Schedules";
 import Exposure from "./pages/Exposure";
+import Users from "./pages/Users";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 import ToastProvider from "./components/Toast";
@@ -49,6 +50,7 @@ export default function App() {
             <Route path="/vulnerabilities" element={<Vulnerabilities />} />
             <Route path="/schedules" element={<Schedules />} />
             <Route path="/exposure" element={<Exposure />} />
+            <Route path="/users" element={<Users />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
           </ErrorBoundary>

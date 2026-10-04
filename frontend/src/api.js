@@ -41,6 +41,13 @@ export const login = (username, password) => {
   return api.post("/auth/token", params);
 };
 export const logout = () => api.post("/auth/logout");
+export const getSetupStatus = () => api.get("/auth/setup-status");
+export const setupAccount = (data) => api.post("/auth/setup", data);
+export const changePassword = (current_password, new_password) => api.post("/auth/change-password", { current_password, new_password });
+export const getUsers = () => api.get("/users/");
+export const createUser = (data) => api.post("/users/", data);
+export const updateUser = (id, data) => api.patch(`/users/${id}`, data);
+export const resetUserPassword = (id, new_password) => api.post(`/users/${id}/reset-password`, { new_password });
 export const getTargets = () => api.get("/targets/");
 export const getScans = () => api.get("/scans/");
 export const getTargetHistory = (id) => api.get(`/targets/${id}/history`);

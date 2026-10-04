@@ -250,7 +250,9 @@ ASM performs active scanning, so its own security matters.
 - **JWT on every route**, with account status re-checked on each request.
 - **Browser sessions use an httpOnly, SameSite=Lax cookie** (never readable by page scripts, so an XSS bug cannot steal the login) plus a CSRF token that every state-changing request must echo in `X-CSRF-Token`. API clients can still send `Authorization: Bearer <token>` from `/auth/token`; those calls need no CSRF header. Set `COOKIE_SECURE=true` when serving over HTTPS. The web app and API must share a host name (different ports are fine).
 - **Login throttling.** Failed logins are counted per IP and username, per IP, and per username across all IPs; unknown usernames cost the same time as wrong passwords.
-- **Admin and viewer roles.** Viewers can read everything but every change route (targets, scans, schedules, audit log) needs an admin.
+- **Admin and viewer roles.** Viewers can read everything but every change route (targets, scans, schedules, audit log, users) needs an admin.
+- **Real sign-out.** Logging out puts the session token on a server-side deny-list, so a copied cookie or token stops working. Changing or resetting a password, changing a role, or deactivating an account signs that person out everywhere at once (every token carries a version that is checked against the account). If Redis is unreachable the deny-list check is skipped and logged; the version check still applies.
+- **Account safety.** Passwords need at least 12 characters (and at most 72 bytes, because longer ones would be silently cut by bcrypt). You cannot demote or deactivate yourself, and the last active admin cannot be removed. First-run setup needs a code from the server log and is throttled.
 - **Untrusted scan data is scrubbed.** NUL bytes from hostile banners are stripped before they reach PostgreSQL, and API docs are switched off when `APP_ENV=production`.
 - **Input validation.** Hostname format and length are enforced, and the per-target rate limit is bounded (1-100 req/s).
 - **Private address protection.** Scanning private and reserved ranges is refused unless explicitly enabled (`ASM_ALLOW_PRIVATE_TARGETS`). Discovered hostnames that resolve to loopback, link-local, private or carrier-grade NAT space are skipped too.
@@ -304,17 +306,23 @@ docker compose ps
 
 `postgres` and `redis` should report `healthy`. The `migrate` service exits after applying migrations, so it is not listed as `Up`. To run it manually: `docker compose run --rm migrate`.
 
-### 4. Create the admin account
+### 4. Create the first admin account
+
+Open `http://<host>:3000` (use `localhost` when Docker runs on your machine). With no accounts yet, the page offers a setup screen. It asks for a setup code that the backend prints in its log at start-up, so only someone who can read the server's logs can claim a fresh install:
+
+```bash
+docker compose logs backend | grep "setup code"
+```
+
+Prefer the terminal? This works too (add `--viewer` for a read-only account):
 
 ```bash
 docker exec -it asm_backend python3 -m backend.scripts.create_admin
 ```
 
-To add a read-only account, add `--viewer` to that command.
+### 5. Sign in and add your team
 
-### 5. Sign in
-
-Open `http://<host>:3000` (use `localhost` when Docker runs on your machine).
+Sign in, then use **Users** (admins only) to add accounts, change roles, reset passwords or deactivate people. Everyone can change their own password from the account button at the bottom of the sidebar.
 
 ---
 
@@ -367,6 +375,7 @@ Nuclei tuning (`NUCLEI_SEVERITY`, `NUCLEI_AUTOSCAN`, `NUCLEI_MAX_HOST_ERROR`, `N
 | **Vulnerabilities** | Template findings, inferred CVE matches and TLS issues with severity, CVE and CVSS. |
 | **Exposure** | Choose a target, switch sources on, press *Check now*, review masked findings and dismiss or reopen them. |
 | **Alerts** | In-app alerts, delivery log and per-target webhook settings. |
+| **Users** | Admins only: add accounts, make someone admin or viewer, reset passwords, deactivate or reactivate. |
 
 The appearance switch at the bottom of the sidebar selects light, system or dark. Viewer accounts can read every page but cannot change anything.
 
@@ -380,7 +389,8 @@ Interactive documentation is served by FastAPI at `http://<host>:8000/docs`. All
 
 | Area | Endpoints |
 |---|---|
-| Auth | `POST /auth/token`, `GET /auth/me`, `POST /auth/logout` |
+| Auth | `POST /auth/token`, `GET /auth/me`, `POST /auth/logout`, `POST /auth/change-password`, `GET /auth/setup-status`, `POST /auth/setup` |
+| Users (admin) | `GET/POST /users/`, `PATCH /users/{id}`, `POST /users/{id}/reset-password` |
 | Targets and scans | `/targets/*`, `/scans/*` (including `/scans/profiles`) |
 | Assets and vulnerabilities | `/assets/*`, `/vulnerabilities/*` |
 | Alerts and schedules | `/alerts/*`, `/schedules/*` |
@@ -515,7 +525,7 @@ docker run --rm -v asm_screenshots_data:/data -v "$PWD/backups":/out busybox:1.3
 | Scan button shows `Private IP targets are disabled` | Target is in a private range | Set `ASM_ALLOW_PRIVATE_TARGETS=true` and recreate `backend` and `celery_worker` |
 | Exposure source says `Needs ...` | A required token or acknowledgement is not set | Set `ASM_GITHUB_TOKEN` or `ASM_HUDSONROCK_ACK=true` in `.env.docker` and recreate `backend` and `celery_worker` |
 | Nmap SYN scan refused in the production overlay | The worker lacks `NET_RAW` | Keep `cap_add: [NET_RAW]` on `celery_worker`, or accept the automatic connect-scan fallback |
-| 401 with correct credentials | `users` table is empty (usually after `down -v`) | Re-run `create_admin`. Repeated failures also lock the login for a while |
+| 401 with correct credentials | `users` table is empty (usually after `down -v`) | Open the app: it shows the setup screen again (code from `docker compose logs backend`). Repeated failures also lock the login for a while |
 | Scan stuck on `pending` | A non-Docker Celery worker consumed the task | Stop any host-level `celery` process |
 | `redis.exceptions.ResponseError: MISCONF` | Disk full, Redis cannot persist | Free space (`docker image prune -a`, `docker builder prune`) and restart |
 | Scanner tool "not found" | Binary missing from the image | `docker exec asm_celery_worker which <tool>`; fix the Dockerfile |
@@ -545,7 +555,7 @@ Infostealer exposure counts: free OSINT lookup by [Hudson Rock](https://www.huds
 | Alerts, webhooks and per-target notification settings | Done |
 | Per-port path tracking | Done |
 | AI-assisted triage with guardrails and a labelled evaluation set | Done: explain-only by default |
-| Role-based access (viewer and admin) | Done |
+| Role-based access (viewer and admin), user management, password change, first-run setup, server-side sign-out | Done |
 | Login throttling per IP and username, constant-time unknown-user path | Done |
 | Scan watchdog and reaper; one active scan per target | Done |
 | Pagination on list endpoints; schedule safety rails | Done |
@@ -563,7 +573,7 @@ Infostealer exposure counts: free OSINT lookup by [Hudson Rock](https://www.huds
 
 ## Known limitations
 
-- **Small-team user model.** There are two roles (admin and viewer) but no self-service registration or user management screen; accounts are created with `create_admin`.
+- **Small-team user model.** There are two roles (admin and viewer), managed by admins on the Users page. There is no self-service registration, email-based password reset or multi-factor authentication yet.
 - **CVE matching is version-based.** At most 15 CVEs are kept per service (highest risk first); the report says when a list was capped. It depends on the version a service reports. Services without a banner version produce no matches, and matches are marked *inferred* until verified.
 - **Profile blind spots.** Quick and Standard do not see services outside their port lists (top 100, and top 1000 plus a curated extras list).
 - **Network service checks can be starved.** Some services (an old OpenSSH, for instance) answer the banner but stall on the deeper protocol handshakes the nuclei network templates perform. The scanner detects this (per-template timeouts), retries the affected templates gently, and if they still fail marks the host `low coverage`: removals there are held as pending and never reported as fixed. Root-causing a stalling service is left to the operator.

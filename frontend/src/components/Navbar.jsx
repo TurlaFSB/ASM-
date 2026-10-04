@@ -1,18 +1,26 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { getUnreadAlerts, getMe } from "../api";
-import { Sun, Moon, Monitor, Shield, Target, Activity, Database, Bell, AlertTriangle, LogOut, Clock, GitCompare, Radar } from "lucide-react";
+import { Sun, Moon, Monitor, Shield, Target, Activity, Database, Bell, AlertTriangle, LogOut, Clock, GitCompare, Radar, Users, KeyRound } from "lucide-react";
 import { getThemePref, setThemePref } from "../lib/theme";
+import ChangePassword from "./ChangePassword";
 import turlaLogo from "../assets/TURLA.png";
 
 export default function Navbar({ onLogout }) {
   const location = useLocation();
   const [unread, setUnread] = useState(0);
   const [role, setRole] = useState(null);
+  const [username, setUsername] = useState("");
+  const [pwOpen, setPwOpen] = useState(false);
   const [theme, setTheme] = useState(getThemePref);
   const pickTheme = (t) => { setTheme(t); setThemePref(t); };
 
-  useEffect(() => { getMe().then(r => setRole(r.data.role)).catch(() => {}); }, []);
+  useEffect(() => { getMe().then(r => { setRole(r.data.role); setUsername(r.data.username); }).catch(() => {}); }, []);
+  useEffect(() => {
+    const open = () => setPwOpen(true);
+    window.addEventListener("asm:change-password", open);
+    return () => window.removeEventListener("asm:change-password", open);
+  }, []);
 
   // Unread alert count: refreshed every minute, on navigation, and right after alerts are read.
   useEffect(() => {
@@ -34,6 +42,7 @@ export default function Navbar({ onLogout }) {
     { path: "/vulnerabilities", label: "Vulnerabilities", icon: <AlertTriangle size={18} /> },
     { path: "/exposure", label: "Exposure", icon: <Radar size={18} /> },
     { path: "/alerts", label: "Alerts", icon: <Bell size={18} /> },
+    ...(role === "admin" ? [{ path: "/users", label: "Users", icon: <Users size={18} /> }] : []),
   ];
 
   return (
@@ -69,6 +78,13 @@ export default function Navbar({ onLogout }) {
             </button>
           ))}
         </div>
+        {username && (
+          <button type="button" className="account-btn" onClick={() => setPwOpen(true)} title="Change your password" aria-label={`Signed in as ${username}. Change password`}>
+            <span className="account-name">{username}</span>
+            <KeyRound size={15} className="account-key" />
+          </button>
+        )}
+        <ChangePassword open={pwOpen} onClose={() => setPwOpen(false)} />
         <button className="logout-btn" onClick={onLogout}>
           <LogOut size={16} />
           Logout

@@ -2,12 +2,14 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 import hmac
 import secrets
+import uuid
 import jwt
 from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
+from backend import sessions
 from backend.config import settings
 from backend.db import get_db
 from backend.models.user import User
@@ -61,7 +63,7 @@ def authenticate_user(db: Session, username: str, password: str):
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=settings.access_token_expire_minutes))
-    to_encode.update({"exp": expire})
+    to_encode.update({"exp": expire, "jti": uuid.uuid4().hex})
     return jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
 
 
@@ -90,8 +92,14 @@ def get_current_user(request: Request, bearer: Optional[str] = Depends(oauth2_sc
     except jwt.PyJWTError:
         raise credentials_exception
 
+    if sessions.is_revoked(payload.get("jti")):          # signed out
+        raise credentials_exception
     user = db.query(User).filter(User.username == username, User.is_active == True).first()
     if user is None:
+        raise credentials_exception
+    # Password changed/reset or account deactivated since this token was issued. Tokens from before the
+    # upgrade carry no version and count as version 0.
+    if int(payload.get("ver", 0)) != int(getattr(user, "token_version", 0) or 0):
         raise credentials_exception
     return user
 
