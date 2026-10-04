@@ -344,6 +344,7 @@ Set these in `.env.docker`. Only the first two are required.
 | `DIRBUSTER_MAX_SECONDS` | `900` | Upper bound for directory discovery per scan |
 | `NUCLEI_TIMEOUT` | `1800` | Upper bound for a nuclei run, in seconds |
 | `NUCLEI_CONCURRENCY` | `15` | Nuclei template concurrency |
+| `API_RATE_LIMIT_PER_MINUTE` | `600` | Requests per minute allowed from one client address before the API answers `429` with `Retry-After`; `0` disables. Login attempts have a stricter separate throttle |
 | `CORS_ORIGINS` | `http://localhost:5173,http://localhost:5174,http://localhost:3000` | Comma-separated browser origins allowed to call the API. Add the origin you open the app on if it differs, for example `http://192.168.1.20:3000` |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `480` | Session lifetime |
 | `APP_ENV` | `production` in the example file | `production` switches the interactive API docs off |
@@ -463,6 +464,7 @@ What the overlay changes:
 - **No source mounts.** The code is whatever was baked into the image; rebuild to deploy.
 - **Read-only root filesystem.** Scratch space is `tmpfs`; screenshots and scan output live in named volumes.
 - **Least privilege.** All Linux capabilities are dropped. Only the worker gets `NET_RAW`, and `nmap` carries a matching file capability so SYN scans (`-sS`) still work. If a deployment cannot grant `NET_RAW`, the scanner falls back to a TCP connect scan (`-sT`); force a mode with `ASM_NMAP_SCAN_TYPE=syn|connect`.
+- **Unprivileged web server.** The frontend image is `nginx-unprivileged` (uid 101, listens on 8080 inside the container, read-only, no capabilities, `no-new-privileges`).
 - **Volume ownership.** A one-shot `volume-init` service fixes ownership of existing root-owned volumes, so upgrading from the development setup keeps your data.
 
 Before exposing it, set in `.env.docker`:
@@ -470,6 +472,16 @@ Before exposing it, set in `.env.docker`:
 - `SECRET_KEY` to a long random value (it also derives the scan-seal signing key; rotating it marks older seals `valid_unverified_signature`).
 - `COOKIE_SECURE=true` and serve the app over HTTPS. The web app and API must share a host name for the login cookie.
 - A strong database password.
+
+### HTTPS with automatic certificates
+
+Add the Caddy overlay to get TLS on the web app (443) and the API (8000), with plain HTTP redirected:
+
+```bash
+ASM_DOMAIN=asm.example.com docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.tls.yml up -d
+```
+
+Set `COOKIE_SECURE=true` and `CORS_ORIGINS=https://asm.example.com` in `.env.docker` first. The host name must resolve to this machine with ports 80 and 443 reachable (Let's Encrypt). On a private network, follow the note at the top of `deploy/Caddyfile` to use Caddy's internal CA. The overlay stops publishing the backend and frontend ports directly and tells the API to trust the proxy's forwarded client address.
 
 Do not add `security_opt: no-new-privileges` to the worker: it would stop `nmap` from using its file capability.
 
@@ -565,6 +577,7 @@ Infostealer exposure counts: free OSINT lookup by [Hudson Rock](https://www.huds
 | Exposure monitoring: GitHub code, breach records, lookalike domains, ransomware listings, infostealer counts | Done |
 | Tamper-evident signed scan history | Done |
 | Finding triage with reasons, expiry and report suppression | Done |
+| Global API rate limit, unprivileged web server, HTTPS proxy overlay, CodeQL / Trivy / secret scanning in CI | Done |
 | Light and dark themes, accessibility checks | Done |
 | Container hardening: non-root production overlay, read-only filesystem, dropped capabilities | Done and verified on a Docker host (non-root, read-only root, only `NET_RAW` on the worker, SYN scans, PDF reports, seals, backup round trip). The frontend nginx image still runs its master process as root |
 | Dark-web mention monitoring via licensed intelligence APIs | Planned |

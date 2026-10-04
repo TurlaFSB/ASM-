@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     app_host: str = "0.0.0.0"  # nosec B104
     app_port: int = 8000
     default_rate_limit: int = 10
+    api_rate_limit_per_minute: int = 600   # per client address; 0 turns the limiter off
     scan_timeout: int = 300
     secret_key: str          # no default — must be set via env/.env, app fails to start otherwise
     algorithm: str = "HS256"

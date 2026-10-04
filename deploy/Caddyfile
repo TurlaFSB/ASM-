@@ -1,0 +1,31 @@
+# TLS termination for the ASM Platform. See docker-compose.tls.yml.
+# On a private network with no public DNS, add the line `tls internal` inside each of the two site blocks
+# (Caddy then issues certificates from its own CA; import its root certificate into your browsers).
+{
+	# Reachable only inside the compose network; nothing to configure here.
+}
+
+(common) {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+}
+
+# Web app
+{$ASM_DOMAIN}:443 {
+	import common
+	reverse_proxy frontend:8080
+}
+
+# API: same host name, port 8000
+{$ASM_DOMAIN}:8000 {
+	import common
+	reverse_proxy backend:8000
+}
+
+# Plain HTTP goes to HTTPS
+http://{$ASM_DOMAIN} {
+	redir https://{$ASM_DOMAIN}{uri} permanent
+}

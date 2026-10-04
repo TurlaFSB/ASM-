@@ -135,11 +135,11 @@ services:
     container_name: asm_frontend
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3000:80"
+      - "127.0.0.1:3000:8080"
     depends_on:
       - backend
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/"]
       interval: 30s
       timeout: 5s
       retries: 3

@@ -1,0 +1,42 @@
+# HTTPS in front of the app, with automatic certificates (Caddy). Use together with the other two files:
+#
+#   ASM_DOMAIN=asm.example.com docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.tls.yml up -d
+#
+# Requirements: ASM_DOMAIN points at this host (public DNS, ports 80 and 443 reachable) so Caddy can obtain a
+# Let's Encrypt certificate. For a private network see the note at the top of deploy/Caddyfile.
+# Also set in .env.docker:
+#   COOKIE_SECURE=true
+#   CORS_ORIGINS=https://asm.example.com
+# The web app (443) and the API (8000) share one host name, which the login cookie needs. Nothing else is published.
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: asm_caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8000:8000"
+    environment:
+      ASM_DOMAIN: ${ASM_DOMAIN:?set ASM_DOMAIN to the public host name}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+
+  backend:
+    ports: !reset []
+    environment:
+      # Trust the proxy's X-Forwarded-For so rate limits and audit logs see the real client address.
+      FORWARDED_ALLOW_IPS: "*"
+
+  frontend:
+    ports: !reset []
+
+volumes:
+  caddy_data:
+  caddy_config:

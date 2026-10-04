@@ -1,6 +1,7 @@
 import axios from "axios";
 
-const API_BASE = `http://${window.location.hostname}:8000`;
+// Same host as the page, port 8000, over the same scheme (so an HTTPS page talks HTTPS). VITE_API_URL overrides it at build time.
+const API_BASE = import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:8000`;
 
 // The session lives in an httpOnly cookie the browser attaches by itself, so script code never
 // sees the login token. State-changing calls echo the readable CSRF cookie in a header.

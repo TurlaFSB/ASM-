@@ -21,6 +21,8 @@ from backend.api.integrity import router as integrity_router
 from backend.api.users import router as users_router
 from backend.auth import get_current_user
 from backend.security import SECURITY_HEADERS
+from backend.ratelimit import rate_limit_middleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 def _announce_first_run():
     """With no accounts yet, print the code the web setup screen asks for."""
@@ -61,6 +63,8 @@ app = FastAPI(
     version="0.1.0"
 )
 
+# Added before CORS so that CORS wraps it: a 429 must still carry CORS headers or the browser hides it.
+app.add_middleware(BaseHTTPMiddleware, dispatch=rate_limit_middleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],

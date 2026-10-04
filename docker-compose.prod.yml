@@ -7,6 +7,7 @@
 #   * the backend, worker and beat run as an unprivileged user (uid 10001), not root
 #   * no source bind mounts: the code is whatever is baked into the image
 #   * the root filesystem is read-only (writable scratch space is tmpfs or named volumes)
+#   * the web server image runs as an unprivileged user (uid 101) on port 8080, read-only, no capabilities
 #   * all Linux capabilities are dropped; the worker gets only NET_RAW so nmap can run SYN scans
 #   * data lives in named volumes, with a one-shot step that fixes their ownership
 #
@@ -66,6 +67,13 @@ services:
       - screenshots_data:/app/screenshots
       - scan_output_data:/app/scan_output
     command: celery -A backend.tasks worker --loglevel=info --concurrency=1
+
+  frontend:
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:size=64m,mode=1777
 
   celery_beat:
     <<: *app-prod
