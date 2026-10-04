@@ -7,6 +7,7 @@
 Continuous external reconnaissance, vulnerability scanning, TLS auditing and **historical change detection** in a single self-hosted platform.
 
 [![CI](https://github.com/TurlaFSB/ASM-/actions/workflows/ci.yml/badge.svg)](https://github.com/TurlaFSB/ASM-/actions/workflows/ci.yml)
+[![Security](https://github.com/TurlaFSB/ASM-/actions/workflows/security.yml/badge.svg)](https://github.com/TurlaFSB/ASM-/actions/workflows/security.yml)
 ![Python](https://img.shields.io/badge/python-3.13-blue)
 ![Stack](https://img.shields.io/badge/stack-FastAPI%20%7C%20PostgreSQL%20%7C%20Celery%20%7C%20React-9b5de5)
 ![Deploy](https://img.shields.io/badge/deploy-Docker%20Compose-2496ed)
@@ -35,30 +36,48 @@ Every scan is stored as a point-in-time **snapshot** and compared with the previ
 
 ---
 
+## Screenshots
+
+<img src="https://github.com/user-attachments/assets/00e9a39f-ea7c-407f-9c53-bbac324f65b6" alt="ASM Platform screenshot 1 of 5" width="100%">
+
+<img src="https://github.com/user-attachments/assets/1bccaf6a-05a7-4225-b38b-28fd8d17cc8e" alt="ASM Platform screenshot 2 of 5" width="100%">
+
+<img src="https://github.com/user-attachments/assets/35fb8c84-c2b8-4d0f-8e8c-f3a1e562d80e" alt="ASM Platform screenshot 3 of 5" width="100%">
+
+<img src="https://github.com/user-attachments/assets/aab178d2-eee9-4441-9b82-f876c45ae3a0" alt="ASM Platform screenshot 4 of 5" width="100%">
+
+<img src="https://github.com/user-attachments/assets/421fd757-9b82-4ad3-a9bc-2c03633a1ca7" alt="ASM Platform screenshot 5 of 5" width="100%">
+
+A sample of the client-ready report generated for every scan: [asm_report_scan_91.pdf](https://github.com/user-attachments/files/30161571/asm_report_scan_91.pdf).
+
+---
+
 ## Table of Contents
 
+- [Screenshots](#screenshots)
 - [Architecture](#architecture)
 - [Features](#features)
 - [Scan profiles](#scan-profiles)
 - [Change detection](#change-detection)
+- [Notifications](#notifications)
 - [Exposure monitoring](#exposure-monitoring-leaks-breaches-mentions)
 - [Scan integrity](#scan-integrity-tamper-evident-history)
 - [Security posture](#security-posture)
-- [Requirements](#requirements)
 - [Quick start](#quick-start)
 - [Configuration](#configuration)
 - [Usage](#usage)
 - [API](#api)
 - [Scanning private and lab targets](#scanning-private-and-lab-targets)
 - [Development and testing](#development-and-testing)
+- [Upgrading](#upgrading)
 - [Production deployment](#production-deployment)
 - [Backup and restore](#backup-and-restore)
 - [Troubleshooting](#troubleshooting)
-- [Contributing and security](#contributing-and-security)
-- [Credits](#credits)
 - [Roadmap](#roadmap)
 - [Known limitations](#known-limitations)
+- [Contributing and security](#contributing-and-security)
 - [Scope and responsible use](#scope-and-responsible-use)
+- [Credits and further reading](#credits-and-further-reading)
 - [License](#license)
 
 ---
@@ -111,7 +130,7 @@ Each scan runs as one Celery task and reports progress per stage to the UI. Data
 - DNS resolution, Nmap service/version detection, httpx probing with redirect following
 - WhatWeb technology fingerprinting merged with httpx detection and de-duplicated
 - Directory and content discovery with feroxbuster and a curated wordlist, rate-limited per target
-- EyeWitness screenshots of every live web service, viewable per scan from the Scans page (Screenshots appear for scans run after this version)
+- EyeWitness screenshots of every live web service, browsable per scan in a gallery on the Scans page
 
 ### Vulnerability and TLS analysis
 - Nuclei template scanning for web services, plus network-level templates against discovered ports
@@ -119,11 +138,10 @@ Each scan runs as one Celery task and reports progress per stage to the UI. Data
 - sslyze TLS audit: deprecated protocols, weak ciphers, expired certificates, SHA-1 chains, Heartbleed
 - KEV and exploitability enrichment on every matched CVE
 
-### Change detection
+### Change tracking and notifications
 - Versioned snapshots of assets, ports, services, technologies, HTTP metadata, discovered paths and findings
 - Structured, severity-rated change events with a coverage-aware trust model (see [Change detection](#change-detection))
-- Alerts and webhooks driven by confirmed change events: a per-target minimum severity, pending removals never notify, in-app alerts capped per scan, and one bounded digest webhook per scan (CVE roll-ups folded into one line per component)
-- Webhooks are SSRF-checked, never follow redirects, retry with backoff, are signed with HMAC-SHA256 (`X-ASM-Signature` over `<timestamp>.<body>`), support generic JSON, Slack and Discord formats, and every delivery is recorded
+- In-app alerts, webhooks and email driven by confirmed change events: a per-target minimum severity, pending removals never notify, and one bounded digest per scan (CVE roll-ups folded into one line per component). See [Notifications](#notifications)
 
 ### Risk and reporting
 - Per-asset risk scoring: CVSS baseline, boosted for high-risk ports and admin surfaces, force-escalated to Critical when a matched CVE is in KEV
@@ -135,11 +153,12 @@ Each scan runs as one Celery task and reports progress per stage to the UI. Data
 - Light and dark themes (match system by default), keyboard-navigable menus, and no WCAG A/AA violations in automated checks
 - Three scan profiles (Quick, Standard, Deep), with a per-target default for scheduled scans
 - Recurring scans via Celery Beat (cron expressions or presets)
-- Cookie sessions (httpOnly, SameSite, CSRF-protected) for the web app and bearer tokens for scripts, on every route; admin created via script, no default credentials
+- Cookie sessions (httpOnly, SameSite, CSRF-protected) for the web app, and bearer tokens or revocable, expiring **API tokens** for scripts and CI; no default credentials
 - Admin and viewer roles: viewers are read-only
 - Exposure monitoring for leaks, breaches, lookalike domains, ransomware listings and infostealer counts (see [Exposure monitoring](#exposure-monitoring-leaks-breaches-mentions))
 - Tamper-evident scan history: signed, chained seals per scan, shown in the PDF report (see [Scan integrity](#scan-integrity-tamper-evident-history))
-- Target, asset, vulnerability and scan lists with search, filters and a side panel for details; target pickers that scale to many targets
+- Target, asset, vulnerability and scan lists with search, filters and a side panel for details; target pickers that scale to many targets; free-form **tags** to group targets and filter the list
+- Prometheus metrics (`/metrics`), optional JSON logs, scheduled verified database backups and automatic retention of scan artifacts
 - Audit log of target, scan and authentication actions, with source IP
 - Docker Compose deployment with healthchecked dependencies, plus a hardened non-root production overlay (see [Production deployment](#production-deployment))
 - Clear action feedback in the UI: scan state on each target row, optimistic switches that roll back and explain when a save fails
@@ -200,6 +219,36 @@ It writes a JSON report, prints whether `adjust` mode is worth enabling (the gat
 
 ---
 
+## Notifications
+
+Every target has its own settings (Targets, then **Notifications**): a minimum severity, an optional webhook and an optional list of email recipients. Only *confirmed* change events notify, so a first (baseline) scan is silent and a removal that is only pending never fires. Everything is still recorded on the Changes page.
+
+| Channel | What is sent |
+|---|---|
+| In-app alerts | One per qualifying event, capped per scan; an overflow row says how many were left out |
+| Webhook | One digest per scan (and one per exposure run). Generic JSON, Slack or Discord format |
+| Email | The same digest as one message per scan or exposure run, as plain text plus HTML, to up to 10 recipients per target |
+
+**Webhooks** must be HTTPS and resolve to public addresses; the connection is pinned to the checked address, redirects are never followed, failures retry with backoff, and JSON messages are signed with HMAC-SHA256 (`X-ASM-Signature` over `<timestamp>.<body>`) so your receiver can verify them. The signing secret is shown once.
+
+**Email** needs a mail server, which is a deployment setting rather than a per-target one. Add it to `.env.docker`:
+
+```env
+ASM_SMTP_HOST=smtp.example.com
+ASM_SMTP_PORT=587
+ASM_SMTP_SECURITY=starttls
+ASM_SMTP_USER=asm@example.com
+ASM_SMTP_PASSWORD=<password or app password>
+ASM_SMTP_FROM=asm@example.com
+ASM_PUBLIC_URL=https://asm.example.com
+```
+
+Recreate the services (`docker compose up -d backend celery_worker`), then add recipients under the target's Notifications panel and press **Send test email**. With Gmail, use an [app password](https://myaccount.google.com/apppasswords) (not your account password) and the same address for `ASM_SMTP_USER` and `ASM_SMTP_FROM`. Messages carry no secrets, scan-derived text is HTML-escaped, line breaks are stripped from headers, and TLS certificates are always verified.
+
+Every delivery, whether webhook or email, is recorded and shown on the **Alerts** page with its result. A failed delivery never affects the scan or its in-app alerts.
+
+---
+
 ## Exposure monitoring (leaks, breaches, mentions)
 
 Looks for things about a target that live OUTSIDE its own infrastructure. Every source is free and switched off per target until you turn it on.
@@ -219,7 +268,7 @@ How it behaves:
 - **Lookalike checks are local.** Candidate names are generated on the platform and checked with ordinary DNS (a few hundred lookups, rate-bounded). A name is reported only if it resolves; one that points at your own servers or name servers is marked info. Domains registered without any DNS records cannot be seen this way, and many hits are parked domains, so review before acting.
 - **Ransomware listings are read, never followed.** Only the public listing text is read. Nothing linked from a listing (onion pages, archives, screenshots, magnet links) is fetched or stored. A listing is the attacker's claim, so it is reported as "named on", not as confirmed data theft. Short brand names are only matched against the domain, to avoid unrelated victims.
 - **Polite by design.** Each source has a minimum interval per target (GitHub 6 hours, XposedOrNot 24 hours), requests are paced, "run now" cannot hammer a source, and a rate-limited run keeps everything already found.
-- **Alerts reuse your settings.** New, escalated or reappeared findings at or above the target's alert severity create in-app alerts and one webhook message (`exposure.new`).
+- **Alerts reuse your settings.** New, escalated or reappeared findings at or above the target's alert severity create in-app alerts, one webhook message (`exposure.new`) and one email, if those are set up.
 - **Findings are tracked.** A finding that stops being returned is marked resolved after 3 runs in a row; one you dismiss never alerts again.
 - **Exposure page.** Choose a target, switch sources on, run a check, review findings with their masked evidence, and dismiss or reopen them. Viewers see everything but cannot change anything.
 - **Control from the API:** `GET /exposure/sources`, `PUT /exposure/targets/{id}/sources`, `POST /exposure/targets/{id}/run`, `GET /exposure/findings`, `PATCH /exposure/findings/{id}` (dismiss or reopen), `GET /exposure/runs`.
@@ -260,6 +309,11 @@ ASM performs active scanning, so its own security matters.
 - **Scope stays on the target.** URLs that HTTP probing reaches by following a redirect to another organisation are dropped before any scanner runs against them.
 - **Webhook safety.** Destinations must be HTTPS and resolve to public addresses, the connection is pinned to the address that was checked (no DNS-rebinding gap), redirects are never followed, messages are signed (HMAC-SHA256), credentials are never returned by the API, and target-controlled text is defanged in Slack and Discord messages.
 - **Export safety.** CSV exports neutralise spreadsheet formulas.
+- **API tokens.** Stored only as a SHA-256 hash and shown once. They are read-only or full access, expire (at most 365 days), are limited to 25 per user, stop working when their owner is deactivated, are revoked when the password changes or is reset, and cannot create other tokens.
+- **Rate limiting.** A global per-client limit on the API (`429` with `Retry-After`), on top of the stricter login throttle.
+- **Email safety.** SMTP credentials live only in the environment, TLS certificates are verified, recipient lists are validated, and scan-derived text is escaped in HTML and stripped of line breaks in headers.
+- **Screenshots are served safely.** Clients ask for a picture by position, never by path; the resolved file must be a PNG inside its scan's folder (symlinks and `..` are refused) and only signed-in users can fetch it.
+- **Supply chain.** CI runs CodeQL, gitleaks, Trivy (images), `bandit`, `pip-audit` and `npm audit`, and Dependabot keeps dependencies current.
 - **Audit trail** for sensitive actions, including source IP.
 - **Secrets stay out of git.** `.env` and `.env.docker` are ignored, and `SECRET_KEY` has no default: the app refuses to start without one.
 - **Report rendering is sandboxed.** Templates are autoescaped and the PDF renderer blocks outbound fetches.
@@ -323,51 +377,78 @@ docker exec -it asm_backend python3 -m backend.scripts.create_admin
 
 ### 5. Sign in and add your team
 
-Sign in, then use **Users** (admins only) to add accounts, change roles, reset passwords or deactivate people. Everyone can change their own password from the account button at the bottom of the sidebar.
+Sign in, then use **Users** (admins only) to add accounts, change roles, reset passwords or deactivate people. Everyone can change their own password from **Account**, reached by clicking your name at the bottom of the sidebar.
+
+### 6. Add a target and run a scan
+
+Open **Targets**, choose *Add Target*, confirm you are authorized to scan it, then press *Scan*. Optional next steps: [email notifications](#notifications), [HTTPS](#https-with-automatic-certificates) and [scheduled backups](#backup-and-restore).
 
 ---
 
 ## Configuration
 
-Set these in `.env.docker`. Only the first two are required.
+Set these in `.env.docker`, then recreate the affected services. Only `DATABASE_URL` and `SECRET_KEY` are required.
+
+**Core and access**
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `DATABASE_URL` | none | SQLAlchemy connection string |
-| `SECRET_KEY` | none | JWT signing key (required) |
+| `DATABASE_URL` | none | SQLAlchemy connection string (required) |
+| `SECRET_KEY` | none | JWT signing key, at least 32 characters (required). Also derives the scan-seal signing key |
+| `APP_ENV` | `production` in the example file | `production` switches the interactive API docs off |
 | `COOKIE_SECURE` | `false` | Mark the session cookie HTTPS-only; set `true` in production behind TLS |
+| `CORS_ORIGINS` | `http://localhost:5173,http://localhost:5174,http://localhost:3000` | Comma-separated browser origins allowed to call the API. Add the origin you open the app on if it differs, for example `http://192.168.1.20:3000` |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | `480` | Session lifetime |
+| `API_RATE_LIMIT_PER_MINUTE` | `600` | Requests per minute from one client address before the API answers `429` with `Retry-After`; `0` disables. Login attempts have a stricter separate throttle |
+
+**Scanning**
+
+| Variable | Default | Purpose |
+|---|---|---|
 | `ASM_ALLOW_PRIVATE_TARGETS` | `false` | Permit scanning private/reserved addresses (lab use) |
-| `NVD_API_KEY` | unset | NVD API key for higher CVE lookup rate limits |
-| `CVE_MIN_CVSS` | `7.0` | Minimum CVSS for version-matched CVE findings |
 | `ASM_RATE_MULTIPLIER` | `1` | Scales per-target request rates for all tools |
-| `ASM_PARALLEL_STAGES` | `true` | Run independent web stages in parallel |
+| `ASM_PARALLEL_STAGES` | `true` | Run independent web stages in parallel; `false` lowers peak memory |
+| `ASM_NMAP_SCAN_TYPE` | `auto` | `auto`, `syn` or `connect`. `auto` uses SYN scans when allowed and falls back to connect scans |
 | `DIRBUSTER_MAX_SECONDS` | `900` | Upper bound for directory discovery per scan |
 | `NUCLEI_TIMEOUT` | `1800` | Upper bound for a nuclei run, in seconds |
 | `NUCLEI_CONCURRENCY` | `15` | Nuclei template concurrency |
-| `ASM_LOG_FORMAT` | `text` | Set `json` for one JSON object per log line (API and workers) |
-| `ASM_RETENTION_DAYS` | `90` | Daily cleanup deletes screenshot folders, per-scan tool output and cached PDFs older than this many days; `0` keeps everything. Scans, findings, change history, seals and the audit log are never deleted |
-| `ASM_RETENTION_DELIVERY_DAYS` | `180` | How long webhook delivery log rows are kept; `0` keeps them all |
-| `ASM_SMTP_HOST` / `ASM_SMTP_FROM` | unset | Turns on email notifications. Both are required; recipients are then set per target under Notifications |
-| `ASM_SMTP_PORT` | `587` (`465` for ssl, `25` for none) | SMTP port |
-| `ASM_SMTP_SECURITY` | `starttls` | `starttls`, `ssl` or `none`. Certificates are always verified when TLS is on |
-| `ASM_SMTP_USER` / `ASM_SMTP_PASSWORD` | unset | SMTP login, if your server needs one |
-| `ASM_SMTP_TIMEOUT` | `10` | Seconds before a connection attempt gives up |
-| `ASM_PUBLIC_URL` | unset | Public address of the UI (for example `https://asm.example.com`); adds an "Open in ASM Platform" link to emails |
-| `API_RATE_LIMIT_PER_MINUTE` | `600` | Requests per minute allowed from one client address before the API answers `429` with `Retry-After`; `0` disables. Login attempts have a stricter separate throttle |
-| `CORS_ORIGINS` | `http://localhost:5173,http://localhost:5174,http://localhost:3000` | Comma-separated browser origins allowed to call the API. Add the origin you open the app on if it differs, for example `http://192.168.1.20:3000` |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | `480` | Session lifetime |
-| `APP_ENV` | `production` in the example file | `production` switches the interactive API docs off |
-| `ASM_GITHUB_TOKEN` | unset | Free GitHub token (no scopes) for the GitHub public code exposure source |
-| `ASM_HUDSONROCK_ACK` | `false` | Set `true` after reading Hudson Rock's terms to allow the infostealer source |
-| `ASM_NMAP_SCAN_TYPE` | `auto` | `auto`, `syn` or `connect`. `auto` uses SYN scans when allowed and falls back to connect scans |
+| `NVD_API_KEY` | unset | NVD API key for higher CVE lookup rate limits |
+| `CVE_MIN_CVSS` | `7.0` | Minimum CVSS for version-matched CVE findings |
 | `SCAN_MAX_SECONDS` | `21600` | Overall scan runtime limit; a reaper fails scans stuck past it |
 | `SCAN_PENDING_MAX_SECONDS` | `43200` | How long a scan may sit in `pending` before the reaper fails it |
 | `SCHEDULE_MIN_INTERVAL_SECONDS` | `3600` | Shortest allowed gap between scheduled runs |
+
+**Notifications and email** (see [Notifications](#notifications))
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ASM_SMTP_HOST`, `ASM_SMTP_FROM` | unset | Both are required to turn email on; recipients are set per target |
+| `ASM_SMTP_PORT` | `587` (`465` for `ssl`, `25` for `none`) | SMTP port |
+| `ASM_SMTP_SECURITY` | `starttls` | `starttls`, `ssl` or `none`. Certificates are always verified when TLS is on |
+| `ASM_SMTP_USER`, `ASM_SMTP_PASSWORD` | unset | SMTP login, if your server needs one |
+| `ASM_SMTP_TIMEOUT` | `10` | Seconds before a connection attempt gives up |
+| `ASM_PUBLIC_URL` | unset | Public address of the UI; adds an "Open in ASM Platform" link to emails |
 | `ALERTS_MAX_PER_SCAN` | `50` | Cap on in-app alerts created per scan |
 | `WEBHOOK_ATTEMPTS`, `WEBHOOK_BACKOFF`, `WEBHOOK_TIMEOUT` | `3`, `2`, `5` | Webhook attempts, backoff seconds (doubled each retry) and timeout seconds |
+
+**Exposure monitoring and AI triage**
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ASM_GITHUB_TOKEN` | unset | Free GitHub token (no scopes) for the GitHub public code source |
+| `ASM_HUDSONROCK_ACK` | `false` | Set `true` after reading Hudson Rock's terms to allow the infostealer source |
 | `ASM_LLM_PROVIDER` | `none` | AI triage: `none`, `ollama` or `mock` |
 | `ASM_LLM_BASE_URL`, `ASM_LLM_MODEL`, `ASM_LLM_SEVERITY_MODE`, `ASM_LLM_TIMEOUT`, `ASM_LLM_MAX_EVENTS`, `ASM_LLM_BUDGET_SECONDS` | see [AI-assisted triage](#ai-assisted-triage-optional) | Local model settings |
+
+**Operations**
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ASM_LOG_FORMAT` | `text` | Set `json` for one JSON object per log line (API and workers) |
+| `ASM_RETENTION_DAYS` | `90` | Daily cleanup deletes screenshot folders, per-scan tool output and cached PDFs older than this many days; `0` keeps everything. Scans, findings, change history, seals and the audit log are never deleted |
+| `ASM_RETENTION_DELIVERY_DAYS` | `180` | How long delivery log rows are kept; `0` keeps them all |
 | `ASM_REPORT_CACHE_DIR` | `/app/scan_output/reports` | Where rendered PDF reports are cached |
+| `BACKUP_PATH`, `BACKUP_INTERVAL_HOURS`, `BACKUP_KEEP` | named volume, `24`, `14` | Scheduled backups (see [Backup and restore](#backup-and-restore)) |
 
 Nuclei tuning (`NUCLEI_SEVERITY`, `NUCLEI_AUTOSCAN`, `NUCLEI_MAX_HOST_ERROR`, `NUCLEI_NETWORK_CONCURRENCY`, `NUCLEI_RETRY_*`) and the CVE lookup limits have defaults that suit most setups; read `backend/scanner/` before changing them.
 
@@ -378,14 +459,14 @@ Nuclei tuning (`NUCLEI_SEVERITY`, `NUCLEI_AUTOSCAN`, `NUCLEI_MAX_HOST_ERROR`, `N
 | Page | What you do there |
 |---|---|
 | **Dashboard** | Posture at a glance: risk, open findings, recent scans and changes. |
-| **Targets** | *Add Target* with domain, authorizer and rate limit (the authorization box is mandatory and enforced server-side). Per row: pick a profile, switch directory scanning on or off, press *Scan*, and open History, Infrastructure and Notifications. The button shows *Queued* or *Scanning* while a scan is active. |
-| **Scans** | Per-stage progress, cancel at any time, download the PDF or CSV export. |
+| **Targets** | *Add Target* with domain, authorizer and rate limit (the authorization box is mandatory and enforced server-side). Per row: pick a profile, switch directory scanning on or off, press *Scan*, and open History, Infrastructure and Notifications (severity, webhook and email recipients). The row menu edits **tags**, and the chips above the list filter by tag. The button shows *Queued* or *Scanning* while a scan is active. |
+| **Scans** | Per-stage progress, cancel at any time, download the PDF report, and use the row menu for screenshots and CSV, JSON or SARIF exports. |
 | **Assets** | Searchable, filterable inventory: ports, technologies, HTTP metadata, discovered paths and risk score. Click a row for the side panel. |
 | **Schedules** | Recurring scans by cron expression or preset interval. |
 | **Changes** | Severity-rated change events between comparable scans, with optional AI notes. |
 | **Vulnerabilities** | Template findings, inferred CVE matches and TLS issues with severity, CVE and CVSS. Triage findings (admins) and switch between Active, Triaged and Everything. |
 | **Exposure** | Choose a target, switch sources on, press *Check now*, review masked findings and dismiss or reopen them. |
-| **Alerts** | In-app alerts, delivery log and per-target webhook settings. |
+| **Alerts** | In-app alerts and the delivery log for webhooks and email. |
 | **Account** | Click your name in the sidebar: change your password and manage API tokens. |
 | **Users** | Admins only: add accounts, make someone admin or viewer, reset passwords, deactivate or reactivate. |
 
@@ -404,7 +485,8 @@ Interactive documentation is served by FastAPI at `http://<host>:8000/docs`. All
 | Auth | `POST /auth/token`, `GET /auth/me`, `POST /auth/logout`, `POST /auth/change-password`, `GET /auth/setup-status`, `POST /auth/setup` |
 | API tokens | `GET/POST /auth/tokens/`, `DELETE /auth/tokens/{id}` (your own tokens; the secret is returned once, on creation) |
 | Users (admin) | `GET/POST /users/`, `PATCH /users/{id}`, `POST /users/{id}/reset-password` |
-| Targets and scans | `/targets/*`, `/scans/*` (including `/scans/profiles`) |
+| Targets | `/targets/*` (`GET /targets/?tag=` filters by tag; `PUT /targets/{id}/tags`; `GET/PUT /targets/{id}/notifications`; `POST /targets/{id}/notifications/test` for the webhook and `.../test-email` for email) |
+| Scans | `/scans/*` (including `/scans/profiles`, `GET /scans/{id}/screenshots` and `.../screenshots/{n}` for the pictures) |
 | Exports | `GET /scans/{id}/export/assets.csv`, `vulnerabilities.csv`, `vulnerabilities.json`, `vulnerabilities.sarif` (SARIF 2.1.0; triage decisions become `suppressions`). The Scans page has an export menu on each completed scan |
 | Assets and vulnerabilities | `/assets/*`, `/vulnerabilities/*` (`triage=active\|triaged\|all` filter, `GET /vulnerabilities/hidden-count`) |
 | Operations | `GET /health`, `GET /ready` (database and Redis), `GET /metrics` (Prometheus text, admin only: scans by status, assets, findings by severity, queue depth, age of the last completed scan) |
@@ -418,8 +500,10 @@ Interactive documentation is served by FastAPI at `http://<host>:8000/docs`. All
 Script access example:
 
 ```bash
-# Or create a long-lived token under Account > API tokens and use it directly:
-#   curl -H "Authorization: Bearer asm_..." http://localhost:8000/targets/
+# Option 1: a long-lived token created under Account > API tokens
+curl -H "Authorization: Bearer asm_..." http://localhost:8000/targets/
+
+# Option 2: a short-lived session token from your login
 TOKEN=$(curl -s -d "username=admin&password=..." http://localhost:8000/auth/token | python3 -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/targets/
 ```
@@ -461,6 +545,20 @@ The backend test suite runs against in-memory SQLite and mocked scanners; no Doc
 | Backend code (`backend/`) | The API reloads automatically. Run `docker compose restart celery_worker` for worker changes, and never mid-scan. |
 | Frontend code | `docker compose build frontend && docker compose up -d frontend` |
 | Database models | Add an Alembic revision in `backend/migrations/versions/`; the `migrate` service applies it on start. |
+
+---
+
+## Upgrading
+
+Back up first (see [Backup and restore](#backup-and-restore)), then pull and rebuild. Migrations run automatically through the one-shot `migrate` service, so there is no separate step:
+
+```bash
+git pull
+docker compose build backend frontend
+docker compose up -d
+```
+
+Add `-f docker-compose.prod.yml` (and the TLS or backup overlays) to the last two commands if you use them. Read the [CHANGELOG](CHANGELOG.md) for anything that needs a new setting. Do not upgrade in the middle of a scan; a worker restart ends it. To check which migration is applied: `docker compose exec backend alembic -c backend/alembic.ini current`.
 
 ---
 
@@ -570,54 +668,37 @@ docker run --rm -v asm_screenshots_data:/data -v "$PWD/backups":/out busybox:1.3
 | Worker ignores code changes | No auto-reload on the worker | `docker compose restart celery_worker` |
 | Frontend changes not visible | Static bundle served by nginx | Rebuild the `frontend` image and hard-refresh |
 | Worker exits with code 137 mid-scan (`OOMKilled`) | Docker ran out of memory on a target with many subdomains | Give Docker more memory (Docker Desktop: Settings, Resources), set `ASM_PARALLEL_STAGES=false` to lower the peak, and lower `NUCLEI_CONCURRENCY`. A scan left `running` by a lost worker is failed automatically within about 10 minutes |
+| Email test says `authentication failed` | Wrong SMTP login. Gmail needs an app password, not the account password | Create an app password, set it in `ASM_SMTP_PASSWORD`, and recreate `backend` and `celery_worker` |
+| The Email box says it is not set up on this server | `ASM_SMTP_HOST` or `ASM_SMTP_FROM` is missing | Set both in `.env.docker` and recreate `backend` and `celery_worker` |
+| No *View screenshots* item on a scan | The scan ran before screenshot viewing existed, was a profile that skips screenshots, or its pictures were removed by retention | Run a new Standard or Deep scan |
+| New pages or options missing after an upgrade | The frontend image was not rebuilt | `docker compose build frontend && docker compose up -d frontend`, then hard-refresh |
 | Services on unusual ports are missing | Quick/Standard scan only the top 100/1000 ports | Run a Deep scan |
 
 ---
 
-## Contributing and security
-
-Issues and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (design and threat model) and the [CHANGELOG](CHANGELOG.md). Before opening a pull request, run `pytest` and `npm run lint` and keep new behaviour covered by tests. Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md); do not open a public issue for them.
-
-## Credits
-
-Ransomware leak-site listings: [RansomLook.io](https://www.ransomlook.io), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
-
-Infostealer exposure counts: free OSINT lookup by [Hudson Rock](https://www.hudsonrock.com).
-
 ## Roadmap
+
+Shipped work is listed in the [CHANGELOG](CHANGELOG.md). What is next:
 
 | Area | Status |
 |---|---|
-| Historical diff engine, change events API and Changes page | Done |
-| CVE roll-up: one line per component and host | Done |
-| Alerts, webhooks and per-target notification settings | Done |
-| Per-port path tracking | Done |
-| AI-assisted triage with guardrails and a labelled evaluation set | Done: explain-only by default |
-| API tokens for scripts: hashed at rest, read-only or full access, expiring, revocable | Done |
-| Role-based access (viewer and admin), user management, password change, first-run setup, server-side sign-out | Done |
-| Login throttling per IP and username, constant-time unknown-user path | Done |
-| Scan watchdog and reaper; one active scan per target | Done |
-| Pagination on list endpoints; schedule safety rails | Done |
-| Cookie sessions with CSRF protection | Done |
-| Exposure monitoring: GitHub code, breach records, lookalike domains, ransomware listings, infostealer counts | Done |
-| Tamper-evident signed scan history | Done |
-| Prometheus metrics endpoint and JSON logging | Done |
-| Scheduled, verified database backups with retention | Done |
-| Data retention for scan artifacts and delivery logs | Done |
-| Finding triage with reasons, expiry and report suppression | Done |
-| Global API rate limit, unprivileged web server, HTTPS proxy overlay, CodeQL / Trivy / secret scanning in CI | Done |
-| Light and dark themes, accessibility checks | Done |
-| Container hardening: non-root production overlay, read-only filesystem, dropped capabilities | Done and verified on a Docker host (non-root, read-only root, only `NET_RAW` on the worker, SYN scans, PDF reports, seals, backup round trip). The frontend nginx image still runs its master process as root |
+| Scheduled PDF report delivery by email | Planned |
+| Multi-factor authentication and email-based password reset | Planned |
+| Network ranges (CIDR) as targets | Planned |
+| Ticketing integration (Jira, GitHub Issues) for findings | Planned |
+| De-duplicate recurring TLS findings across scans | Planned |
+| Screenshot perceptual-hash diffing (flag a page that changed visually) | Planned |
 | Dark-web mention monitoring via licensed intelligence APIs | Planned |
-| Screenshot perceptual-hash diffing | Planned |
-| Report delivery: scheduled PDF, Slack/email notifications for high and critical changes | Planned |
-| More unit coverage for the scan orchestrator stages | Planned |
+| Pinned image digests and published container images | Planned |
+| More unit coverage for the scan orchestrator stages | Ongoing |
 
 ---
 
 ## Known limitations
 
 - **Small-team user model.** There are two roles (admin and viewer), managed by admins on the Users page. There is no self-service registration, email-based password reset or multi-factor authentication yet.
+- **Email is SMTP only.** One digest per scan or exposure run goes to a per-target recipient list; there are no per-user subscriptions or quiet hours yet.
+- **Screenshots** are kept for the retention period and shown per scan; scans from before screenshot viewing have none to show.
 - **CVE matching is version-based.** At most 15 CVEs are kept per service (highest risk first); the report says when a list was capped. It depends on the version a service reports. Services without a banner version produce no matches, and matches are marked *inferred* until verified.
 - **Profile blind spots.** Quick and Standard do not see services outside their port lists (top 100, and top 1000 plus a curated extras list).
 - **Network service checks can be starved.** Some services (an old OpenSSH, for instance) answer the banner but stall on the deeper protocol handshakes the nuclei network templates perform. The scanner detects this (per-template timeouts), retries the affected templates gently, and if they still fail marks the host `low coverage`: removals there are held as pending and never reported as fixed. Root-causing a stalling service is left to the operator.
@@ -629,25 +710,21 @@ Infostealer exposure counts: free OSINT lookup by [Hudson Rock](https://www.huds
 
 ---
 
+## Contributing and security
+
+Issues and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (design and threat model) and the [CHANGELOG](CHANGELOG.md). Before opening a pull request, run `pytest` and `npm run lint` and keep new behaviour covered by tests. Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md); do not open a public issue for them.
+
 ## Scope and responsible use
 
 ASM is built for authorized security assessments only. Scan assets you own or have explicit written permission to test. The authorization gate is a technical safeguard, not a substitute for legal authorization.
 
+## Credits and further reading
+
+- Ransomware leak-site listings: [RansomLook.io](https://www.ransomlook.io), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+- Infostealer exposure counts: free OSINT lookup by [Hudson Rock](https://www.hudsonrock.com).
+- Known-exploited data: [CISA KEV catalog](https://www.cisa.gov/known-exploited-vulnerabilities-catalog). CVE data: [NVD](https://nvd.nist.gov).
+- Write-up of the design and a post-mortem of a hard-to-find bug: [ASM: a self-hosted attack surface management platform](https://medium.com/@PranavVerma/asm-a-self-hosted-attack-surface-management-platform-and-a-postmortem-on-the-bug-that-took-four-452444338968).
+
 ## License
 
-MIT
-
----
-
-Medium Writeup for more detailed understanding :https://medium.com/@PranavVerma/asm-a-self-hosted-attack-surface-management-platform-and-a-postmortem-on-the-bug-that-took-four-452444338968
-
-<img width="1919" height="844" alt="image" src="https://github.com/user-attachments/assets/00e9a39f-ea7c-407f-9c53-bbac324f65b6" />
-<img width="1919" height="868" alt="image" src="https://github.com/user-attachments/assets/1bccaf6a-05a7-4225-b38b-28fd8d17cc8e" />
-<img width="1916" height="868" alt="image" src="https://github.com/user-attachments/assets/35fb8c84-c2b8-4d0f-8e8c-f3a1e562d80e" />
-<img width="1913" height="862" alt="image" src="https://github.com/user-attachments/assets/aab178d2-eee9-4441-9b82-f876c45ae3a0" />
-<img width="1911" height="871" alt="image" src="https://github.com/user-attachments/assets/421fd757-9b82-4ad3-a9bc-2c03633a1ca7" />
-
-Here is the Sample Industry Grade Report that you can get for every scan :
-[asm_report_scan_91.pdf](https://github.com/user-attachments/files/30161571/asm_report_scan_91.pdf)
-
-
+MIT. See [LICENSE](LICENSE).
