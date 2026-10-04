@@ -5,6 +5,7 @@ All notable changes to this project are recorded here. The format follows [Keep 
 ## [Unreleased]
 
 ### Added
+- **Scheduled database backups** (`docker-compose.backup.yml`): daily verified dumps with checksums and retention.
 - **API tokens** for scripts and CI (Account page): read-only or full access, optional expiry, shown once, stored as a hash, revoked automatically when the password changes or is reset.
 - JSON and SARIF 2.1.0 finding exports, and an export menu on the Scans page (CSV, JSON, SARIF).
 - Frontend component tests (Vitest) run in CI.

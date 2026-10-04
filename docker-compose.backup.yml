@@ -1,0 +1,38 @@
+# Scheduled database backups. Use together with the other compose files:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.backup.yml up -d backup
+#
+# Dumps land in the `backups_data` volume by default. To write them to a folder on the host instead (for example a
+# mounted network drive), set BACKUP_PATH in .env.docker to an absolute path, such as BACKUP_PATH=/srv/asm-backups.
+# Copy backups off this machine as well: a backup on the same disk does not survive the disk.
+#
+# Settings: BACKUP_INTERVAL_HOURS (default 24), BACKUP_KEEP (default 14).
+# Restore: see "Backup and restore" in the README.
+
+services:
+  backup:
+    image: postgres:18.4
+    container_name: asm_backup
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      PGHOST: postgres
+      PGUSER: asm_user
+      PGDATABASE: asm_db
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      BACKUP_DIR: /backups
+      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
+      BACKUP_KEEP: ${BACKUP_KEEP:-14}
+    volumes:
+      - ${BACKUP_PATH:-backups_data}:/backups
+      - ./deploy/backup.sh:/backup.sh:ro
+    command: ["sh", "/backup.sh"]
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: [ALL]
+    cap_add: [DAC_OVERRIDE]
+    security_opt: ["no-new-privileges:true"]
+
+volumes:
+  backups_data:

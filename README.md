@@ -500,7 +500,16 @@ Do not add `security_opt: no-new-privileges` to the worker: it would stop `nmap`
 
 `docker compose down -v` permanently deletes all data. Back up first.
 
-**Database** (custom format, compressed, restorable selectively):
+**Scheduled backups (recommended).** The backup overlay takes a verified dump every day, keeps the newest 14, and writes a SHA-256 next to each:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.backup.yml up -d backup
+docker logs asm_backup            # one line per backup, or the reason it failed
+```
+
+Dumps go to the `backups_data` volume, or to a host folder if you set `BACKUP_PATH=/srv/asm-backups` in `.env.docker`. Tune `BACKUP_INTERVAL_HOURS` and `BACKUP_KEEP`. Each dump is read back before it is kept, so an empty or corrupt file is discarded and logged as an error instead of sitting there looking like a backup. Copy the folder off the machine as well. To restore, use the `pg_restore` commands below with the file you choose.
+
+**Manual database dump** (custom format, compressed, restorable selectively):
 
 ```bash
 mkdir -p backups
@@ -587,6 +596,7 @@ Infostealer exposure counts: free OSINT lookup by [Hudson Rock](https://www.huds
 | Exposure monitoring: GitHub code, breach records, lookalike domains, ransomware listings, infostealer counts | Done |
 | Tamper-evident signed scan history | Done |
 | Prometheus metrics endpoint and JSON logging | Done |
+| Scheduled, verified database backups with retention | Done |
 | Data retention for scan artifacts and delivery logs | Done |
 | Finding triage with reasons, expiry and report suppression | Done |
 | Global API rate limit, unprivileged web server, HTTPS proxy overlay, CodeQL / Trivy / secret scanning in CI | Done |
