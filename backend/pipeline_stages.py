@@ -129,6 +129,8 @@ def collect_web_results(stage_results: Dict, prof, enable_dirbuster: bool, http_
     module_results["sslyze"] = sslyze_data["module_status"]
     screenshot_data = stage_results.get("screenshot") or {"screenshots": [], "module_status": skipped}
     module_results["screenshot"] = screenshot_data["module_status"]
+    if screenshot_data.get("run"):
+        module_results["screenshot_run"] = screenshot_data["run"]     # folder name only; the API reads its index.json
 
     return {"dirbuster": dirbuster_data, "vuln": vuln_data, "sslyze": sslyze_data, "screenshot": screenshot_data}
 

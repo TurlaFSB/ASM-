@@ -5,6 +5,7 @@ All notable changes to this project are recorded here. The format follows [Keep 
 ## [Unreleased]
 
 ### Added
+- **Screenshot viewing**: a gallery of the pictures taken during a scan, opened from the scan's menu on the Scans page. Pictures are matched to their host, served only to signed-in users, and removed with the retention cleanup.
 - **Target tags**: label targets (up to 10 each), edit them from the row menu, and filter the Targets list by tag. `GET /targets/?tag=` filters through the API.
 - **Email notifications**: one digest email per scan and per exposure run to up to 10 recipients per target, with the same severity threshold as webhooks. Set up with `ASM_SMTP_*`; deliveries show on the Alerts page.
 - **Scheduled database backups** (`docker-compose.backup.yml`): daily verified dumps with checksums and retention.

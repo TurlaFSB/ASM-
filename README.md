@@ -111,7 +111,7 @@ Each scan runs as one Celery task and reports progress per stage to the UI. Data
 - DNS resolution, Nmap service/version detection, httpx probing with redirect following
 - WhatWeb technology fingerprinting merged with httpx detection and de-duplicated
 - Directory and content discovery with feroxbuster and a curated wordlist, rate-limited per target
-- EyeWitness screenshots of every live web service
+- EyeWitness screenshots of every live web service, viewable per scan from the Scans page (Screenshots appear for scans run after this version)
 
 ### Vulnerability and TLS analysis
 - Nuclei template scanning for web services, plus network-level templates against discovered ports

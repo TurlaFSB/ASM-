@@ -834,3 +834,20 @@ dialog.sheet[open] { animation: sheet-in var(--dur-2) var(--ease); }
 .tag-chip.small { font-size: 11.5px; padding: 3px 8px; }
 .target-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
 .tag-editor label { display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; }
+
+/* Screenshot gallery */
+.shot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.shot-grid[hidden] { display: none; }
+.shot {
+  display: flex; flex-direction: column; gap: 6px; padding: 0; text-align: left; cursor: pointer; font: inherit;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; color: var(--text-primary);
+}
+.shot:hover:not(:disabled) { border-color: var(--accent-border); }
+.shot:focus-visible { outline: 2px solid var(--accent-border); outline-offset: 2px; }
+.shot:disabled { cursor: default; }
+.shot img, .shot-ph { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; object-position: top; background: var(--surface-1, transparent); }
+.shot-ph { display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--text-tertiary); }
+.shot-cap { padding: 0 10px 9px; font-size: 12.5px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shot-big { margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.shot-big img { width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--border); }
+.shot-big figcaption { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--text-secondary); word-break: break-all; }

@@ -1,3 +1,5 @@
+import json
+import re
 import subprocess
 import logging
 import os
@@ -12,6 +14,28 @@ logger = logging.getLogger(__name__)
 
 # Mounted as the screenshots_data volume in docker-compose
 SCREENSHOT_DIR = os.getenv("SCREENSHOT_DIR", "/app/screenshots")
+
+
+MAX_INDEXED = 200
+_SCHEME_RE = re.compile(r"^(https?)\.")
+
+
+def _norm(text: str) -> str:
+    """EyeWitness names a picture after the URL with punctuation replaced; compare on letters and digits only."""
+    return re.sub(r"[^a-z0-9]+", ".", (text or "").lower()).strip(".")
+
+
+def build_index(screenshots: List[Dict], urls: List[str], run_dir: str) -> List[Dict]:
+    """One entry per picture: which host or URL it shows and where the file is (relative to run_dir).
+    Matching is by normalised name; a picture that matches no scanned URL is still listed, labelled by its file name."""
+    by_name = {_norm(u): u for u in urls}
+    out = []
+    for shot in sorted(screenshots, key=lambda s: s["file"])[:MAX_INDEXED]:
+        stem = _norm(os.path.splitext(shot["name"])[0])
+        url = by_name.get(stem)
+        host = url.split("://", 1)[-1].rstrip("/") if url else _SCHEME_RE.sub("", stem)
+        out.append({"host": host, "url": url, "file": os.path.relpath(shot["file"], run_dir)})
+    return out
 
 
 def run_eyewitness(hosts: List[str]) -> Dict:
@@ -98,6 +122,14 @@ def run_eyewitness(hosts: List[str]) -> Dict:
 
         if not result["screenshots"]:
             result["module_status"] = "empty"
+        else:
+            result["run"] = os.path.basename(run_dir)
+            result["index"] = build_index(result["screenshots"], hosts, run_dir)
+            try:
+                with open(os.path.join(run_dir, "index.json"), "w") as fh:
+                    json.dump(result["index"], fh)
+            except OSError:
+                logger.warning("[eyewitness] could not write the screenshot index")
 
         duration = time.time() - start
 

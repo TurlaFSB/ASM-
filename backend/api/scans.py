@@ -149,6 +149,28 @@ def get_scan(scan_id: int, db: Session = Depends(get_db), current_user: dict = D
     row["target_domain"] = scan.target.domain if scan.target else None
     return row
 
+@router.get("/{scan_id}/screenshots")
+def scan_screenshots(scan_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    from backend.screenshots import list_screenshots
+    scan = db.query(Scan).filter(Scan.id == scan_id).first()
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    return {"scan_id": scan_id, "screenshots": list_screenshots(scan)}
+
+
+@router.get("/{scan_id}/screenshots/{shot_id}")
+def scan_screenshot_image(scan_id: int, shot_id: int, db: Session = Depends(get_db),
+                          current_user: dict = Depends(get_current_user)):
+    from fastapi.responses import FileResponse
+    from backend.screenshots import screenshot_path
+    scan = db.query(Scan).filter(Scan.id == scan_id).first()
+    path = screenshot_path(scan, shot_id) if scan else None
+    if path is None:
+        raise HTTPException(status_code=404, detail="Screenshot not found")
+    return FileResponse(path, media_type="image/png",
+                        headers={"Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff"})
+
+
 @router.get("/{scan_id}/assets")
 def get_scan_assets(scan_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     scan = db.query(Scan).filter(Scan.id == scan_id).first()

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { X, Download, ChevronRight, FileSpreadsheet, FileJson, ShieldCheck } from "lucide-react";
+import { X, Download, ChevronRight, FileSpreadsheet, FileJson, ShieldCheck, Image } from "lucide-react";
 import Skeleton from "../components/Skeleton";
 import { timeAgo } from "../lib/time";
 import { getScans, getScanProgress, cancelScan, downloadScanReport, downloadScanExport } from "../api";
 import RowMenu from "../components/RowMenu";
+import ScreenshotGallery from "../components/ScreenshotGallery";
 import { ProfileBadge } from "../components/ProfilePicker";
 import Collapse from "../components/Collapse";
 import ConfirmDialog from "../components/ConfirmDialog";
@@ -106,6 +107,7 @@ export default function Scans() {
   const [stages, setStages] = useState({}); // { scanId: current_stage }
   const [openDetails, setOpenDetails] = useState({}); // { scanId: true } stage lists that are expanded
   const [cancelId, setCancelId] = useState(null);      // scan awaiting cancel confirmation
+  const [galleryScan, setGalleryScan] = useState(null);   // scan whose screenshots are open
   const [cancelling, setCancelling] = useState(false);
   const { toast } = useToast();
 
@@ -171,7 +173,10 @@ export default function Scans() {
         } catch { toast("Could not export that file. Try again in a moment.", "bad"); }
       },
     });
+    const shots = scans.find(x => x.id === id)?.module_results?.screenshot_run
+      ? [{ label: "View screenshots", icon: Image, onClick: () => setGalleryScan(id) }, { type: "divider" }] : [];
     return [
+      ...shots,
       item("Assets (CSV)", FileSpreadsheet, "assets.csv", "text/csv"),
       item("Findings (CSV)", FileSpreadsheet, "vulnerabilities.csv", "text/csv"),
       item("Findings (JSON)", FileJson, "vulnerabilities.json", "application/json"),
@@ -210,6 +215,8 @@ export default function Scans() {
         cancelLabel="Keep running" busy={cancelling} onConfirm={confirmCancel} onCancel={() => setCancelId(null)}>
         The scan stops at the next safe point. Results found so far are kept, but the scan will not complete.
       </ConfirmDialog>
+
+      <ScreenshotGallery scanId={galleryScan} onClose={() => setGalleryScan(null)} />
 
       {loading ? <Skeleton rows={6} height={64} /> : (
         <div className="dl" style={{ "--cols": "minmax(150px,1.3fr) minmax(220px,2.4fr) minmax(120px,1fr) minmax(110px,1fr) 110px" }}>
@@ -266,7 +273,7 @@ export default function Scans() {
                         <button className="btn btn-sm btn-secondary" onClick={() => handleDownloadReport(scan.id)} disabled={downloadingId === scan.id}>
                           <Download size={14} />{downloadingId === scan.id ? "Generating…" : "Report"}
                         </button>
-                        <RowMenu label={`Export data for scan ${scan.id}`} items={exportItems(scan.id)} />
+                        <RowMenu label={`More actions for scan ${scan.id}`} items={exportItems(scan.id)} />
                       </>
                     )}
                   </div>
