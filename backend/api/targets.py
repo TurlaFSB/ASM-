@@ -11,7 +11,7 @@ from backend.models.vulnerability import Vulnerability
 from backend.models.asset import Asset
 from backend.auth import get_current_user, require_admin
 from backend.audit import log_action
-from backend.validators import validate_target
+from backend.validators import validate_target, normalize_tags
 
 router = APIRouter(prefix="/targets", tags=["targets"])
 
@@ -22,6 +22,12 @@ class TargetCreate(BaseModel):
     authorized_by: str
     scope_note: Optional[str] = None
     rate_limit: Optional[int] = 10
+    tags: Optional[List[str]] = None
+
+    @field_validator("tags")
+    @classmethod
+    def validate_tags(cls, v):
+        return None if v is None else normalize_tags(v)
 
     @field_validator("domain")
     @classmethod
@@ -67,6 +73,12 @@ class TargetResponse(BaseModel):
     whois_data: Optional[dict] = None
     dirbuster_enabled: bool = True
     default_profile: str = "standard"
+    tags: List[str] = []
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def _no_null_tags(cls, v):
+        return v or []
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -87,6 +99,7 @@ def create_target(target: TargetCreate, request: Request, db: Session = Depends(
             existing.authorized_at = datetime.now(timezone.utc)
             existing.scope_note = target.scope_note
             existing.rate_limit = target.rate_limit
+            existing.tags = target.tags or None
             db.commit()
             db.refresh(existing)
             return existing
@@ -98,7 +111,8 @@ def create_target(target: TargetCreate, request: Request, db: Session = Depends(
         authorized_by=target.authorized_by,
         authorized_at=datetime.now(timezone.utc),
         scope_note=target.scope_note,
-        rate_limit=target.rate_limit
+        rate_limit=target.rate_limit,
+        tags=target.tags or None,
     )
     db.add(db_target)
     db.commit()
@@ -110,8 +124,14 @@ def create_target(target: TargetCreate, request: Request, db: Session = Depends(
 
 @router.get("/", response_model=list[TargetResponse])
 def list_targets(response: Response, limit: int = Query(1000, ge=1, le=5000), offset: int = Query(0, ge=0),
+                 tag: Optional[str] = Query(None, max_length=32),
                  db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     q = db.query(Target).filter(Target.is_active == True)
+    if tag:
+        # filtered in Python: tags are a short JSON list and the target table is small, which keeps this portable
+        wanted = tag.strip().lower()
+        ids = [t.id for t in q.all() if wanted in (t.tags or [])]
+        q = q.filter(Target.id.in_(ids))
     response.headers["X-Total-Count"] = str(q.count())
     targets = q.order_by(Target.id).limit(limit).offset(offset).all()
     return targets
@@ -243,6 +263,27 @@ def update_dirbuster_toggle(target_id: int, payload: TargetDirbusterUpdate, requ
     log_action(db, current_user.username, "dirbuster_toggle_updated", target_id=target.id,
                detail={"dirbuster_enabled": payload.dirbuster_enabled}, ip_address=request.client.host)
     return target
+
+
+class TargetTagsUpdate(BaseModel):
+    tags: List[str]
+
+    @field_validator("tags")
+    @classmethod
+    def _tags(cls, v):
+        return normalize_tags(v)
+
+
+@router.put("/{target_id}/tags", response_model=TargetResponse)
+def update_tags(target_id: int, payload: TargetTagsUpdate, request: Request, db: Session = Depends(get_db),
+                current_user: dict = Depends(require_admin)):
+    t = _active_target(db, target_id)
+    t.tags = payload.tags or None
+    db.commit()
+    db.refresh(t)
+    log_action(db, current_user.username, "target_tags_updated", target_id=t.id, detail={"tags": payload.tags},
+               ip_address=request.client.host if request.client else None)
+    return t
 
 
 class NotificationSettingsUpdate(BaseModel):

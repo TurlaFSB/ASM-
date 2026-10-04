@@ -821,3 +821,16 @@ dialog.sheet[open] { animation: sheet-in var(--dur-2) var(--ease); }
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .section-title { font-size: 17px; font-weight: 600; margin: 0; }
 .account-section code { font-family: var(--mono, ui-monospace, monospace); font-size: 12.5px; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
+
+/* Target tags */
+.tag-filter { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+.tag-chip {
+  font: inherit; font-size: 12.5px; line-height: 1; padding: 6px 11px; border-radius: 999px; cursor: pointer;
+  background: var(--bg-elevated, transparent); color: var(--text-secondary); border: 1px solid var(--border);
+}
+.tag-chip:hover { color: var(--text-primary); border-color: var(--accent-border); }
+.tag-chip.active { background: var(--accent-dim); color: var(--text-primary); border-color: var(--accent-border); }
+.tag-chip:focus-visible { outline: 2px solid var(--accent-border); outline-offset: 2px; }
+.tag-chip.small { font-size: 11.5px; padding: 3px 8px; }
+.target-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.tag-editor label { display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; }

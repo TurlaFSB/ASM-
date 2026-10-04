@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { getTargets, createTarget, deleteTarget, triggerScan, getTargetHistory, getTargetInfrastructure, updateDirbusterToggle, getScans, getScanProfiles, updateTargetProfile } from "../api";
-import { Plus, Trash2, Play, Shield, History, Globe, Bell, Loader2 } from "lucide-react";
+import { Plus, Trash2, Play, Shield, History, Globe, Bell, Loader2, Tag } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import RowMenu from "../components/RowMenu";
 import Sheet from "../components/Sheet";
@@ -8,6 +8,7 @@ import Skeleton from "../components/Skeleton";
 import "../components/ToggleSwitch.css";
 import ProfilePicker from "../components/ProfilePicker";
 import NotificationSettings from "../components/NotificationSettings";
+import TagEditor from "../components/TagEditor";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { useToast } from "../components/toastContext";
 import { fgAlpha } from "../lib/theme";
@@ -166,6 +167,8 @@ export default function Targets() {
   const [infraExpandedId, setInfraExpandedId] = useState(null);
   const [infraData, setInfraData] = useState({});
   const [notifExpandedId, setNotifExpandedId] = useState(null);
+  const [tagEditId, setTagEditId] = useState(null);       // target whose tags are being edited
+  const [tagFilter, setTagFilter] = useState(null);       // only show targets with this tag
   const [pendingDelete, setDeleteTarget] = useState(null);   // target awaiting delete confirmation
   const { toast } = useToast();
   const [activeScans, setActiveScans] = useState({});   // target id -> scan that is pending or running
@@ -321,6 +324,9 @@ export default function Targets() {
   const fieldClass = (field) =>
     touched[field] && errors[field] ? "input-error" : touched[field] ? "input-valid" : "";
 
+  const allTags = [...new Set(targets.flatMap(t => t.tags || []))].sort();
+  const visibleTargets = tagFilter ? targets.filter(t => (t.tags || []).includes(tagFilter)) : targets;
+
   if (loading) return <div className="page"><div className="page-header"><h1>Targets</h1></div><Skeleton rows={4} height={64} /></div>;
 
   return (
@@ -414,9 +420,18 @@ export default function Targets() {
 
       </Sheet>
 
+      {allTags.length > 0 && (
+        <div className="tag-filter" role="group" aria-label="Filter targets by tag">
+          <button type="button" className={"tag-chip" + (tagFilter === null ? " active" : "")} aria-pressed={tagFilter === null} onClick={() => setTagFilter(null)}>All</button>
+          {allTags.map(t => (
+            <button key={t} type="button" className={"tag-chip" + (tagFilter === t ? " active" : "")} aria-pressed={tagFilter === t}
+              onClick={() => setTagFilter(tagFilter === t ? null : t)}>{t}</button>
+          ))}
+        </div>
+      )}
       {targets.length === 0 && <div className="empty">No targets yet. Choose Add Target to start monitoring a domain you are authorized to scan.</div>}
       <div className="target-list">
-        {targets.map(target => {
+        {visibleTargets.map(target => {
           const dirOn = dirbusterEnabled[target.id] ?? target.dirbuster_enabled ?? true;
           const open = (id) => (expandedId === id ? "history" : infraExpandedId === id ? "infra" : notifExpandedId === id ? "notif" : null);
           const panel = open(target.id);
@@ -437,6 +452,11 @@ export default function Targets() {
                   <div className="target-meta">
                     Authorized by {target.authorized_by} · {target.rate_limit} req/s{target.scope_note ? ` · ${target.scope_note}` : ""}
                   </div>
+                  {target.tags?.length > 0 && (
+                    <div className="target-tags" aria-label="Tags">
+                      {target.tags.map(t => <button key={t} type="button" className="tag-chip small" onClick={() => setTagFilter(t)} title={`Show only ${t}`}>{t}</button>)}
+                    </div>
+                  )}
                 </div>
                 <div className="target-controls">
                   <div className="seg target-seg" role="group" aria-label={`Details for ${target.domain}`}>
@@ -471,10 +491,17 @@ export default function Targets() {
                     );
                   })()}
                   <RowMenu label={`More actions for ${target.domain}`} items={[
+                    { label: "Edit tags", icon: Tag, onClick: () => setTagEditId(target.id) },
                     { label: "Remove target", icon: Trash2, danger: true, onClick: () => setDeleteTarget(target) },
                   ]} />
                 </div>
               </div>
+              {tagEditId === target.id && (
+                <div className="target-panel">
+                  <TagEditor target={target} onCancel={() => setTagEditId(null)}
+                    onSaved={(t) => { setTargets(prev => prev.map(x => x.id === t.id ? { ...x, tags: t.tags } : x)); setTagEditId(null); toast("Tags saved."); }} />
+                </div>
+              )}
               {panel === "notif" && <div className="target-panel"><NotificationSettings target={target} /></div>}
               {panel === "history" && (
                 <div className="target-panel">

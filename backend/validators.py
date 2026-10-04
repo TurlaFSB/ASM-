@@ -85,3 +85,28 @@ def validate_webhook_url(url: str) -> str:
 
     resolve_public_ips(url)
     return url.strip()
+
+
+MAX_TAGS = 10
+_TAG_RE = __import__("re").compile(r"^[a-z0-9][a-z0-9_.:-]{0,31}$")
+
+
+def normalize_tags(values) -> list:
+    """Tags are short lower-case labels (letters, digits and _ . : -), trimmed and de-duplicated, at most 10.
+    Raises ValueError with a message the user can act on."""
+    if values is None:
+        return []
+    if not isinstance(values, (list, tuple)):
+        raise ValueError("tags must be a list")
+    out = []
+    for raw in values:
+        tag = str(raw or "").strip().lower().replace(" ", "-")
+        if not tag:
+            continue
+        if not _TAG_RE.match(tag):
+            raise ValueError(f"'{str(raw)[:40]}' is not a valid tag. Use up to 32 letters, digits, dashes, dots or colons.")
+        if tag not in out:
+            out.append(tag)
+    if len(out) > MAX_TAGS:
+        raise ValueError(f"at most {MAX_TAGS} tags per target")
+    return out

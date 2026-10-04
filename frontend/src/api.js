@@ -75,6 +75,7 @@ export const setFindingTriage = (data) => api.post("/vulnerabilities/triage", da
 export const getHiddenFindings = (params) => api.get("/vulnerabilities/hidden-count", { params });
 export const getVulnSummary = (params) => api.get("/vulnerabilities/summary", { params });
 export const createTarget = (data) => api.post("/targets/", data);
+export const updateTargetTags = (id, tags) => api.put(`/targets/${id}/tags`, { tags });
 export const deleteTarget = (id) => api.delete(`/targets/${id}`);
 export const updateDirbusterToggle = (id, enabled) => api.patch(`/targets/${id}/dirbuster-toggle`, { dirbuster_enabled: enabled });
 export const triggerScan = (data) => api.post("/scans/", data);
