@@ -80,6 +80,14 @@ def notify_exposure(db: Session, target: Target, items: List[Tuple[ExposureFindi
             rec = deliver(db, target, render(target.webhook_format or "json", target, qualifying, payload),
                           scan_id=None, kind="exposure", event_count=len(qualifying), **kwargs)
             out["webhook"] = rec.status
+        if target.email_recipients:
+            from backend import emailer
+            if emailer.smtp_configured():
+                subject, text, html = emailer.render_exposure_email(target, qualifying)
+                kwargs = {"sleep": sleep} if sleep else {}
+                rec = emailer.deliver_email(db, target, subject, text, html, scan_id=None, kind="email_exposure",
+                                            event_count=len(qualifying), **kwargs)
+                out["email"] = rec.status
     except Exception:  # noqa: BLE001
         db.rollback()
         logger.exception("[exposure] failed to create alerts or deliver webhook")

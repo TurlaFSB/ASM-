@@ -253,6 +253,19 @@ def notify_scan_changes(db: Session, scan: Scan, sleep=time.sleep) -> Dict:
                 rec = deliver(db, target, render_body(target.webhook_format or "json", digest),
                               scan_id=scan.id, kind="digest", event_count=len(rows), sleep=sleep)
                 summary["webhook"] = rec.status
+
+        if target.email_recipients:
+            from backend import emailer
+            if emailer.smtp_configured():
+                sent_before = (db.query(WebhookDelivery).filter(WebhookDelivery.scan_id == scan.id,
+                                                                WebhookDelivery.kind == "email_digest",
+                                                                WebhookDelivery.status == "sent").first())
+                if sent_before is None:
+                    digest = build_digest(target, scan, [_view(r) for r in rows])
+                    subject, text, html = emailer.render_scan_email(digest)
+                    rec = emailer.deliver_email(db, target, subject, text, html, scan_id=scan.id,
+                                                kind="email_digest", event_count=len(rows), sleep=sleep)
+                    summary["email"] = rec.status
     except Exception:  # noqa: BLE001
         db.rollback()
         logger.exception("[notify] failed to create alerts or deliver webhook")

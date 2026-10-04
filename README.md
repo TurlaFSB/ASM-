@@ -347,6 +347,12 @@ Set these in `.env.docker`. Only the first two are required.
 | `ASM_LOG_FORMAT` | `text` | Set `json` for one JSON object per log line (API and workers) |
 | `ASM_RETENTION_DAYS` | `90` | Daily cleanup deletes screenshot folders, per-scan tool output and cached PDFs older than this many days; `0` keeps everything. Scans, findings, change history, seals and the audit log are never deleted |
 | `ASM_RETENTION_DELIVERY_DAYS` | `180` | How long webhook delivery log rows are kept; `0` keeps them all |
+| `ASM_SMTP_HOST` / `ASM_SMTP_FROM` | unset | Turns on email notifications. Both are required; recipients are then set per target under Notifications |
+| `ASM_SMTP_PORT` | `587` (`465` for ssl, `25` for none) | SMTP port |
+| `ASM_SMTP_SECURITY` | `starttls` | `starttls`, `ssl` or `none`. Certificates are always verified when TLS is on |
+| `ASM_SMTP_USER` / `ASM_SMTP_PASSWORD` | unset | SMTP login, if your server needs one |
+| `ASM_SMTP_TIMEOUT` | `10` | Seconds before a connection attempt gives up |
+| `ASM_PUBLIC_URL` | unset | Public address of the UI (for example `https://asm.example.com`); adds an "Open in ASM Platform" link to emails |
 | `API_RATE_LIMIT_PER_MINUTE` | `600` | Requests per minute allowed from one client address before the API answers `429` with `Retry-After`; `0` disables. Login attempts have a stricter separate throttle |
 | `CORS_ORIGINS` | `http://localhost:5173,http://localhost:5174,http://localhost:3000` | Comma-separated browser origins allowed to call the API. Add the origin you open the app on if it differs, for example `http://192.168.1.20:3000` |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `480` | Session lifetime |

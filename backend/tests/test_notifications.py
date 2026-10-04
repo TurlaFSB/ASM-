@@ -283,7 +283,8 @@ def client(db, monkeypatch):
 def test_settings_defaults_hide_secret(client, db):
     r = client.get(f"/targets/{db.target.id}/notifications").json()
     assert r == {"target_id": db.target.id, "alert_min_severity": "medium", "webhook_configured": False,
-                 "webhook_host": None, "webhook_format": "json", "has_secret": False}
+                 "webhook_host": None, "webhook_format": "json", "has_secret": False,
+                 "email_recipients": [], "smtp_configured": False}
 
 
 def test_set_webhook_generates_secret_once(client, db):

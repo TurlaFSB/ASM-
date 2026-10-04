@@ -42,8 +42,15 @@ function legacyText(a) {
   return a.alert_type;
 }
 
+function deliveryLabel(d) {
+  const mail = d.kind.startsWith("email_") ? "Email: " : "";
+  if (d.kind.endsWith("test")) return mail + "Test";
+  if (d.kind.endsWith("exposure")) return mail + "Exposure";
+  return mail + `Scan #${d.scan_id}`;
+}
+
 function Deliveries({ rows }) {
-  if (!rows.length) return <div className="muted-note">No webhook deliveries yet. Configure one from Targets, under Notifications.</div>;
+  if (!rows.length) return <div className="muted-note">No deliveries yet. Set up a webhook or email recipients from Targets, under Notifications.</div>;
   return (
     <table className="delivery-table">
       <thead><tr><th>When</th><th>Sent to</th><th>Type</th><th>Result</th><th>Changes</th></tr></thead>
@@ -52,14 +59,14 @@ function Deliveries({ rows }) {
           <tr key={d.id}>
             <td className="cell-nowrap">{timeAgo(d.created_at)}</td>
             <td>{d.host || "unknown"}</td>
-            <td>{d.kind === "test" ? "Test" : d.kind === "exposure" ? "Exposure" : `Scan #${d.scan_id}`}</td>
+            <td>{deliveryLabel(d)}</td>
             <td>
               <span className={"badge " + (d.status === "sent" ? "badge-completed" : d.status === "blocked" ? "badge-pending" : "badge-failed")}>
                 {d.status}
               </span>
               {d.status !== "sent" && d.error && <span className="muted-note" style={{ marginLeft: 8 }}>{d.error}</span>}
             </td>
-            <td>{d.kind === "test" ? "—" : d.event_count}</td>
+            <td>{d.kind.endsWith("test") ? "—" : d.event_count}</td>
           </tr>
         ))}
       </tbody>

@@ -63,6 +63,7 @@ export const getDeliveries = (params) => api.get("/alerts/deliveries", { params 
 export const getNotificationSettings = (id) => api.get(`/targets/${id}/notifications`);
 export const updateNotificationSettings = (id, data) => api.put(`/targets/${id}/notifications`, data);
 export const testWebhook = (id) => api.post(`/targets/${id}/notifications/test`);
+export const testEmail = (id) => api.post(`/targets/${id}/notifications/test-email`);
 export const getUnreadAlerts = (params) => api.get("/alerts/unread", { params });
 export const markAlertRead = (id) => api.patch(`/alerts/${id}/read`);
 export const markAllAlertsRead = () => api.patch("/alerts/mark-all-read");

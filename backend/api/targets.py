@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from pydantic import BaseModel, ConfigDict, field_validator
-from typing import Optional
+from typing import List, Optional
 from datetime import datetime, timezone
 from backend.db import get_db
 from backend.models.target import Target
@@ -250,6 +250,13 @@ class NotificationSettingsUpdate(BaseModel):
     webhook_format: str = "json"
     alert_min_severity: str = "medium"
     rotate_secret: bool = False
+    email_recipients: Optional[List[str]] = None   # omitted/null keeps the current list; [] removes it
+
+    @field_validator("email_recipients")
+    @classmethod
+    def _recipients(cls, v):
+        from backend.emailer import validate_recipients
+        return None if v is None else validate_recipients(v)
 
     @field_validator("webhook_format")
     @classmethod
@@ -272,10 +279,12 @@ class NotificationSettingsUpdate(BaseModel):
 
 def _notification_view(t: Target, new_secret: Optional[str] = None) -> dict:
     from urllib.parse import urlparse
+    from backend.emailer import smtp_configured
     host = urlparse(t.webhook_url).hostname if t.webhook_url else None
     out = {"target_id": t.id, "alert_min_severity": t.alert_min_severity or "medium",
            "webhook_configured": bool(t.webhook_url), "webhook_host": host,
-           "webhook_format": t.webhook_format or "json", "has_secret": bool(t.webhook_secret)}
+           "webhook_format": t.webhook_format or "json", "has_secret": bool(t.webhook_secret),
+           "email_recipients": list(t.email_recipients or []), "smtp_configured": smtp_configured()}
     if new_secret:
         out["webhook_secret"] = new_secret      # shown exactly once; only the hash-free key is stored
     return out
@@ -309,6 +318,8 @@ def update_notification_settings(target_id: int, payload: NotificationSettingsUp
     new_secret = None
     t.alert_min_severity = payload.alert_min_severity
     t.webhook_format = payload.webhook_format
+    if payload.email_recipients is not None:
+        t.email_recipients = payload.email_recipients or None
     if keep_url:
         if t.webhook_url and payload.rotate_secret:
             t.webhook_secret = new_secret = secrets.token_urlsafe(32)
@@ -322,7 +333,8 @@ def update_notification_settings(target_id: int, payload: NotificationSettingsUp
     db.refresh(t)
     log_action(db, current_user.username, "notification_settings_updated", target_id=t.id,
                detail={"min_severity": t.alert_min_severity, "format": t.webhook_format,
-                       "webhook": bool(t.webhook_url), "secret_rotated": bool(new_secret)},
+                       "webhook": bool(t.webhook_url), "secret_rotated": bool(new_secret),
+                       "email_recipients": len(t.email_recipients or [])},
                ip_address=request.client.host if request.client else None)
     return _notification_view(t, new_secret)
 
@@ -335,6 +347,18 @@ def test_webhook(target_id: int, db: Session = Depends(get_db), current_user: di
         raise HTTPException(status_code=422, detail="No webhook is configured for this target")
     rec = send_test(db, t, sleep=lambda _s: None)
     return {"status": rec.status, "http_status": rec.http_status, "attempts": rec.attempts, "error": rec.error}
+
+
+@router.post("/{target_id}/notifications/test-email")
+def test_email(target_id: int, db: Session = Depends(get_db), current_user: dict = Depends(require_admin)):
+    from backend.emailer import send_test_email, smtp_configured
+    t = _active_target(db, target_id)
+    if not smtp_configured():
+        raise HTTPException(status_code=422, detail="Email is not set up on this server. Set the ASM_SMTP_* variables.")
+    if not t.email_recipients:
+        raise HTTPException(status_code=422, detail="Add at least one recipient first")
+    rec = send_test_email(db, t, sleep=lambda _s: None)
+    return {"status": rec.status, "attempts": rec.attempts, "error": rec.error}
 
 
 @router.delete("/{target_id}")

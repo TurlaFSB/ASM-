@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Copy, Check } from "lucide-react";
-import { getNotificationSettings, updateNotificationSettings, testWebhook } from "../api";
+import { getNotificationSettings, updateNotificationSettings, testWebhook, testEmail } from "../api";
 
 const SEVERITIES = [
   ["critical", "Critical"], ["high", "High"], ["medium", "Medium"], ["low", "Low"], ["info", "Everything"],
@@ -13,6 +13,8 @@ function errorText(e, fallback) {
   if (Array.isArray(d)) return d.map(x => x.msg).join(", ");
   return fallback;
 }
+
+const parseEmails = (text) => text.split(/[,;\s]+/).map(x => x.trim()).filter(Boolean);
 
 function Segmented({ label, options, value, onChange }) {
   return (
@@ -30,6 +32,7 @@ export default function NotificationSettings({ target }) {
   const [minSeverity, setMinSeverity] = useState("medium");
   const [format, setFormat] = useState("json");
   const [url, setUrl] = useState("");
+  const [emails, setEmails] = useState("");        // comma-separated, as typed
   const [secret, setSecret] = useState(null);     // shown once, right after it is created or rotated
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -41,6 +44,7 @@ export default function NotificationSettings({ target }) {
       .then(r => {
         if (!live) return;
         setSaved(r.data); setMinSeverity(r.data.alert_min_severity); setFormat(r.data.webhook_format);
+        setEmails((r.data.email_recipients || []).join(", "));
       })
       .catch(() => live && setNote({ tone: "bad", text: "Could not load notification settings." }));
     return () => { live = false; };
@@ -48,13 +52,14 @@ export default function NotificationSettings({ target }) {
 
   const apply = (r) => {
     setSaved(r.data); setMinSeverity(r.data.alert_min_severity); setFormat(r.data.webhook_format);
+    setEmails((r.data.email_recipients || []).join(", "));
     if (r.data.webhook_secret) { setSecret(r.data.webhook_secret); setCopied(false); }
   };
 
   const save = async (extra = {}) => {
     setBusy(true); setNote(null);
     try {
-      const body = { alert_min_severity: minSeverity, webhook_format: format, ...extra };
+      const body = { alert_min_severity: minSeverity, webhook_format: format, email_recipients: parseEmails(emails), ...extra };
       if (url.trim()) body.webhook_url = url.trim();
       apply(await updateNotificationSettings(target.id, body));
       setUrl("");
@@ -85,13 +90,26 @@ export default function NotificationSettings({ target }) {
     finally { setBusy(false); }
   };
 
+  const sendTestEmail = async () => {
+    setBusy(true); setNote(null);
+    try {
+      const r = (await testEmail(target.id)).data;
+      setNote(r.status === "sent"
+        ? { tone: "ok", text: "Test email sent." }
+        : { tone: "bad", text: `Test email ${r.status}${r.error ? `: ${r.error}` : ""}.` });
+    } catch (e) { setNote({ tone: "bad", text: errorText(e, "Could not send the test email.") }); }
+    finally { setBusy(false); }
+  };
+
   const copy = async () => {
     try { await navigator.clipboard.writeText(secret); setCopied(true); } catch { /* clipboard blocked: the text is selectable */ }
   };
 
   if (!saved) return <div className="loading">{note ? note.text : "Loading..."}</div>;
 
-  const dirty = minSeverity !== saved.alert_min_severity || format !== saved.webhook_format || url.trim() !== "";
+  const savedEmails = (saved.email_recipients || []).join(", ");
+  const dirty = minSeverity !== saved.alert_min_severity || format !== saved.webhook_format || url.trim() !== ""
+    || parseEmails(emails).join(", ") !== savedEmails;
 
   return (
     <div className="notif">
@@ -127,6 +145,22 @@ export default function NotificationSettings({ target }) {
               </button>
             </div>
           </div>
+        )}
+      </section>
+
+      <section>
+        <h3>Email</h3>
+        <div className="notif-row">
+          <input type="text" value={emails} onChange={e => setEmails(e.target.value)} spellCheck={false}
+            aria-label="Email recipients" placeholder="security@example.com, oncall@example.com" />
+        </div>
+        <p className="muted-note">
+          {saved.smtp_configured
+            ? "One email per scan, listing what changed. Up to 10 addresses, separated by commas."
+            : "Email is not set up on this server yet. An admin needs to set the ASM_SMTP_* variables first (see the README)."}
+        </p>
+        {saved.smtp_configured && saved.email_recipients?.length > 0 && (
+          <button type="button" className="btn btn-secondary btn-sm" onClick={sendTestEmail} disabled={busy}>Send test email</button>
         )}
       </section>
 
