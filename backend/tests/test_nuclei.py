@@ -213,3 +213,16 @@ def test_real_destination_port_is_taken_from_the_socket_error():
     errs = collect_transient_errors(err)
     assert set(errs) == {"192.168.16.128:22", "192.168.16.128"}
     assert set(errs["192.168.16.128:22"]) == {"ssh-a", "ssh-b"}
+
+
+def test_nuclei_is_told_where_templates_are(tmp_path, monkeypatch):
+    """In a read-only container nuclei's own lookup fails and it falls back to /app/nuclei-templates (nothing runs),
+    so the command must pass the installed directory explicitly."""
+    import backend.scanner.vuln as v
+    tpl = tmp_path / "nuclei-templates"
+    tpl.mkdir()
+    monkeypatch.setattr(v, "TEMPLATE_DIRS", (str(tpl),))
+    for cmd in (v.build_nuclei_cmd("t", 5), v.build_nuclei_cmd("t", 5, tags=["ssh"]), v.build_retry_cmd("h", ["a"], 5)):
+        assert cmd[cmd.index("-ud") + 1] == str(tpl)
+    monkeypatch.setattr(v, "TEMPLATE_DIRS", (str(tmp_path / "missing"),))
+    assert "-ud" not in v.build_nuclei_cmd("t", 5)

@@ -50,6 +50,7 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     container_name: asm_backend
+    init: true          # a minimal init (PID 1) reaps finished child processes such as chromium; without it they pile up as zombies
     restart: unless-stopped
     env_file:
       - .env.docker
@@ -83,6 +84,7 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     container_name: asm_celery_worker
+    init: true          # a minimal init (PID 1) reaps finished child processes such as chromium; without it they pile up as zombies
     restart: unless-stopped
     command: celery -A backend.tasks worker --loglevel=info --concurrency=1
     env_file:
@@ -114,6 +116,7 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     container_name: asm_celery_beat
+    init: true          # a minimal init (PID 1) reaps finished child processes such as chromium; without it they pile up as zombies
     restart: unless-stopped
     command: celery -A backend.tasks beat --loglevel=info
     env_file:

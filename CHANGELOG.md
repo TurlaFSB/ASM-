@@ -4,6 +4,10 @@ All notable changes to this project are recorded here. The format follows [Keep 
 
 ## [Unreleased]
 
+### Fixed
+- **Nuclei did not run in the production overlay.** Its template lookup depends on a config file that is empty in a read-only container, so it looked in `/app/nuclei-templates` and scanned nothing. The scanner now passes the installed template folder explicitly.
+- **Zombie `chromium` processes** piled up in the worker after screenshot stages. The backend, worker and beat containers now run with a minimal init that reaps them.
+
 ### Added
 - **Screenshot viewing**: a gallery of the pictures taken during a scan, opened from the scan's menu on the Scans page. Pictures are matched to their host, served only to signed-in users, and removed with the retention cleanup.
 - **Target tags**: label targets (up to 10 each), edit them from the row menu, and filter the Targets list by tag. `GET /targets/?tag=` filters through the API.

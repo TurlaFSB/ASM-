@@ -5,7 +5,7 @@ import tempfile
 import os
 import re
 import time
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 
 logger = logging.getLogger(__name__)
@@ -132,6 +132,25 @@ def keep_finding(f: Dict) -> bool:
     return bool({str(t).lower() for t in tags} & INFO_KEEP_TAGS)
 
 
+TEMPLATE_DIRS = ("~/nuclei-templates", "~/.local/nuclei-templates")
+
+
+def templates_dir() -> Optional[str]:
+    """The installed nuclei template directory, or None. Nuclei is told where it is explicitly (-ud) because
+    its own lookup depends on a config file under $HOME/.config that is empty in a read-only container; it
+    then falls back to a path relative to the working directory ('/app/nuclei-templates') and runs nothing."""
+    for d in TEMPLATE_DIRS:
+        root = os.path.expanduser(d)
+        if os.path.isdir(root):
+            return root
+    return None
+
+
+def _template_args() -> List[str]:
+    d = templates_dir()
+    return ["-ud", d] if d else []
+
+
 def build_nuclei_cmd(targets_path: str, rate_limit: int, tags=None, severity: str = None):
     cmd = [
         "nuclei", "-nc",              # NOT -silent: warnings (e.g. host skipped) must reach stderr
@@ -144,6 +163,7 @@ def build_nuclei_cmd(targets_path: str, rate_limit: int, tags=None, severity: st
         "-duc",                       # no update check at scan time
         "-timeout", "10",
         "-severity", severity or NUCLEI_SEVERITY,
+        *_template_args(),
     ]
     if tags:                      # explicit service tags (network-service pass)
         # -v: per-template "Could not execute request" warnings are what tell us a service was not
@@ -234,6 +254,7 @@ def build_retry_cmd(target: str, template_ids: List[str], rate_limit: int, sever
         "-c", "1", "-retries", "1", "-timeout", "15",
         "-rate-limit", NUCLEI_RETRY_RATE,           # spaced out: one request per second by default
         "-ni", "-duc", "-v", "-severity", severity or NUCLEI_SEVERITY, "-jsonl",
+        *_template_args(),
     ]
 
 
@@ -332,9 +353,6 @@ def _summarize(result: Dict) -> None:
         sev = f.get("severity", "unknown")
         counts[sev] = counts.get(sev, 0) + 1
     result["severity_counts"] = counts
-
-
-TEMPLATE_DIRS = ("~/nuclei-templates", "~/.local/nuclei-templates")
 
 
 def template_count() -> int:
