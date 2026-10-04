@@ -21,7 +21,7 @@ python-multipart>=0.0.32,<0.1
 dnspython>=2.8,<3
 netaddr>=1.3,<2
 psutil>=7.2,<8
-rapidfuzz>=3.14,<4
+rapidfuzz>=3.14.6,<4
 pyvirtualdisplay>=3.0,<4; sys_platform != "win32"
 argcomplete>=3.1,<4
 python-whois>=0.9.6,<1
