@@ -199,10 +199,19 @@ def cancel_scan(scan_id: int, request: Request, db: Session = Depends(get_db), c
         raise HTTPException(status_code=404, detail="Scan not found")
     if scan.status not in ["pending", "running"]:
         raise HTTPException(status_code=400, detail="Scan is not running")
-    # Cooperative cancel: flag first (the running task's guard kills its tools and unwinds cleanly,
-    # releasing the target lock), then the DB status, then drop the task if it is still queued.
-    # terminate=True is deliberately NOT used: it SIGTERMs the worker process mid-flight, skipping
-    # cleanup and orphaning nmap/nuclei/feroxbuster, which is what left the next scan 'pending'.
+    cancel_scan_row(db, scan)
+    log_action(db, current_user.username, "scan_cancelled", target_id=scan.target_id,
+               scan_id=scan.id, ip_address=request.client.host)
+    return {"message": "Scan cancelled"}
+
+
+def cancel_scan_row(db: Session, scan: Scan) -> None:
+    """Cooperative cancel of a pending or running scan.
+
+    Flag first (the running task's guard kills its tools and unwinds cleanly, releasing the target lock),
+    then the DB status, then drop the task if it is still queued. terminate=True is deliberately NOT used:
+    it SIGTERMs the worker process mid-flight, skipping cleanup and orphaning nmap/nuclei/feroxbuster, which
+    is what left the next scan 'pending'."""
     try:
         request_cancel(redis.Redis.from_url(settings.redis_url, socket_timeout=2), scan.id)
     except Exception:  # noqa: BLE001  the DB status below is still checked by the pipeline
@@ -212,9 +221,7 @@ def cancel_scan(scan_id: int, request: Request, db: Session = Depends(get_db), c
     db.commit()
     if scan.celery_task_id:
         celery_app.control.revoke(scan.celery_task_id)
-    log_action(db, current_user.username, "scan_cancelled", target_id=scan.target_id,
-               scan_id=scan.id, ip_address=request.client.host)
-    return {"message": "Scan cancelled"}
+
 
 from fastapi.responses import Response
 from backend.report_cache import cached_pdf

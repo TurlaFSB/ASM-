@@ -7,7 +7,6 @@ Output merged into the same `technologies` list httpx populates on Asset -- dedu
 import subprocess
 import json
 import logging
-import re
 import time
 from typing import List, Dict
 
@@ -54,7 +53,7 @@ def run_whatweb(urls: List[str], aggression: int = 3, timeout: int = 20) -> Dict
     for url in urls:
         try:
             proc = subprocess.run(
-                ["whatweb", "--log-json=-", f"-a", str(aggression), url],
+                ["whatweb", "--log-json=-", "-a", str(aggression), url],
                 capture_output=True,
                 text=True,
                 timeout=timeout,

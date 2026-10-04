@@ -93,7 +93,7 @@ export const downloadScanReport = (id) =>
 
 export const getSchedules = () => api.get("/schedules/");
 export const createSchedule = (data) => api.post("/schedules/", data);
-export const toggleSchedule = (id) => api.patch(`/schedules/${id}/toggle`);
+export const setScheduleEnabled = (id, enabled) => api.patch(`/schedules/${id}`, { enabled });
 export const deleteSchedule = (id) => api.delete(`/schedules/${id}`);
 
 export const downloadAssetsCsv = (id) =>

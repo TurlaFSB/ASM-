@@ -5,6 +5,9 @@ All notable changes to this project are recorded here. The format follows [Keep 
 ## [Unreleased]
 
 ### Fixed
+- **Deleting a target now stops everything for it**: its schedules are paused (and hidden), and a scan that is queued or running is cancelled. Before, a scan kept running and schedules stayed armed.
+- **Resuming a paused schedule** waits for its next time slot instead of firing at once for a time that passed while it was paused. The Schedules switch now sets the state explicitly, so a double click can no longer undo itself.
+- **Saving notification settings with only some fields** (for example just the email recipients) no longer resets the alert threshold and webhook format to their defaults.
 - **Nuclei did not run in the production overlay.** Its template lookup depends on a config file that is empty in a read-only container, so it looked in `/app/nuclei-templates` and scanned nothing. The scanner now passes the installed template folder explicitly.
 - **Zombie `chromium` processes** piled up in the worker after screenshot stages. The backend, worker and beat containers now run with a minimal init that reaps them.
 

@@ -15,8 +15,7 @@ Pure functions, no database.
 """
 import copy
 import hashlib
-import re
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional
 
 from backend.diffing.snapshot import FULL, SCHEMA_VERSION, split_path_key
 from backend.path_flags import is_sensitive_path, REACHABLE

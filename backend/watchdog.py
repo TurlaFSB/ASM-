@@ -6,7 +6,7 @@ celery beat) fails such rows. A live worker also enforces SCAN_MAX_SECONDS itsel
 """
 import logging
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Dict, Optional
 
 from backend import cancellation as cx

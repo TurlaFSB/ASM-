@@ -9,11 +9,10 @@ Limits worth knowing: a domain that is registered but has no DNS records cannot 
 registrable-domain detection is a heuristic (it knows the common country second-level suffixes, not the full
 public suffix list).
 """
-import random
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Callable, Dict, List, Optional, Set, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from backend.exposure.base import CollectorError, Finding, Findings, NotApplicable, clean_text, registrable_parts  # noqa: F401  (re-exported)
 

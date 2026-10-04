@@ -288,8 +288,8 @@ def update_tags(target_id: int, payload: TargetTagsUpdate, request: Request, db:
 
 class NotificationSettingsUpdate(BaseModel):
     webhook_url: Optional[str] = None          # omitted/null keeps the current webhook; "" removes it
-    webhook_format: str = "json"
-    alert_min_severity: str = "medium"
+    webhook_format: Optional[str] = None       # omitted/null keeps the current format
+    alert_min_severity: Optional[str] = None   # omitted/null keeps the current threshold
     rotate_secret: bool = False
     email_recipients: Optional[List[str]] = None   # omitted/null keeps the current list; [] removes it
 
@@ -303,6 +303,8 @@ class NotificationSettingsUpdate(BaseModel):
     @classmethod
     def _fmt(cls, v):
         from backend.notifications import WEBHOOK_FORMATS
+        if v is None:
+            return None
         v = (v or "").lower()
         if v not in WEBHOOK_FORMATS:
             raise ValueError(f"must be one of: {', '.join(WEBHOOK_FORMATS)}")
@@ -312,6 +314,8 @@ class NotificationSettingsUpdate(BaseModel):
     @classmethod
     def _sev(cls, v):
         from backend.notifications import SEVERITIES
+        if v is None:
+            return None
         v = (v or "").lower()
         if v not in SEVERITIES:
             raise ValueError(f"must be one of: {', '.join(SEVERITIES)}")
@@ -357,8 +361,10 @@ def update_notification_settings(target_id: int, payload: NotificationSettingsUp
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
     new_secret = None
-    t.alert_min_severity = payload.alert_min_severity
-    t.webhook_format = payload.webhook_format
+    if payload.alert_min_severity is not None:
+        t.alert_min_severity = payload.alert_min_severity
+    if payload.webhook_format is not None:
+        t.webhook_format = payload.webhook_format
     if payload.email_recipients is not None:
         t.email_recipients = payload.email_recipients or None
     if keep_url:
@@ -408,7 +414,18 @@ def delete_target(target_id: int, request: Request, db: Session = Depends(get_db
     if not target:
         raise HTTPException(status_code=404, detail="Target not found")
     target.is_active = False
+    # A removed target must stop being scanned: pause its schedules and cancel a scan that is queued or running.
+    from backend.api.scans import cancel_scan_row
+    from backend.models.scan import Scan
+    from backend.models.schedule import ScheduledScan
+    paused = db.query(ScheduledScan).filter(ScheduledScan.target_id == target.id,
+                                            ScheduledScan.enabled == True).update(  # noqa: E712
+        {"enabled": False}, synchronize_session=False)
+    active = db.query(Scan).filter(Scan.target_id == target.id, Scan.status.in_(["pending", "running"])).all()
     db.commit()
+    for sc in active:
+        cancel_scan_row(db, sc)
     log_action(db, current_user.username, "target_deleted", target_id=target.id,
-               detail={"domain": target.domain}, ip_address=request.client.host)
+               detail={"domain": target.domain, "schedules_paused": paused, "scans_cancelled": len(active)},
+               ip_address=request.client.host)
     return {"message": f"Target {target.domain} deactivated"}

@@ -7,7 +7,7 @@ no screenshots, no magnet links, and none of those links is stored. A listing is
 reported as "named on", never as confirmed data theft.
 """
 import re
-from typing import Dict, List
+from typing import Dict
 
 from backend.exposure.base import CollectorError, Finding, Findings, clean_text
 from backend.exposure.lookalikes import registrable_parts

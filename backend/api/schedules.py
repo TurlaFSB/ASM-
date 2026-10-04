@@ -104,7 +104,10 @@ def create_schedule(payload: ScheduleCreate, request: Request, db: Session = Dep
 
 @router.get("/", response_model=list[ScheduleResponse])
 def list_schedules(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
-    return db.query(ScheduledScan).order_by(ScheduledScan.created_at.desc()).all()
+    # schedules of removed (deactivated) targets are not shown
+    return (db.query(ScheduledScan).join(Target, Target.id == ScheduledScan.target_id)
+            .filter(Target.is_active == True)  # noqa: E712
+            .order_by(ScheduledScan.created_at.desc()).all())
 
 @router.patch("/{schedule_id}", response_model=ScheduleResponse)
 def update_schedule(schedule_id: int, payload: ScheduleUpdate, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(require_admin)):
@@ -124,6 +127,8 @@ def update_schedule(schedule_id: int, payload: ScheduleUpdate, request: Request,
         cron_changed = True
 
     if payload.enabled is not None:
+        if payload.enabled and not schedule.enabled:
+            cron_changed = True          # resuming: the old next_run_at is in the past and would fire at once
         schedule.enabled = payload.enabled
 
     if cron_changed:
@@ -141,6 +146,8 @@ def toggle_schedule(schedule_id: int, request: Request, db: Session = Depends(ge
     if not schedule:
         raise HTTPException(status_code=404, detail="Schedule not found")
     schedule.enabled = not schedule.enabled
+    if schedule.enabled:                 # resuming: schedule from now, do not fire for a time that passed while paused
+        schedule.next_run_at = compute_next_run(schedule.cron_expression)
     db.commit()
     log_action(db, current_user.username, "schedule_toggled", target_id=schedule.target_id,
                detail={"schedule_id": schedule.id, "enabled": schedule.enabled}, ip_address=request.client.host)

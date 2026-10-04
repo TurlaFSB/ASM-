@@ -9,7 +9,7 @@ Pure functions only (no database, no I/O) so every rule is unit-testable.
 """
 import hashlib
 import json
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from backend.scan_profiles import get_profile
 from backend.tech_utils import clean_technologies

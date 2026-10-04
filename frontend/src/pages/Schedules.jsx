@@ -1,7 +1,7 @@
 import "../components/ToggleSwitch.css";
 import { useState, useEffect } from "react";
 import { Plus, Trash2, Globe } from "lucide-react";
-import { getSchedules, createSchedule, toggleSchedule, deleteSchedule, getTargets } from "../api";
+import { getSchedules, createSchedule, setScheduleEnabled, deleteSchedule, getTargets } from "../api";
 import Sheet from "../components/Sheet";
 import Picker from "../components/Picker";
 import Segmented from "../components/Segmented";
@@ -81,7 +81,7 @@ export default function Schedules() {
   };
 
   const handleToggle = async (s) => {
-    try { await toggleSchedule(s.id); fetchAll(); }
+    try { await setScheduleEnabled(s.id, !s.enabled); fetchAll(); }
     catch { toast("Could not change the schedule.", "bad"); }
   };
 
