@@ -53,7 +53,10 @@ def report_signature(db: Session, scan: Scan) -> str:
         return [n or 0, mx or 0]
 
     target = db.query(Target).filter(Target.id == scan.target_id).first()
+    # Triage decisions change what a report lists, so the set of hidden findings is part of the signature.
+    _, hidden = reports.triage_split(db, db.query(Vulnerability).filter(Vulnerability.scan_id == scan.id).all())
     material = {
+        "triaged": sorted(v.id for v in hidden),
         "v": REPORT_VERSION, "tpl": _template_stamp(),
         "scan": [scan.id, scan.status, str(scan.completed_at), scan.profile,
                  json.dumps(scan.module_results, sort_keys=True, default=str)],

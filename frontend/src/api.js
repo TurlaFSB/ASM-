@@ -66,6 +66,8 @@ export const getVulnerabilities = (params) => api.get("/vulnerabilities/", { par
 export const getVulnRollup = (params) => api.get("/vulnerabilities/rollup", { params });
 export const getScanChanges = (id, params) => api.get(`/changes/scans/${id}`, { params });
 export const getChanges = (params) => api.get("/changes/", { params });
+export const setFindingTriage = (data) => api.post("/vulnerabilities/triage", data);
+export const getHiddenFindings = (params) => api.get("/vulnerabilities/hidden-count", { params });
 export const getVulnSummary = (params) => api.get("/vulnerabilities/summary", { params });
 export const createTarget = (data) => api.post("/targets/", data);
 export const deleteTarget = (id) => api.delete(`/targets/${id}`);

@@ -239,6 +239,15 @@ def _changes_view(db: Session, scan: Scan, mr: Dict) -> Optional[Dict]:
             "pending": pending, "not_compared": detail.get("skipped", [])}
 
 
+def triage_split(db: Session, raw_vulns):
+    """(findings to report, findings hidden by a triage decision such as false positive or accepted risk)."""
+    from backend import triage as tg
+    t = tg.lookup(db, raw_vulns)
+    hidden = [v for v in raw_vulns if t.get(v.id, {}).get("suppressed")]
+    hidden_ids = {v.id for v in hidden}
+    return [v for v in raw_vulns if v.id not in hidden_ids], hidden
+
+
 def build_report_context(db: Session, scan_id: int):
     scan = db.query(Scan).filter(Scan.id == scan_id).first()
     if not scan:
@@ -255,7 +264,7 @@ def build_report_context(db: Session, scan_id: int):
                   if a.status != "disappeared"]
     assets.sort(key=lambda a: -(a.risk_score or 0))
 
-    raw_vulns = db.query(Vulnerability).filter(Vulnerability.scan_id == scan_id).all()
+    raw_vulns, triaged_hidden = triage_split(db, db.query(Vulnerability).filter(Vulnerability.scan_id == scan_id).all())
     alerts = db.query(Alert).filter(Alert.scan_id == scan_id).all()
     vulns = sorted((_vuln_view(v) for v in raw_vulns), key=_sort_key)
 
@@ -365,7 +374,7 @@ def build_report_context(db: Session, scan_id: int):
         seal = None
 
     return {
-        "seal": seal,
+        "seal": seal, "triaged_hidden": len(triaged_hidden),
         "report_id": f"ASM-{scan.id:05d}",
         "target": target, "scan": scan, "profile": profile, "duration": duration,
         "assets": assets, "vulnerabilities": vulns,

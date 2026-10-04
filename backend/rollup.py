@@ -73,7 +73,8 @@ def rollup_findings(rows: Iterable[Dict], totals: Optional[Dict[Tuple, int]] = N
                                     "scan_id": r.get("scan_id"), "target_id": r.get("target_id"), "cves": []})
         g["cves"].append({"id": r.get("id"), "cve_id": r.get("cve_id"), "cvss": r.get("cvss_score"),
                           "severity": (r.get("severity") or "info").lower(),
-                          "kev": "kev" in (r.get("tags") or []), "summary": short_summary(r.get("description"))})
+                          "kev": "kev" in (r.get("tags") or []), "summary": short_summary(r.get("description")),
+                          "triage": r.get("triage")})
     for key, g in groups.items():
         items.append(_summarize_group(g, totals.get(key)))
     items.sort(key=_item_rank)

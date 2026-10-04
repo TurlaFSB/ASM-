@@ -128,7 +128,8 @@ Each scan runs as one Celery task and reports progress per stage to the UI. Data
 ### Risk and reporting
 - Per-asset risk scoring: CVSS baseline, boosted for high-risk ports and admin surfaces, force-escalated to Critical when a matched CVE is in KEV
 - Client-ready **PDF reports**, pre-built in the background after each scan and cached, so downloads are instant: executive summary with top actions, asset inventory, infrastructure, confirmed findings, inferred findings grouped per service, change detection, and remediation with SLA tiers
-- CSV export for assets and vulnerabilities
+- **Finding triage**: mark a finding, a component or a CVE as In progress, False positive, Accepted risk or Resolved. False positive and Accepted risk require a written reason; accepted risk expires (default 90 days, max 365) and the finding returns for review. Resolved findings stay hidden until a later scan reports them again. Triaged findings are left out of PDF reports and counts, and are never deleted
+- CSV export for assets and vulnerabilities (with triage status and note columns)
 
 ### Operations
 - Light and dark themes (match system by default), keyboard-navigable menus, and no WCAG A/AA violations in automated checks
@@ -372,7 +373,7 @@ Nuclei tuning (`NUCLEI_SEVERITY`, `NUCLEI_AUTOSCAN`, `NUCLEI_MAX_HOST_ERROR`, `N
 | **Assets** | Searchable, filterable inventory: ports, technologies, HTTP metadata, discovered paths and risk score. Click a row for the side panel. |
 | **Schedules** | Recurring scans by cron expression or preset interval. |
 | **Changes** | Severity-rated change events between comparable scans, with optional AI notes. |
-| **Vulnerabilities** | Template findings, inferred CVE matches and TLS issues with severity, CVE and CVSS. |
+| **Vulnerabilities** | Template findings, inferred CVE matches and TLS issues with severity, CVE and CVSS. Triage findings (admins) and switch between Active, Triaged and Everything. |
 | **Exposure** | Choose a target, switch sources on, press *Check now*, review masked findings and dismiss or reopen them. |
 | **Alerts** | In-app alerts, delivery log and per-target webhook settings. |
 | **Users** | Admins only: add accounts, make someone admin or viewer, reset passwords, deactivate or reactivate. |
@@ -392,7 +393,8 @@ Interactive documentation is served by FastAPI at `http://<host>:8000/docs`. All
 | Auth | `POST /auth/token`, `GET /auth/me`, `POST /auth/logout`, `POST /auth/change-password`, `GET /auth/setup-status`, `POST /auth/setup` |
 | Users (admin) | `GET/POST /users/`, `PATCH /users/{id}`, `POST /users/{id}/reset-password` |
 | Targets and scans | `/targets/*`, `/scans/*` (including `/scans/profiles`) |
-| Assets and vulnerabilities | `/assets/*`, `/vulnerabilities/*` |
+| Assets and vulnerabilities | `/assets/*`, `/vulnerabilities/*` (`triage=active\|triaged\|all` filter, `GET /vulnerabilities/hidden-count`) |
+| Finding triage (admin) | `POST /vulnerabilities/triage` with `{ids, status, note, expires_in_days}` |
 | Alerts and schedules | `/alerts/*`, `/schedules/*` |
 | Changes | `GET /changes/`, `GET /changes/scans/{scan_id}` |
 | Exposure | `/exposure/*` (sources, run, findings, runs) |
@@ -562,6 +564,7 @@ Infostealer exposure counts: free OSINT lookup by [Hudson Rock](https://www.huds
 | Cookie sessions with CSRF protection | Done |
 | Exposure monitoring: GitHub code, breach records, lookalike domains, ransomware listings, infostealer counts | Done |
 | Tamper-evident signed scan history | Done |
+| Finding triage with reasons, expiry and report suppression | Done |
 | Light and dark themes, accessibility checks | Done |
 | Container hardening: non-root production overlay, read-only filesystem, dropped capabilities | Done and verified on a Docker host (non-root, read-only root, only `NET_RAW` on the worker, SYN scans, PDF reports, seals, backup round trip). The frontend nginx image still runs its master process as root |
 | Dark-web mention monitoring via licensed intelligence APIs | Planned |

@@ -265,12 +265,15 @@ def export_vulnerabilities_csv(scan_id: int, db: Session = Depends(get_db), curr
         raise HTTPException(status_code=404, detail="Scan not found")
 
     vulns = db.query(Vulnerability).filter(Vulnerability.scan_id == scan_id).all()
+    from backend import triage as tg
+    decisions = tg.lookup(db, vulns)
 
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["severity", "name", "host", "cve_id", "cvss_score",
-                      "template_id", "matched_at", "description"])
+                      "template_id", "matched_at", "description", "triage_status", "triage_note"])
     for v in vulns:
+        d = decisions.get(v.id) or {}
         writer.writerow([_csv_safe(x) for x in [
             v.severity or "",
             v.name or "",
@@ -280,6 +283,8 @@ def export_vulnerabilities_csv(scan_id: int, db: Session = Depends(get_db), curr
             v.template_id or "",
             v.matched_at or "",
             (v.description or "").replace("\n", " ").strip(),
+            d.get("status") or "open",
+            d.get("note") or "",
         ]])
 
     output.seek(0)
