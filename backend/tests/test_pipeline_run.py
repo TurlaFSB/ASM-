@@ -107,6 +107,13 @@ def env(monkeypatch):
                       "host": "example.org", "vuln_type": "tls"}], "module_status": "ok"})
     stub("backend.scanner.screenshot", "run_eyewitness", {"screenshots": [], "module_status": "ok"})
     stub("backend.scanner.cve_match", "run_cve_match", {"findings": [], "module_status": "ok"})
+    stub("backend.scanner.takeover", "run_takeover_check", {
+        "findings": [{"template_id": "takeover-github-pages", "name": "Subdomain takeover candidate (GitHub Pages)",
+                      "severity": "high", "host": "old.example.org", "vuln_type": "subdomain-takeover",
+                      "tags": ["takeover", "posture", "dns"]}], "module_status": "ok"})
+    stub("backend.scanner.emailsec", "run_email_security", {"findings": [], "module_status": "ok"})
+    stub("backend.scanner.cloudbucket", "run_cloud_bucket_check", {"findings": [], "module_status": "ok"})
+    stub("backend.scanner.sensitive_files", "run_sensitive_file_check", {"findings": [], "module_status": "ok"})
 
     s = Session()
     t = Target(domain="example.org", is_active=True, authorized=True)
@@ -146,7 +153,8 @@ def test_full_pipeline_completes_and_persists(env):
     assert mr["integrity"].startswith("sealed") and mr["diff"].startswith("baseline")
     assert {a.subdomain for a in db.query(Asset).all()} == {"example.org", "www.example.org"}
     vulns = db.query(Vulnerability).all()
-    assert {v.template_id for v in vulns} == {"CVE-2021-41773", "tls-old"}
+    assert {v.template_id for v in vulns} == {"CVE-2021-41773", "tls-old", "takeover-github-pages"}
+    assert mr["takeover"] == "ok" and mr["email_security"] == "ok" and mr["sensitive_files"] == "ok"
     nuclei = next(v for v in vulns if v.template_id == "CVE-2021-41773")
     assert nuclei.cve_id == "CVE-2021-41773" and nuclei.finding_key
     assert env.queued == [sid]
@@ -174,6 +182,10 @@ def test_ip_target_skips_discovery(env):
     assert mr["subfinder"].startswith("skipped") and mr["dns"].startswith("resolved directly")
     assert "enumerate_subdomains" not in env.calls and "resolve_subdomains" not in env.calls
     assert res["total_assets"] == 1
+    # DNS-name based posture checks make no sense for an IP; the file check still runs against its web ports
+    assert "run_takeover_check" not in env.calls and "run_email_security" not in env.calls
+    assert "run_cloud_bucket_check" not in env.calls
+    assert mr["takeover"].startswith("skipped") and mr["email_security"].startswith("skipped")
 
 
 def test_cancelled_before_start_never_runs(env):

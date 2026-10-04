@@ -44,6 +44,12 @@ class ScanProfile:
     run_nuclei_network: bool = True
     run_cve_match: bool = True
 
+    # Posture checks: DNS and light HTTP, no heavy tooling
+    run_takeover: bool = True          # dangling CNAMEs / unclaimed third-party services
+    run_email_security: bool = True    # SPF, DMARC, DKIM, MTA-STS
+    run_cloud_buckets: bool = True     # public S3 / GCS / Azure listings named after the domain
+    run_sensitive_files: bool = True   # exposed .git, .env, backups (content-verified)
+
     def public(self) -> Dict:
         """Fields safe/useful to show in the UI."""
         d = asdict(self)
@@ -65,6 +71,14 @@ class ScanProfile:
             names.append("CVE match")
         if self.run_sslyze:
             names.append("TLS")
+        if self.run_takeover:
+            names.append("takeover")
+        if self.run_email_security:
+            names.append("email security")
+        if self.run_cloud_buckets:
+            names.append("cloud storage")
+        if self.run_sensitive_files:
+            names.append("exposed files")
         if self.run_screenshots:
             names.append("screenshots")
         return names
@@ -82,6 +96,8 @@ PROFILES: Dict[str, ScanProfile] = {
         run_screenshots=False,
         run_sslyze=False,
         run_dirbuster=False,
+        run_cloud_buckets=False,
+        run_sensitive_files=False,
         nuclei_severity="high,critical",
         nuclei_timeout=300,
     ),

@@ -132,6 +132,16 @@ def collect_web_results(stage_results: Dict, prof, enable_dirbuster: bool, http_
     if screenshot_data.get("run"):
         module_results["screenshot_run"] = screenshot_data["run"]     # folder name only; the API reads its index.json
 
+    # posture checks: their findings travel through the same save / score / diff path as scanner findings
+    for key, enabled in (("takeover", prof.run_takeover), ("email_security", prof.run_email_security),
+                         ("cloud_buckets", prof.run_cloud_buckets), ("sensitive_files", prof.run_sensitive_files)):
+        data = stage_results.get(key)
+        if data is None:
+            module_results[key] = skipped if not enabled else "skipped (not applicable to this target)"
+            continue
+        module_results[key] = data["module_status"]
+        vuln_data["findings"] = list(vuln_data.get("findings", [])) + data.get("findings", [])
+
     return {"dirbuster": dirbuster_data, "vuln": vuln_data, "sslyze": sslyze_data, "screenshot": screenshot_data}
 
 

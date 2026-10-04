@@ -36,6 +36,7 @@ const MODULE_LABELS = {
   subfinder: "subfinder", amass: "amass", dns: "dns", whois_asn: "whois",
   portscan: "nmap", httpprobe: "httpx", whatweb: "whatweb", dirbuster: "dirs",
   vuln: "nuclei", nuclei_network: "net-nuclei", cve_match: "cve", sslyze: "tls", screenshot: "shots",
+  takeover: "takeover", email_security: "email", cloud_buckets: "cloud", sensitive_files: "files",
 };
 
 function formatDuration(seconds) {

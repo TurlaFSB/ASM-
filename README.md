@@ -52,7 +52,7 @@ It runs entirely on your own infrastructure with Docker Compose. There is no Saa
 |---|---|---|---|
 | Subdomains, DNS, WHOIS and ASN | Nuclei templates and network checks | Snapshot diffs with severity | PDF reports with remediation SLAs |
 | Port and service detection | CVE matching with KEV enrichment | Alerts, webhooks and email | CSV, JSON and SARIF exports |
-| Web technology fingerprinting | TLS audit (sslyze) | Scheduled scans | API tokens and REST API |
+| Web technology fingerprinting | TLS audit, takeover, email and file exposure | Scheduled scans | API tokens and REST API |
 | Directory discovery and screenshots | Exposure and leak checks | Tamper-evident history | Prometheus metrics and JSON logs |
 
 ---
@@ -102,6 +102,7 @@ A sample of the client-ready report generated for every scan: [asm_report_scan_9
 - [Scan profiles](#scan-profiles)
 - [Change detection](#change-detection)
 - [Notifications](#notifications)
+- [Posture checks](#posture-checks)
 - [Exposure monitoring](#exposure-monitoring-leaks-breaches-mentions)
 - [Scan integrity](#scan-integrity-tamper-evident-history)
 - [Security posture](#security-posture)
@@ -145,6 +146,7 @@ A sample of the client-ready report generated for every scan: [asm_report_scan_9
    │  Subfinder, Amass → DNS → WHOIS/ASN → Nmap → httpx         │
    │     → WhatWeb · Directory discovery · Nuclei (parallel)    │
    │     → CVE match · sslyze · EyeWitness                      │
+   │     → Takeover · Email security · Cloud storage · Files    │
    │     → Snapshot + diff → Risk scoring                       │
    └────────────────────────────────────────────────────────────┘
 ```
@@ -179,6 +181,13 @@ Each scan runs as one Celery task and reports progress per stage to the UI. Data
 - **CVE matching** of detected service versions against the NVD (CPE-based, vulnerable-component only). These findings are labelled *inferred* and grouped per component, separate from *confirmed* template matches
 - sslyze TLS audit: deprecated protocols, weak ciphers, expired certificates, SHA-1 chains, Heartbleed
 - KEV and exploitability enrichment on every matched CVE
+
+### Posture checks
+Light, mostly DNS-based checks for the misconfigurations that cause real incidents. They run inside the normal scan, their findings appear on the Vulnerabilities page and in reports, and they feed change detection like any other finding. See [Posture checks](#posture-checks).
+- **Subdomain takeover**: dangling CNAMEs and unclaimed third-party services (GitHub Pages, Azure, Heroku, S3, Shopify and others)
+- **Email security**: SPF, DMARC, DKIM key strength and MTA-STS
+- **Cloud storage exposure**: public S3, Google Cloud Storage and Azure Blob listings named after the domain
+- **Exposed sensitive files**: `.git`, `.env`, backups, credentials and debug pages, confirmed by their content
 
 ### Change tracking and notifications
 - Versioned snapshots of assets, ports, services, technologies, HTTP metadata, discovered paths and findings
@@ -290,6 +299,28 @@ Recreate the services (`docker compose up -d backend celery_worker`), then add r
 Every delivery, whether webhook or email, is recorded and shown on the **Alerts** page with its result. A failed delivery never affects the scan or its in-app alerts.
 
 ---
+
+## Posture checks
+
+Four checks that need no heavy tooling, run as part of every Standard and Deep scan (Quick runs the two DNS-only ones). Each one only reports what it can prove, says so when it could not finish, and never stores secrets.
+
+| Check | What it looks for | Severity | Runs on |
+|---|---|---|---|
+| **Subdomain takeover** | A name whose CNAME points at a missing resource at a known provider (high), a provider "not claimed" page (high), or any other dangling CNAME (medium; low if it points inside your own domain) | high / medium / low | Every discovered name, live or not |
+| **Email security** | Missing, multiple, `+all`, `?all`, `ptr` or over-limit SPF; missing or monitor-only DMARC, `pct` below 100, `sp=none`, no `rua`; DKIM keys under 2048 bits (common selectors only); no MTA-STS | high to info | The target domain |
+| **Cloud storage** | A bucket or container named like your domain (`acme`, `acme-backup`, `acme-dev`, ...) that lists its contents to anyone, on S3, Google Cloud Storage or Azure Blob | high, shown as *inferred* | The target domain |
+| **Exposed files** | `/.git/HEAD`, `/.env`, `/.svn/wc.db`, `/.htpasswd`, `/.aws/credentials`, SSH keys, `wp-config` backups, `backup.zip` / `.sql` dumps, `phpinfo()`, `server-status`, Spring `/actuator/env` | critical to low | Each live web host |
+
+How they stay trustworthy:
+- **Content, not status codes.** An exposed file is reported only when its first few KB prove it (a git `ref:` line, `KEY=value` lines, ZIP or gzip magic bytes, a SQL dump header). A site that answers 200 to everything produces no findings. Redirects are never followed.
+- **Nothing sensitive is kept.** At most 4 KB is read and none of it is stored. Findings carry the path and a reason, never a value, an archive's file names or a bucket's object names.
+- **Bucket findings are leads.** Anyone can create a bucket named `acme-backup`, so these findings are marked *inferred* and ask you to confirm ownership first. Private buckets (403) are not findings. Only the existence of a public listing is checked; no object is downloaded.
+- **Takeover findings are candidates.** Providers change how they behave, so verify before acting. Nothing is ever registered or claimed.
+- **Silence is never "fixed".** A check that could not run properly (blocked egress, DNS errors) is recorded as partial and cannot produce "resolved" events. A resolved finding must be absent from two comparable scans before it is confirmed.
+- **Public domains only.** IP and internal targets skip takeover, email and cloud checks. The exposed-file check still runs against their web ports.
+- Fixed provider hostnames and validated candidate names mean the bucket check cannot be steered at an internal address.
+
+Limits: DKIM selectors cannot be enumerated, so a domain whose selector is not in the built-in list shows none and that is not reported as a problem. Subdomain takeover covers providers with a stable fingerprint, not every service. Cloud checks try about 20 names per provider.
 
 ## Exposure monitoring (leaks, breaches, mentions)
 

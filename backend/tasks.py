@@ -64,6 +64,10 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
     from backend.scanner.whatweb import run_whatweb
     from backend.scanner.dirbuster import run_dirbuster
     from backend.scanner.sslyze_scan import run_sslyze
+    from backend.scanner.takeover import run_takeover_check
+    from backend.scanner.emailsec import run_email_security
+    from backend.scanner.cloudbucket import run_cloud_bucket_check
+    from backend.scanner.sensitive_files import run_sensitive_file_check
     from backend.scanner.vuln import run_nuclei, network_tags_from_services
     from backend.scanner.screenshot import run_eyewitness
     from backend.scanner.cve_match import run_cve_match
@@ -162,6 +166,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
             stage_timings["subdomain"] = round(time.time() - stage_start, 2)
             logger.info(f"[pipeline] Subdomain skipped for internal target {domain}")
 
+            subdomains = []
             stage("dns_resolution")
             stage_start = time.time()
             live_hosts, module_results["dns"] = ps.internal_live_hosts(domain)
@@ -255,6 +260,16 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                 "screenshot": (lambda: run_eyewitness(host_urls)) if prof.run_screenshots else None,
                 "cve_match": (lambda: run_cve_match(port_data["hosts"], cache=_cve_cache()))
                              if prof.run_cve_match else None,
+                # posture checks: public-domain targets only (names, DNS records and bucket names mean
+                # nothing for an IP or an internal host)
+                "takeover": (lambda: run_takeover_check(subdomains + [h["subdomain"] for h in live_hosts], domain))
+                            if (prof.run_takeover and not internal_target) else None,
+                "email_security": (lambda: run_email_security(domain))
+                                  if (prof.run_email_security and not internal_target) else None,
+                "cloud_buckets": (lambda: run_cloud_bucket_check(domain))
+                                 if (prof.run_cloud_buckets and not internal_target) else None,
+                "sensitive_files": (lambda: run_sensitive_file_check(host_urls, effective_rate(rate_limit)))
+                                   if (prof.run_sensitive_files and host_urls) else None,
                 "nuclei_network": (lambda: run_nuclei(
                     sorted({h["subdomain"] for h in port_data["hosts"]}), heavy_rate, tags=net_tags,
                     # tag-targeted and fast (~40s): keep every severity so low/info exposures
@@ -267,6 +282,8 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                 "nuclei": {"findings": []}, "sslyze": {"findings": []},
                 "screenshot": {"screenshots": []}, "cve_match": {"findings": []},
                 "nuclei_network": {"findings": []},
+                "takeover": {"findings": []}, "email_security": {"findings": []},
+                "cloud_buckets": {"findings": []}, "sensitive_files": {"findings": []},
             },
             parallel=_os.getenv("ASM_PARALLEL_STAGES", "true").lower() != "false",
         )

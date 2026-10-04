@@ -9,6 +9,7 @@ All notable changes to this project are recorded here. The format follows [Keep 
 - **Zombie `chromium` processes** piled up in the worker after screenshot stages. The backend, worker and beat containers now run with a minimal init that reaps them.
 
 ### Added
+- **Posture checks** in every scan: subdomain takeover (dangling CNAMEs and unclaimed GitHub Pages, Azure, Heroku, S3, Shopify and similar), email security (SPF, DMARC, DKIM key strength, MTA-STS), public cloud storage listings (S3, GCS, Azure Blob) named after the domain, and exposed `.git`, `.env`, backup, credential and debug files confirmed by content. Quick runs the two DNS-only checks. Findings flow through change detection with their own coverage, so a check that could not run never reports something as fixed.
 - **Screenshot viewing**: a gallery of the pictures taken during a scan, opened from the scan's menu on the Scans page. Pictures are matched to their host, served only to signed-in users, and removed with the retention cleanup.
 - **Target tags**: label targets (up to 10 each), edit them from the row menu, and filter the Targets list by tag. `GET /targets/?tag=` filters through the API.
 - **Email notifications**: one digest email per scan and per exposure run to up to 10 recipients per target, with the same severity threshold as webhooks. Set up with `ASM_SMTP_*`; deliveries show on the Alerts page.

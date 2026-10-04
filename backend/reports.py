@@ -48,6 +48,9 @@ SLA = {"critical": "24-48 hours", "high": "7 days", "medium": "30 days", "low": 
 TAG_ADVICE = [
     ({"default-login", "default-logins"}, "Change default credentials immediately and restrict the interface to trusted networks."),
     ({"takeover"}, "Remove the dangling DNS record or reclaim the resource it points to."),
+    ({"email-security"}, "Publish or tighten the SPF, DKIM and DMARC records as described, then confirm with a test message and the DMARC reports."),
+    ({"cloud-storage"}, "Confirm the storage belongs to your organisation, then remove public access and review what it holds."),
+    ({"exposed-file"}, "Remove the file from the web root, block the path in the web server, and rotate any credential it contained."),
     ({"panel", "exposure", "exposed-panel"}, "Restrict access to this interface (VPN, IP allow-list or authentication) or remove it from the public network."),
     ({"files", "config", "backup"}, "Remove the exposed file or directory listing and review what else the web root serves."),
     ({"misconfig"}, "Correct the configuration in line with vendor hardening guidance."),
@@ -65,6 +68,8 @@ MODULE_LABELS = [
     ("dirbuster", "Directory discovery (feroxbuster)"), ("vuln", "Web vulnerability scan (nuclei)"),
     ("nuclei_network", "Network service checks (nuclei)"), ("cve_match", "Version-to-CVE correlation (NVD)"),
     ("sslyze", "TLS configuration (sslyze)"), ("screenshot", "Screenshots (EyeWitness)"),
+    ("takeover", "Subdomain takeover check"), ("email_security", "Email security (SPF / DKIM / DMARC)"),
+    ("cloud_buckets", "Cloud storage exposure"), ("sensitive_files", "Exposed sensitive files"),
 ]
 
 

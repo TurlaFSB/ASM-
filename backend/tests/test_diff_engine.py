@@ -333,3 +333,59 @@ def test_bare_host_degraded_entry_covers_every_port_on_that_host():
     old = _lsnap([_find("t1", "10.0.0.5:22"), _find("t2", "10.0.0.5:445")])
     r = diff_snapshots(old, _lsnap([], degraded=["10.0.0.5"]))
     assert r["events"] == [] and sum(1 for e in r["pending"] if e.get("held")) == 2
+
+
+# ---- posture findings (takeover / email / cloud storage / exposed files) ----
+
+POSTURE_MR = {**OK_MR, "takeover": "ok", "email_security": "ok", "cloud_buckets": "ok", "sensitive_files": "ok"}
+
+
+def _posture(tid, tags, host="a.com", sev="high", name="thing"):
+    return {"template_id": tid, "host": host, "severity": sev, "tags": list(tags), "name": name}
+
+
+def test_posture_sources_map_from_tags():
+    from backend.diffing.snapshot import finding_source
+    assert finding_source(["takeover", "posture", "dns"]) == "takeover"
+    assert finding_source(["email-security", "posture", "dns"]) == "email"
+    assert finding_source(["cloud-storage", "posture", "ownership-unverified"]) == "cloud"
+    assert finding_source(["exposed-file", "posture"]) == "files"
+    assert finding_source(["cve-2020-1"]) == "web"
+    assert finding_source(["takeover", "nuclei-template"]) == "web"      # a scanner's own takeover template is not ours
+
+
+def test_new_takeover_finding_is_reported_and_cloud_finding_is_inferred():
+    old = _snap(mr=POSTURE_MR)
+    new = _snap(mr=POSTURE_MR, findings=[
+        _posture("takeover-github-pages", ["takeover", "posture"], host="old.a.com"),
+        _posture("cloud-storage-public-amazon", ["cloud-storage", "posture", "ownership-unverified"], host="acme-backup")])
+    r = diff_snapshots(old, new)
+    by = {e["subject"].split("|")[0]: e for e in r["events"]}
+    assert by["takeover-github-pages"]["confidence"] == "confirmed"
+    assert by["cloud-storage-public-amazon"]["confidence"] == "inferred"
+
+
+def test_posture_removal_needs_both_scans_to_have_run_cleanly():
+    f = _posture("email-spf-missing", ["email-security", "posture"], sev="medium")
+    old = _snap(mr=POSTURE_MR, findings=[f])
+    clean = diff_snapshots(old, _snap(mr=POSTURE_MR))
+    assert clean["events"] == [] and [p["category"] for p in clean["pending"]] == ["finding"]   # held, then debounced
+    # the email stage failed in the new scan: its absence proves nothing, other sections still compare
+    failed_mr = {**POSTURE_MR, "email_security": "failed: DNS lookup error"}
+    r = diff_snapshots(old, _snap(mr=failed_mr))
+    assert r["events"] == [] and r["pending"] == [] and any(s["section"] == "findings_email" for s in r["skipped"])
+
+
+def test_old_snapshot_without_posture_coverage_does_not_flood_new_findings():
+    old = _snap()                                    # recorded before these stages existed
+    assert old["coverage"].get("findings_files") is None
+    new = _snap(mr=POSTURE_MR, findings=[_posture("exposed-git", ["exposed-file", "posture"])])
+    assert diff_snapshots(old, new)["events"] == []
+
+
+def test_compute_coverage_marks_posture_sections():
+    cov = compute_coverage("standard", POSTURE_MR)
+    assert cov["findings_takeover"] == cov["findings_email"] == cov["findings_cloud"] == cov["findings_files"] == "full"
+    quick = compute_coverage("quick", POSTURE_MR)
+    assert quick["findings_cloud"] is None and quick["findings_files"] is None      # not part of Quick
+    assert compute_coverage("standard", {**POSTURE_MR, "takeover": "partial: x"})["findings_takeover"] is None

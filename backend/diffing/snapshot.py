@@ -60,6 +60,10 @@ def compute_coverage(profile_name: str, module_results: Dict) -> Dict:
         "findings_cve": lvl(prof.run_cve_match and _ok(mr.get("cve_match"))),
         # "no hosts provided" means there was nothing to assess, so it vouches for nothing
         "findings_tls": lvl(prof.run_sslyze and _ok(mr.get("sslyze"))),
+        "findings_takeover": lvl(prof.run_takeover and _ok(mr.get("takeover"))),
+        "findings_email": lvl(prof.run_email_security and _ok(mr.get("email_security"))),
+        "findings_cloud": lvl(prof.run_cloud_buckets and _ok(mr.get("cloud_buckets"))),
+        "findings_files": lvl(prof.run_sensitive_files and _ok(mr.get("sensitive_files"))),
     }
 
 
@@ -71,6 +75,11 @@ def finding_source(tags) -> str:
         return "network"
     if "sslyze" in t:
         return "tls"
+    if "posture" in t:                       # ASM's own posture checks, never a scanner's tags
+        for tag, source in (("takeover", "takeover"), ("email-security", "email"),
+                            ("cloud-storage", "cloud"), ("exposed-file", "files")):
+            if tag in t:
+                return source
     return "web"
 
 
@@ -119,7 +128,7 @@ def build_snapshot(profile: str, module_results: Dict, assets: List[Dict],
         snap_findings[finding_key(f)] = {
             "name": f.get("name"), "severity": (f.get("severity") or "info").lower(),
             "cve": f.get("cve_id"), "host": f.get("host"), "template_id": f.get("template_id"),
-            "source": finding_source(tags), "kev": "kev" in tags, "unverified": "version-match" in tags,
+            "source": finding_source(tags), "kev": "kev" in tags, "unverified": "version-match" in tags or "ownership-unverified" in tags,
             "cvss": f.get("cvss_score"),
         }
 

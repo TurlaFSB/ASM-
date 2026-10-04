@@ -36,7 +36,8 @@ def test_build_vulnerabilities_maps_fields():
 
 
 def prof(**kw):
-    base = dict(name="quick", run_dirbuster=False, run_nuclei_network=False)
+    base = dict(name="quick", run_dirbuster=False, run_nuclei_network=False, run_takeover=True,
+                run_email_security=True, run_cloud_buckets=False, run_sensitive_files=True)
     base.update(kw)
     return SimpleNamespace(**base)
 
@@ -86,3 +87,16 @@ def test_seal_failure_is_contained(monkeypatch):
     mr = {}
     ps.seal_record(DB(), object(), mr)
     assert mr["integrity"].startswith("failed")
+
+
+def test_posture_findings_merge_into_vulnerabilities_and_status_is_recorded():
+    mr = {}
+    http = {"hosts": []}
+    f = {"template_id": "email-spf-missing", "name": "No SPF record", "severity": "medium", "host": "a.com"}
+    out = ps.collect_web_results({"email_security": {"findings": [f], "module_status": "ok"},
+                                  "takeover": {"findings": [], "module_status": "partial: 1 of 3 names"}},
+                                 prof(), False, http, mr)
+    assert [x["template_id"] for x in out["vuln"]["findings"]] == ["email-spf-missing"]
+    assert mr["email_security"] == "ok" and mr["takeover"].startswith("partial")
+    assert mr["cloud_buckets"].startswith("skipped (profile")             # disabled in this profile
+    assert mr["sensitive_files"] == "skipped (not applicable to this target)"   # enabled, but did not run
