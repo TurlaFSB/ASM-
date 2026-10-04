@@ -29,6 +29,7 @@ celery_app.conf.update(
         "reap-stuck-scans": {"task": "reap_stuck_scans", "schedule": 600.0},
         # Hourly is only the polling rhythm: each source enforces its own minimum interval per target.
         "exposure-sweep": {"task": "exposure_sweep", "schedule": 3600.0},
+        "data-retention": {"task": "data_retention", "schedule": 86400.0},
         "check-scheduled-scans-every-minute": {
             "task": "check_scheduled_scans",
             "schedule": 60.0,
@@ -390,6 +391,18 @@ def prebuild_report(scan_id: int):
         logger.info(f"[report] pre-built report for scan {scan_id} in {time.time() - t:.1f}s")
     except Exception:  # noqa: BLE001
         logger.warning(f"[report] pre-build failed for scan {scan_id}", exc_info=True)
+    finally:
+        db.close()
+
+
+@celery_app.task(name="data_retention")
+def data_retention():
+    """Daily: prune old scan artifacts and delivery logs (see backend/retention.py)."""
+    from backend.db import SessionLocal
+    from backend.retention import run_retention
+    db = SessionLocal()
+    try:
+        return run_retention(db)
     finally:
         db.close()
 

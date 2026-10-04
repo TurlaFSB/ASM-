@@ -249,67 +249,6 @@ body {
   background-size: 28px 100%, 28px 100%, 28px 100%, 28px 100%;
   background-attachment: local, local, scroll, scroll;
 }
-.scroll-hint-wrap {
-  position: sticky;
-  top: 16px;
-  z-index: 20;
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 8px;
-  pointer-events: none;
-}
-.scroll-hint-wrap .scroll-hint {
-  pointer-events: auto;
-}
-.scroll-hint {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 6px 4px 12px;
-  border-radius: 999px;
-  background: rgba(139,92,246,0.08);
-  border: 1px solid rgba(139,92,246,0.22);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.2), 0 1px 0 rgb(var(--fg) / 0.04) inset;
-}
-.scroll-hint span {
-  color: var(--accent);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  margin-right: 2px;
-}
-.scroll-hint-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  border: 1px solid rgb(var(--fg) / 0.08);
-  background: rgb(var(--fg) / 0.05);
-  color: var(--accent);
-  cursor: pointer;
-  transition: background 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
-}
-.scroll-hint-btn:hover:not(:disabled) {
-  background: rgba(139,92,246,0.22);
-  transform: scale(1.08);
-}
-.scroll-hint-btn:active:not(:disabled) {
-  transform: scale(0.95);
-}
-.scroll-hint-btn:disabled {
-  opacity: 0.25;
-  cursor: default;
-}
-.scroll-hint svg {
-  width: 12px;
-  height: 12px;
-}
-
-
 table {
   width: 100%;
   border-collapse: collapse;
