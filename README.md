@@ -1,52 +1,97 @@
 <div align="center">
 
-# ASM
+# ASM Platform
 
-### Self-Hosted Attack Surface Management
+### Self-hosted attack surface management
 
-Continuous external reconnaissance, vulnerability scanning, TLS auditing and **historical change detection** in a single self-hosted platform.
+Discover what you expose to the internet, find what is vulnerable, and get told when it changes. One platform you run yourself.
 
 [![CI](https://github.com/TurlaFSB/ASM-/actions/workflows/ci.yml/badge.svg)](https://github.com/TurlaFSB/ASM-/actions/workflows/ci.yml)
 [![Security](https://github.com/TurlaFSB/ASM-/actions/workflows/security.yml/badge.svg)](https://github.com/TurlaFSB/ASM-/actions/workflows/security.yml)
 ![Python](https://img.shields.io/badge/python-3.13-blue)
 ![Stack](https://img.shields.io/badge/stack-FastAPI%20%7C%20PostgreSQL%20%7C%20Celery%20%7C%20React-9b5de5)
 ![Deploy](https://img.shields.io/badge/deploy-Docker%20Compose-2496ed)
-![License](https://img.shields.io/badge/license-MIT-informational)
-![Status](https://img.shields.io/badge/status-active%20development-brightgreen)
+[![License](https://img.shields.io/badge/license-MIT-informational)](LICENSE)
+
+[Quick start](#quick-start) · [Features](#features) · [Documentation](#table-of-contents) · [Changelog](CHANGELOG.md) · [Security policy](SECURITY.md)
+
+<img src="docs/screenshots/dashboard.png" alt="ASM Platform dashboard showing targets, live assets, completed scans, critical and high findings, latest changes and the highest-risk assets" width="100%">
 
 </div>
 
 ---
 
-## Overview
+## What is ASM Platform?
 
-ASM takes an authorized domain or host and runs a full recon-to-report pipeline: subdomain enumeration, DNS and WHOIS/ASN enrichment, port scanning, HTTP probing, technology fingerprinting, directory discovery, template-based vulnerability scanning, CVE matching against detected service versions, TLS auditing and screenshots. Alongside the active scan it watches for exposure outside your infrastructure (leaked credentials in public code, breach records, lookalike domains, ransomware listings, infostealer counts) and seals every scan into a tamper-evident, signed history.
+ASM Platform is an open-source **external attack surface management (EASM)** tool. You give it a domain or host you are authorized to test, and it maps everything reachable from the outside: subdomains, IP addresses, open ports, running services, web technologies, exposed paths, TLS configuration and known vulnerabilities. It then watches that surface over time and reports **what changed**: a port opened, a service appeared, a sensitive path became reachable, a new CVE applies.
 
-Every scan is stored as a point-in-time **snapshot** and compared with the previous comparable scan. The result is a structured, severity-rated list of what changed on your attack surface: a port opened, a service appeared, a sensitive path became reachable, a new CVE applies. Risk is scored against **CISA's Known Exploited Vulnerabilities (KEV) catalog**, so a Critical rating means active exploitation in the wild, not just a high CVSS score.
+It runs entirely on your own infrastructure with Docker Compose. There is no SaaS account, no per-asset pricing and no scan data leaving your machine, apart from the public lookups you choose to turn on.
 
-### Who it is for
+**What makes it different**
 
-| Audience | Value |
+- **Change-first.** Every scan is stored as a snapshot and compared with the previous comparable one. A coverage-aware trust model means a timed-out stage never produces a false "closed" or "removed" alert.
+- **Risk you can act on.** Findings are scored against CISA's Known Exploited Vulnerabilities (KEV) catalog, so *Critical* means exploitation in the wild, not just a high CVSS number. Version-matched CVEs are labelled *inferred* and kept apart from scanner-confirmed findings.
+- **Beyond your own infrastructure.** Optional exposure monitoring looks for leaked credentials in public code, breach records, lookalike domains, ransomware listings and infostealer counts.
+- **Evidence that holds up.** Every scan is sealed into a signed, hash-chained history, and each scan produces a client-ready PDF report.
+- **Built to be run safely.** Authorization is enforced at the API, private ranges are refused by default, and the platform itself follows the security practices it checks for (see [Security posture](#security-posture)).
+
+### What you can use it for
+
+| Use case | How ASM helps |
 |---|---|
-| **VAPT / pentest teams** | A repeatable recon baseline before manual testing, diffable across every engagement. |
-| **Red teams** | Full target profiles in one place: ownership, live tech stack, exposed service inventory. |
-| **Security engineers** | Continuous monitoring of an owned perimeter with change alerts and webhooks. |
-| **Consultants / small teams** | Client-ready PDF reports and scan history without a SaaS subscription. |
-| **Students / researchers** | A real multi-service system (queue, database, scanners, report engine) to study and extend. |
+| **Continuous perimeter monitoring** | Scheduled scans, change alerts by in-app message, webhook (JSON, Slack, Discord) or email, and a Prometheus metrics endpoint. |
+| **Penetration tests and red-team recon** | A repeatable, diffable recon baseline before manual testing, with full target profiles: ownership, live technology stack and exposed service inventory. |
+| **Vulnerability management** | Triage findings (in progress, false positive, accepted risk, resolved) with reasons and expiry, and export to CSV, JSON or SARIF for pipelines, GitHub code scanning and DefectDojo. |
+| **Consulting and client reporting** | Client-ready PDF reports with an executive summary, remediation tiers and the signed scan seal, without a SaaS subscription. |
+| **Brand and leak monitoring** | Spot typosquat domains, public code that mentions your domain next to secrets, and ransomware or infostealer exposure. |
+| **Learning and research** | A real multi-service system (queue, database, scanners, report engine, signed history) to study and extend. |
+
+### Capabilities at a glance
+
+| Discover | Assess | Monitor | Report and integrate |
+|---|---|---|---|
+| Subdomains, DNS, WHOIS and ASN | Nuclei templates and network checks | Snapshot diffs with severity | PDF reports with remediation SLAs |
+| Port and service detection | CVE matching with KEV enrichment | Alerts, webhooks and email | CSV, JSON and SARIF exports |
+| Web technology fingerprinting | TLS audit (sslyze) | Scheduled scans | API tokens and REST API |
+| Directory discovery and screenshots | Exposure and leak checks | Tamper-evident history | Prometheus metrics and JSON logs |
 
 ---
 
 ## Screenshots
 
-<img src="https://github.com/user-attachments/assets/00e9a39f-ea7c-407f-9c53-bbac324f65b6" alt="ASM Platform screenshot 1 of 5" width="100%">
+**Dashboard.** Posture at a glance: targets, live assets, findings, latest changes and the highest-risk assets.
 
-<img src="https://github.com/user-attachments/assets/1bccaf6a-05a7-4225-b38b-28fd8d17cc8e" alt="ASM Platform screenshot 2 of 5" width="100%">
+<img src="docs/screenshots/dashboard.png" alt="Dashboard" width="100%">
 
-<img src="https://github.com/user-attachments/assets/35fb8c84-c2b8-4d0f-8e8c-f3a1e562d80e" alt="ASM Platform screenshot 3 of 5" width="100%">
+**Targets.** Add authorized targets, choose a scan profile, and set notifications, tags and directory scanning per target.
 
-<img src="https://github.com/user-attachments/assets/aab178d2-eee9-4441-9b82-f876c45ae3a0" alt="ASM Platform screenshot 4 of 5" width="100%">
+<img src="docs/screenshots/targets.png" alt="Targets list with profile picker, scan button and per-target notification settings" width="100%">
 
-<img src="https://github.com/user-attachments/assets/421fd757-9b82-4ad3-a9bc-2c03633a1ca7" alt="ASM Platform screenshot 5 of 5" width="100%">
+**Scans.** Per-stage results for every run, with the report, exports and screenshots from each scan's menu.
+
+<img src="docs/screenshots/scans.png" alt="Scans list showing status, profile, stage summary, results and report download" width="100%">
+
+**Assets.** A searchable inventory with technologies, open ports, risk and what is new or changed.
+
+<img src="docs/screenshots/assets.png" alt="Asset inventory with web status, technologies, open ports and risk level" width="100%">
+
+**Vulnerabilities.** Scanner-confirmed findings and version-matched CVEs grouped per component, with KEV flags and triage.
+
+<img src="docs/screenshots/vulnerabilities.png" alt="Vulnerabilities page with severity counts, source filters and grouped CVE findings" width="100%">
+
+**Exposure.** Switch on the sources you want per target: GitHub code, breach records, lookalike domains, ransomware listings and infostealer counts.
+
+<img src="docs/screenshots/exposure.png" alt="Exposure monitoring sources for a target" width="100%">
+
+**Alerts.** Confirmed changes at or above each target's severity, plus a delivery log for webhooks and email.
+
+<img src="docs/screenshots/alerts.png" alt="Alerts page" width="100%">
+
+**Schedules and account.** Recurring scans by cron or preset, and API tokens for scripts and CI.
+
+<img src="docs/screenshots/schedules.png" alt="New schedule panel with hourly, daily, weekly and custom cron options" width="100%">
+
+<img src="docs/screenshots/account.png" alt="Account page with password change and API tokens" width="100%">
 
 A sample of the client-ready report generated for every scan: [asm_report_scan_91.pdf](https://github.com/user-attachments/files/30161571/asm_report_scan_91.pdf).
 
@@ -54,6 +99,7 @@ A sample of the client-ready report generated for every scan: [asm_report_scan_9
 
 ## Table of Contents
 
+- [What is ASM Platform?](#what-is-asm-platform)
 - [Screenshots](#screenshots)
 - [Architecture](#architecture)
 - [Features](#features)
