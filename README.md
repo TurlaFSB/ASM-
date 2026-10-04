@@ -607,6 +607,7 @@ docker compose up -d --force-recreate backend celery_worker
 ```bash
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt -r backend/requirements-dev.txt
+pip install --no-deps -r requirements-sslyze.txt     # the TLS scanner, installed separately (see SECURITY.md)
 pytest
 cd frontend && npm ci && npm run lint && npm test && npm run build
 ```

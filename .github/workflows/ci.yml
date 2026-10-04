@@ -24,11 +24,14 @@ jobs:
           cache: pip
           cache-dependency-path: |
             requirements.txt
+            requirements-sslyze.txt
             backend/requirements-dev.txt
       - name: System libraries (PDF rendering)
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-2.0-0 shared-mime-info
       - name: Install dependencies
-        run: pip install -r requirements.txt -r backend/requirements-dev.txt
+        run: |
+          pip install -r requirements.txt -r backend/requirements-dev.txt
+          pip install --no-deps -r requirements-sslyze.txt
       - name: Tests
         run: pytest --cov=backend --cov-report=term --cov-fail-under=84
 
@@ -95,12 +98,10 @@ jobs:
           pip install bandit
           bandit -q -r backend -x backend/tests -ll
       - name: Python dependency audit
-        # Accepted risks and reasons are listed in SECURITY.md
+        # Accepted risks and reasons are listed in SECURITY.md. sslyze itself is installed separately (requirements-sslyze.txt).
         run: |
           pip install pip-audit
-          pip-audit -r requirements.txt \
-            --ignore-vuln PYSEC-2026-3552 --ignore-vuln PYSEC-2026-3553 \
-            --ignore-vuln PYSEC-2026-3554 --ignore-vuln GHSA-537c-gmf6-5ccf
+          pip-audit -r requirements.txt
       - uses: actions/setup-node@v7
         with:
           node-version: "22"

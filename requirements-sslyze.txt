@@ -1,0 +1,7 @@
+# Installed with --no-deps after requirements.txt:  pip install --no-deps -r requirements-sslyze.txt
+#
+# sslyze 6.3.1 declares cryptography<47, but the versions below that have known advisories. Its TLS scan
+# works with cryptography 50 (checked by backend/tests/test_sslyze_compat.py, which runs a real scan on
+# every CI run), so cryptography is pinned in requirements.txt and sslyze is installed without its own
+# dependency resolution. Drop this split once an sslyze release allows cryptography 47 or newer.
+sslyze>=6.3.1,<7

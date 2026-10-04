@@ -72,8 +72,10 @@ RUN git clone --depth 1 https://github.com/FortyNorthSecurity/EyeWitness.git /op
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt requirements-sslyze.txt ./
+# sslyze goes in without dependency resolution: it caps cryptography below the patched versions (see requirements-sslyze.txt)
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir --no-deps -r requirements-sslyze.txt
 
 COPY backend/ ./backend/
 
