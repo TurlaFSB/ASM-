@@ -70,10 +70,8 @@ jobs:
         run: |
           docker build -f ${{ matrix.file }} ${{ matrix.target && format('--target {0}', matrix.target) || '' }} -t asm-${{ matrix.name }}:scan ${{ matrix.context }}
       - name: Scan for fixable HIGH and CRITICAL vulnerabilities
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: asm-${{ matrix.name }}:scan
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
-          format: table
+        # Run Trivy from its official image: no third-party action to pin or to go missing.
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.cache/trivy:/root/.cache" \
+            aquasec/trivy:latest image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
+            --no-progress asm-${{ matrix.name }}:scan
