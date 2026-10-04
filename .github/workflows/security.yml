@@ -69,9 +69,21 @@ jobs:
       - name: Build ${{ matrix.name }} image
         run: |
           docker build -f ${{ matrix.file }} ${{ matrix.target && format('--target {0}', matrix.target) || '' }} -t asm-${{ matrix.name }}:scan ${{ matrix.context }}
-      - name: Scan for fixable HIGH and CRITICAL vulnerabilities
-        # Run Trivy from its official image: no third-party action to pin or to go missing.
+      # Trivy runs from its official image: no third-party action to pin or to go missing.
+      - name: Report fixable HIGH and CRITICAL vulnerabilities (SARIF, shown under Security > Code scanning)
+        run: |
+          mkdir -p "$HOME/.cache/trivy" trivy-out
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.cache/trivy:/root/.cache" \
+            -v "$PWD/trivy-out:/out" aquasec/trivy:latest image --severity HIGH,CRITICAL --ignore-unfixed \
+            --format sarif --output /out/${{ matrix.name }}.sarif --no-progress asm-${{ matrix.name }}:scan
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.cache/trivy:/root/.cache" \
+            aquasec/trivy:latest image --severity HIGH,CRITICAL --ignore-unfixed --no-progress asm-${{ matrix.name }}:scan || true
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always() && hashFiles(format('trivy-out/{0}.sarif', matrix.name)) != ''
+        with:
+          sarif_file: trivy-out/${{ matrix.name }}.sarif
+          category: trivy-${{ matrix.name }}
+      - name: Fail on fixable CRITICAL vulnerabilities
         run: |
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.cache/trivy:/root/.cache" \
-            aquasec/trivy:latest image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
-            --no-progress asm-${{ matrix.name }}:scan
+            aquasec/trivy:latest image --severity CRITICAL --ignore-unfixed --exit-code 1 --no-progress asm-${{ matrix.name }}:scan
