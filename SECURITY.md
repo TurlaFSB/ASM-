@@ -20,4 +20,8 @@ accepted for now, with the reason:
 |---|---|---|
 | PYSEC-2026-3552, PYSEC-2026-3553, PYSEC-2026-3554, GHSA-537c-gmf6-5ccf | `cryptography` 46.x | `sslyze` (the TLS scanner) pins `cryptography<47` in its latest release, so the fixed versions cannot be installed alongside it. ASM does not call the affected PKCS#7 decrypt or X.509 path-verification APIs itself, and certificate validation in the TLS scan runs through `sslyze`/`nassl`. Revisit when `sslyze` allows a newer `cryptography`. |
 
+### Container image scan (Trivy)
+
+The image scan lists fixable HIGH and CRITICAL findings as annotations on the Security workflow. As of 2026-10-04 they are all inside the bundled third-party command-line tools (Nuclei, Subfinder, HTTPX and Amass are pinned to older releases built with older Go toolchains and libraries) plus the `cryptography` entry above. These tools run only against targets the operator has authorized and are not exposed as network services, so the practical risk is limited, but the pins will be raised once each newer release is verified against the scanner modules (output format and flags). Until then the CRITICAL gate reports without failing the build.
+
 Removed on 2026-10-03: `python-jose` (and its `ecdsa` dependency) was replaced by `PyJWT`.
