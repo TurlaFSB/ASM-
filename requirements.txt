@@ -10,7 +10,7 @@ python-dotenv==1.2.3
 PyJWT>=2.10,<3
 defusedxml>=0.7.1,<1
 Requests==2.34.2
-SQLAlchemy==2.0.36
+SQLAlchemy==2.1.1
 weasyprint==70.0
 bcrypt==4.0.1
 # Previously unpinned: bounded to the versions this code is tested against
