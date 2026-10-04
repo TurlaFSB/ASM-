@@ -27,10 +27,10 @@ jobs:
         language: [python, javascript-typescript]
     steps:
       - uses: actions/checkout@v7
-      - uses: github/codeql-action/init@v3
+      - uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@v4
         with:
           category: "/language:${{ matrix.language }}"
 
@@ -97,7 +97,7 @@ jobs:
                   print(f"::{level} title=Trivy {sev} {vid}::{pkg} {inst} -> {fix} ({tgt})")
               print(f"{len(rows)} fixable HIGH/CRITICAL findings")
           PY
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@v4
         continue-on-error: true   # read-only token on Dependabot PRs
         if: always() && hashFiles(format('trivy-out/{0}.sarif', matrix.name)) != ''
         with:
