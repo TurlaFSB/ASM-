@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { X, Download, ChevronRight } from "lucide-react";
+import { X, Download, ChevronRight, FileSpreadsheet, FileJson, ShieldCheck } from "lucide-react";
 import Skeleton from "../components/Skeleton";
 import { timeAgo } from "../lib/time";
-import { getScans, getScanProgress, cancelScan, downloadScanReport } from "../api";
+import { getScans, getScanProgress, cancelScan, downloadScanReport, downloadScanExport } from "../api";
+import RowMenu from "../components/RowMenu";
 import { ProfileBadge } from "../components/ProfilePicker";
 import Collapse from "../components/Collapse";
 import ConfirmDialog from "../components/ConfirmDialog";
@@ -149,6 +150,35 @@ export default function Scans() {
     }
   };
 
+  const saveBlob = (data, type, filename) => {
+    const url = window.URL.createObjectURL(new Blob([data], { type }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const exportItems = (id) => {
+    const item = (label, icon, name, type) => ({
+      label, icon,
+      onClick: async () => {
+        try {
+          const r = await downloadScanExport(id, name);
+          saveBlob(r.data, type, `scan_${id}_${name}`);
+        } catch { toast("Could not export that file. Try again in a moment.", "bad"); }
+      },
+    });
+    return [
+      item("Assets (CSV)", FileSpreadsheet, "assets.csv", "text/csv"),
+      item("Findings (CSV)", FileSpreadsheet, "vulnerabilities.csv", "text/csv"),
+      item("Findings (JSON)", FileJson, "vulnerabilities.json", "application/json"),
+      item("Findings (SARIF)", ShieldCheck, "vulnerabilities.sarif", "application/sarif+json"),
+    ];
+  };
+
   const handleDownloadReport = async (id) => {
     setDownloadingId(id);
     try {
@@ -232,9 +262,12 @@ export default function Scans() {
                       <button className="btn btn-sm btn-danger" onClick={() => setCancelId(scan.id)}><X size={14} /> Cancel</button>
                     )}
                     {scan.status === "completed" && (
-                      <button className="btn btn-sm btn-secondary" onClick={() => handleDownloadReport(scan.id)} disabled={downloadingId === scan.id}>
-                        <Download size={14} />{downloadingId === scan.id ? "Generating…" : "Report"}
-                      </button>
+                      <>
+                        <button className="btn btn-sm btn-secondary" onClick={() => handleDownloadReport(scan.id)} disabled={downloadingId === scan.id}>
+                          <Download size={14} />{downloadingId === scan.id ? "Generating…" : "Report"}
+                        </button>
+                        <RowMenu label={`Export data for scan ${scan.id}`} items={exportItems(scan.id)} />
+                      </>
                     )}
                   </div>
                 </div>

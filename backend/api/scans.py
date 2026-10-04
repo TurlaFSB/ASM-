@@ -216,6 +216,7 @@ def download_scan_report(scan_id: int, db: Session = Depends(get_db), current_us
     )
 
 import csv
+import json
 import io
 from fastapi.responses import StreamingResponse
 
@@ -293,3 +294,32 @@ def export_vulnerabilities_csv(scan_id: int, db: Session = Depends(get_db), curr
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename=vulnerabilities_scan_{scan_id}.csv"}
     )
+
+
+def _scan_findings(db, scan_id: int):
+    scan = db.query(Scan).filter(Scan.id == scan_id).first()
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    target = db.query(Target).filter(Target.id == scan.target_id).first()
+    vulns = db.query(Vulnerability).filter(Vulnerability.scan_id == scan_id).order_by(Vulnerability.id).all()
+    from backend import triage as tg
+    return scan, (target.domain if target else ""), vulns, tg.lookup(db, vulns)
+
+
+@router.get("/{scan_id}/export/vulnerabilities.json")
+def export_vulnerabilities_json(scan_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    """All findings of a scan with their triage decisions, as JSON."""
+    from backend import exports
+    scan, domain, vulns, decisions = _scan_findings(db, scan_id)
+    return Response(content=json.dumps(exports.build_json(scan, domain, vulns, decisions)), media_type="application/json",
+                    headers={"Content-Disposition": f"attachment; filename=vulnerabilities_scan_{scan_id}.json"})
+
+
+@router.get("/{scan_id}/export/vulnerabilities.sarif")
+def export_vulnerabilities_sarif(scan_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    """All findings of a scan as SARIF 2.1.0; triage decisions become `suppressions`."""
+    from backend import exports
+    scan, domain, vulns, decisions = _scan_findings(db, scan_id)
+    return Response(content=json.dumps(exports.build_sarif(scan, domain, vulns, decisions)),
+                    media_type="application/sarif+json",
+                    headers={"Content-Disposition": f"attachment; filename=vulnerabilities_scan_{scan_id}.sarif"})

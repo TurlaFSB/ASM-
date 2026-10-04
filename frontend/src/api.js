@@ -97,6 +97,10 @@ export const downloadAssetsCsv = (id) =>
 export const downloadVulnerabilitiesCsv = (id) =>
   api.get(`/scans/${id}/export/vulnerabilities.csv`, { responseType: "blob" });
 
+// name: assets.csv | vulnerabilities.csv | vulnerabilities.json | vulnerabilities.sarif
+export const downloadScanExport = (id, name) =>
+  api.get(`/scans/${id}/export/${name}`, { responseType: "blob" });
+
 export const getExposureSources = (targetId) => api.get(`/exposure/targets/${targetId}/sources`);
 export const setExposureSources = (targetId, sources) => api.put(`/exposure/targets/${targetId}/sources`, { sources });
 export const runExposureNow = (targetId) => api.post(`/exposure/targets/${targetId}/run`);

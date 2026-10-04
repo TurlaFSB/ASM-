@@ -129,7 +129,7 @@ Each scan runs as one Celery task and reports progress per stage to the UI. Data
 - Per-asset risk scoring: CVSS baseline, boosted for high-risk ports and admin surfaces, force-escalated to Critical when a matched CVE is in KEV
 - Client-ready **PDF reports**, pre-built in the background after each scan and cached, so downloads are instant: executive summary with top actions, asset inventory, infrastructure, confirmed findings, inferred findings grouped per service, change detection, and remediation with SLA tiers
 - **Finding triage**: mark a finding, a component or a CVE as In progress, False positive, Accepted risk or Resolved. False positive and Accepted risk require a written reason; accepted risk expires (default 90 days, max 365) and the finding returns for review. Resolved findings stay hidden until a later scan reports them again. Triaged findings are left out of PDF reports and counts, and are never deleted
-- CSV export for assets and vulnerabilities (with triage status and note columns)
+- Exports: CSV for assets and findings (with triage status and note), plus JSON and SARIF 2.1.0 findings for pipelines, GitHub code scanning and DefectDojo
 
 ### Operations
 - Light and dark themes (match system by default), keyboard-navigable menus, and no WCAG A/AA violations in automated checks
@@ -397,6 +397,7 @@ Interactive documentation is served by FastAPI at `http://<host>:8000/docs`. All
 | Auth | `POST /auth/token`, `GET /auth/me`, `POST /auth/logout`, `POST /auth/change-password`, `GET /auth/setup-status`, `POST /auth/setup` |
 | Users (admin) | `GET/POST /users/`, `PATCH /users/{id}`, `POST /users/{id}/reset-password` |
 | Targets and scans | `/targets/*`, `/scans/*` (including `/scans/profiles`) |
+| Exports | `GET /scans/{id}/export/assets.csv`, `vulnerabilities.csv`, `vulnerabilities.json`, `vulnerabilities.sarif` (SARIF 2.1.0; triage decisions become `suppressions`). The Scans page has an export menu on each completed scan |
 | Assets and vulnerabilities | `/assets/*`, `/vulnerabilities/*` (`triage=active\|triaged\|all` filter, `GET /vulnerabilities/hidden-count`) |
 | Operations | `GET /health`, `GET /ready` (database and Redis), `GET /metrics` (Prometheus text, admin only: scans by status, assets, findings by severity, queue depth, age of the last completed scan) |
 | Finding triage (admin) | `POST /vulnerabilities/triage` with `{ids, status, note, expires_in_days}` |
