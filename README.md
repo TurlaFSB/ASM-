@@ -440,10 +440,10 @@ docker compose up -d --force-recreate backend celery_worker
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt -r backend/requirements-dev.txt
 pytest
-cd frontend && npm ci && npm run lint && npm run build
+cd frontend && npm ci && npm run lint && npm test && npm run build
 ```
 
-The backend test suite runs against in-memory SQLite and mocked scanners; no Docker, Redis or network access is required. CI (`.github/workflows/ci.yml`) runs the tests with a coverage floor, frontend lint and build, `bandit` static analysis, and `pip-audit` and `npm audit` dependency checks on every push.
+The backend test suite runs against in-memory SQLite and mocked scanners; no Docker, Redis or network access is required. CI (`.github/workflows/ci.yml`) runs the tests with a coverage floor, frontend lint, component tests (Vitest and Testing Library) and build, `bandit` static analysis, and `pip-audit` and `npm audit` dependency checks on every push.
 
 | Change | How to apply |
 |---|---|

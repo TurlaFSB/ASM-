@@ -14,7 +14,7 @@ Thanks for helping improve the ASM Platform. This page covers how to set up, wha
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt -r backend/requirements-dev.txt
 pytest
-cd frontend && npm ci && npm run lint && npm run build
+cd frontend && npm ci && npm run lint && npm test && npm run build
 ```
 
 The backend tests use in-memory SQLite and stubbed scanners, so they need no Docker, Redis or network access. To run the whole stack, follow the Quick start in the [README](README.md#quick-start).
@@ -22,7 +22,7 @@ The backend tests use in-memory SQLite and stubbed scanners, so they need no Doc
 ## Before you open a pull request
 
 1. `pytest` passes. CI enforces a coverage floor; new behaviour needs tests (a failing test first is ideal).
-2. `npm run lint` and `npm run build` pass in `frontend/`.
+2. `npm run lint`, `npm test` and `npm run build` pass in `frontend/`. Component tests live next to the component (`*.test.jsx`) and mock `../api`.
 3. Schema changes come with an Alembic revision in `backend/migrations/versions/`. Never edit an applied revision.
 4. User-visible changes update the README and the [CHANGELOG](CHANGELOG.md).
 5. No secrets, tokens or real target data in code, tests or screenshots.
