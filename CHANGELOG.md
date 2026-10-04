@@ -4,6 +4,9 @@ All notable changes to this project are recorded here. The format follows [Keep 
 
 ## [Unreleased]
 
+### Added
+- `GET /metrics` (Prometheus format, admin only) and `ASM_LOG_FORMAT=json` structured logs.
+
 ## [0.2.0] - 2026-10-04
 
 ### Added

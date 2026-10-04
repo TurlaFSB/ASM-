@@ -19,7 +19,9 @@ from backend.api.changes import router as changes_router
 from backend.api.exposure import router as exposure_router
 from backend.api.integrity import router as integrity_router
 from backend.api.users import router as users_router
-from backend.auth import get_current_user
+from backend.auth import get_current_user, require_admin
+from backend.observability import configure_logging, render_metrics
+from fastapi.responses import PlainTextResponse
 from backend.security import SECURITY_HEADERS
 from backend.ratelimit import rate_limit_middleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -50,6 +52,7 @@ async def lifespan(app):
     yield
 
 
+configure_logging()
 _is_prod = settings.app_env.lower() in ("production", "prod")
 
 app = FastAPI(
@@ -119,3 +122,15 @@ def readiness(db: Session = Depends(get_db)):
     if "down" in checks.values():
         raise HTTPException(status_code=503, detail=checks)
     return {"status": "ready", **checks}
+
+
+@app.get("/metrics", response_class=PlainTextResponse)
+def metrics(db: Session = Depends(get_db), admin=Depends(require_admin)):
+    """Prometheus text format; admin only (scrape with an admin bearer token)."""
+    depth = None
+    try:
+        import redis as _redis
+        depth = int(_redis.Redis.from_url(settings.redis_url, socket_timeout=2).llen("celery"))
+    except Exception:  # noqa: BLE001
+        pass
+    return PlainTextResponse(render_metrics(db, depth), media_type="text/plain; version=0.0.4")

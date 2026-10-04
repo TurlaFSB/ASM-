@@ -6,6 +6,16 @@ from backend.watchdog import SCAN_MAX_SECONDS
 
 logger = logging.getLogger(__name__)
 
+import os as _os_log
+if _os_log.getenv("ASM_LOG_FORMAT", "text").lower() == "json":
+    # Connecting this signal makes Celery skip its own logging setup, so JSON lines apply to workers too.
+    from celery.signals import setup_logging as _setup_logging
+    from backend.observability import configure_logging as _configure_logging
+
+    @_setup_logging.connect
+    def _configure_worker_logging(**_):
+        _configure_logging()
+
 celery_app = Celery(
     "asm_platform",
     broker=settings.redis_url,

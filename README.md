@@ -344,6 +344,7 @@ Set these in `.env.docker`. Only the first two are required.
 | `DIRBUSTER_MAX_SECONDS` | `900` | Upper bound for directory discovery per scan |
 | `NUCLEI_TIMEOUT` | `1800` | Upper bound for a nuclei run, in seconds |
 | `NUCLEI_CONCURRENCY` | `15` | Nuclei template concurrency |
+| `ASM_LOG_FORMAT` | `text` | Set `json` for one JSON object per log line (API and workers) |
 | `ASM_RETENTION_DAYS` | `90` | Daily cleanup deletes screenshot folders, per-scan tool output and cached PDFs older than this many days; `0` keeps everything. Scans, findings, change history, seals and the audit log are never deleted |
 | `ASM_RETENTION_DELIVERY_DAYS` | `180` | How long webhook delivery log rows are kept; `0` keeps them all |
 | `API_RATE_LIMIT_PER_MINUTE` | `600` | Requests per minute allowed from one client address before the API answers `429` with `Retry-After`; `0` disables. Login attempts have a stricter separate throttle |
@@ -397,6 +398,7 @@ Interactive documentation is served by FastAPI at `http://<host>:8000/docs`. All
 | Users (admin) | `GET/POST /users/`, `PATCH /users/{id}`, `POST /users/{id}/reset-password` |
 | Targets and scans | `/targets/*`, `/scans/*` (including `/scans/profiles`) |
 | Assets and vulnerabilities | `/assets/*`, `/vulnerabilities/*` (`triage=active\|triaged\|all` filter, `GET /vulnerabilities/hidden-count`) |
+| Operations | `GET /health`, `GET /ready` (database and Redis), `GET /metrics` (Prometheus text, admin only: scans by status, assets, findings by severity, queue depth, age of the last completed scan) |
 | Finding triage (admin) | `POST /vulnerabilities/triage` with `{ids, status, note, expires_in_days}` |
 | Alerts and schedules | `/alerts/*`, `/schedules/*` |
 | Changes | `GET /changes/`, `GET /changes/scans/{scan_id}` |
@@ -578,6 +580,7 @@ Infostealer exposure counts: free OSINT lookup by [Hudson Rock](https://www.huds
 | Cookie sessions with CSRF protection | Done |
 | Exposure monitoring: GitHub code, breach records, lookalike domains, ransomware listings, infostealer counts | Done |
 | Tamper-evident signed scan history | Done |
+| Prometheus metrics endpoint and JSON logging | Done |
 | Data retention for scan artifacts and delivery logs | Done |
 | Finding triage with reasons, expiry and report suppression | Done |
 | Global API rate limit, unprivileged web server, HTTPS proxy overlay, CodeQL / Trivy / secret scanning in CI | Done |
