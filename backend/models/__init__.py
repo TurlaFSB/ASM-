@@ -13,3 +13,4 @@ from backend.models.webhook_delivery import WebhookDelivery
 from backend.models.exposure import ExposureFinding, CollectorRun
 from backend.models.scan_seal import ScanSeal
 from backend.models.finding_triage import FindingTriage
+from backend.models.api_token import ApiToken

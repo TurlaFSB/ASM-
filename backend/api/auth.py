@@ -122,6 +122,8 @@ def change_password(payload: PasswordChange, request: Request, response: Respons
     current_user.token_version = (current_user.token_version or 0) + 1
     current_user.password_changed_at = datetime.now(timezone.utc)
     db.commit()
+    from backend import api_tokens
+    api_tokens.revoke_all(db, current_user.id)       # a new password also ends every script credential
     log_action(db, current_user.username, "password_changed", ip_address=ip)
     set_session_cookies(response, create_access_token({"sub": current_user.username, "ver": current_user.token_version}))
     return {"ok": True}

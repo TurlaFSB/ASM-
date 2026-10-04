@@ -380,6 +380,7 @@ Nuclei tuning (`NUCLEI_SEVERITY`, `NUCLEI_AUTOSCAN`, `NUCLEI_MAX_HOST_ERROR`, `N
 | **Vulnerabilities** | Template findings, inferred CVE matches and TLS issues with severity, CVE and CVSS. Triage findings (admins) and switch between Active, Triaged and Everything. |
 | **Exposure** | Choose a target, switch sources on, press *Check now*, review masked findings and dismiss or reopen them. |
 | **Alerts** | In-app alerts, delivery log and per-target webhook settings. |
+| **Account** | Click your name in the sidebar: change your password and manage API tokens. |
 | **Users** | Admins only: add accounts, make someone admin or viewer, reset passwords, deactivate or reactivate. |
 
 The appearance switch at the bottom of the sidebar selects light, system or dark. Viewer accounts can read every page but cannot change anything.
@@ -395,6 +396,7 @@ Interactive documentation is served by FastAPI at `http://<host>:8000/docs`. All
 | Area | Endpoints |
 |---|---|
 | Auth | `POST /auth/token`, `GET /auth/me`, `POST /auth/logout`, `POST /auth/change-password`, `GET /auth/setup-status`, `POST /auth/setup` |
+| API tokens | `GET/POST /auth/tokens/`, `DELETE /auth/tokens/{id}` (your own tokens; the secret is returned once, on creation) |
 | Users (admin) | `GET/POST /users/`, `PATCH /users/{id}`, `POST /users/{id}/reset-password` |
 | Targets and scans | `/targets/*`, `/scans/*` (including `/scans/profiles`) |
 | Exports | `GET /scans/{id}/export/assets.csv`, `vulnerabilities.csv`, `vulnerabilities.json`, `vulnerabilities.sarif` (SARIF 2.1.0; triage decisions become `suppressions`). The Scans page has an export menu on each completed scan |
@@ -410,6 +412,8 @@ Interactive documentation is served by FastAPI at `http://<host>:8000/docs`. All
 Script access example:
 
 ```bash
+# Or create a long-lived token under Account > API tokens and use it directly:
+#   curl -H "Authorization: Bearer asm_..." http://localhost:8000/targets/
 TOKEN=$(curl -s -d "username=admin&password=..." http://localhost:8000/auth/token | python3 -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/targets/
 ```
@@ -574,6 +578,7 @@ Infostealer exposure counts: free OSINT lookup by [Hudson Rock](https://www.huds
 | Alerts, webhooks and per-target notification settings | Done |
 | Per-port path tracking | Done |
 | AI-assisted triage with guardrails and a labelled evaluation set | Done: explain-only by default |
+| API tokens for scripts: hashed at rest, read-only or full access, expiring, revocable | Done |
 | Role-based access (viewer and admin), user management, password change, first-run setup, server-side sign-out | Done |
 | Login throttling per IP and username, constant-time unknown-user path | Done |
 | Scan watchdog and reaper; one active scan per target | Done |

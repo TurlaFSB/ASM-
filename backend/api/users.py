@@ -118,5 +118,7 @@ def reset_password(user_id: int, payload: PasswordReset, request: Request, db: S
     u.token_version = (u.token_version or 0) + 1
     u.password_changed_at = datetime.now(timezone.utc)
     db.commit()
+    from backend import api_tokens
+    api_tokens.revoke_all(db, u.id)
     log_action(db, admin.username, "user_password_reset", detail={"user": u.username}, ip_address=_ip(request))
     return {"ok": True}

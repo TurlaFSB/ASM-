@@ -12,6 +12,7 @@ import Vulnerabilities from "./pages/Vulnerabilities";
 import Changes from "./pages/Changes";
 import Schedules from "./pages/Schedules";
 import Exposure from "./pages/Exposure";
+import Account from "./pages/Account";
 import Users from "./pages/Users";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
@@ -51,6 +52,7 @@ export default function App() {
             <Route path="/schedules" element={<Schedules />} />
             <Route path="/exposure" element={<Exposure />} />
             <Route path="/users" element={<Users />} />
+            <Route path="/account" element={<Account />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
           </ErrorBoundary>

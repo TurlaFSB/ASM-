@@ -33,6 +33,7 @@ ASM is a security tool with network reach and stored findings, so both its input
 |---|---|---|
 | Target scope | Scanning something the operator does not own | Targets must be marked authorized; private/internal ranges are blocked unless explicitly allowed; out-of-scope redirect URLs are dropped before web stages |
 | User sessions | Token theft, CSRF, brute force | httpOnly SameSite cookie, double-submit CSRF token, server-side revocation, login throttling per IP and username, password policy, global rate limit |
+| Script credentials | A leaked or forgotten long-lived token | `asm_` tokens are stored only as a SHA-256 hash, default to read-only with an expiry, cannot create further tokens, die when the owner is deactivated or changes password, and every use updates a last-used time |
 | First-run takeover | Someone claims a fresh install | Setup requires a code printed only in the server log; throttled; closes after the first admin |
 | Webhooks | SSRF, secret leakage | Destination checked against internal ranges, no redirects, signed payloads, only the host (never the full URL) is logged |
 | Scan data | Untrusted strings from targets reaching the UI or reports | Output escaping in the UI and report templates; strict Content Security Policy without inline scripts |

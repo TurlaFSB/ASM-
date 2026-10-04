@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { getUnreadAlerts, getMe } from "../api";
-import { Sun, Moon, Monitor, Shield, Target, Activity, Database, Bell, AlertTriangle, LogOut, Clock, GitCompare, Radar, Users, KeyRound } from "lucide-react";
+import { Sun, Moon, Monitor, Shield, Target, Activity, Database, Bell, AlertTriangle, LogOut, Clock, GitCompare, Radar, Users, Settings } from "lucide-react";
 import { getThemePref, setThemePref } from "../lib/theme";
 import ChangePassword from "./ChangePassword";
 import turlaLogo from "../assets/TURLA.png";
@@ -79,10 +79,11 @@ export default function Navbar({ onLogout }) {
           ))}
         </div>
         {username && (
-          <button type="button" className="account-btn" onClick={() => setPwOpen(true)} title="Change your password" aria-label={`Signed in as ${username}. Change password`}>
+          <Link to="/account" className="account-btn" title="Password and API tokens" aria-label={`Signed in as ${username}. Account settings`}
+            aria-current={location.pathname === "/account" ? "page" : undefined}>
             <span className="account-name">{username}</span>
-            <KeyRound size={15} className="account-key" />
-          </button>
+            <Settings size={15} className="account-key" />
+          </Link>
         )}
         <ChangePassword open={pwOpen} onClose={() => setPwOpen(false)} />
         <button className="logout-btn" onClick={onLogout}>

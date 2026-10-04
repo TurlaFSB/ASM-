@@ -19,6 +19,7 @@ from backend.api.changes import router as changes_router
 from backend.api.exposure import router as exposure_router
 from backend.api.integrity import router as integrity_router
 from backend.api.users import router as users_router
+from backend.api.tokens import router as tokens_router
 from backend.auth import get_current_user, require_admin
 from backend.observability import configure_logging, render_metrics
 from fastapi.responses import PlainTextResponse
@@ -88,6 +89,7 @@ app.include_router(changes_router)
 app.include_router(exposure_router)
 app.include_router(integrity_router)
 app.include_router(users_router)
+app.include_router(tokens_router)
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next):

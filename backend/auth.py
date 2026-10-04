@@ -9,7 +9,7 @@ from fastapi import Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
-from backend import sessions
+from backend import api_tokens, sessions
 from backend.config import settings
 from backend.db import get_db
 from backend.models.user import User
@@ -84,6 +84,15 @@ def get_current_user(request: Request, bearer: Optional[str] = Depends(oauth2_sc
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="CSRF check failed")
     if not token:
         raise credentials_exception
+    if api_tokens.is_api_token(token):
+        found = api_tokens.lookup(db, token)
+        if found is None:
+            raise credentials_exception
+        row, owner = found
+        if row.scope != "write" and request.method not in SAFE_METHODS:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This API token is read-only")
+        request.state.via_api_token = True
+        return owner
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
         username: str = payload.get("sub")
