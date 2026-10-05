@@ -51,9 +51,9 @@ It runs entirely on your own infrastructure with Docker Compose. There is no Saa
 | Discover | Assess | Monitor | Report and integrate |
 |---|---|---|---|
 | Subdomains, DNS, WHOIS and ASN | Nuclei templates and network checks | Snapshot diffs with severity | PDF reports with remediation SLAs |
-| Port and service detection | CVE matching with KEV enrichment | Alerts, webhooks and email | CSV, JSON and SARIF exports |
-| Web technology fingerprinting | TLS audit, takeover, email and file exposure | Scheduled scans | API tokens and REST API |
-| Directory discovery and screenshots | Exposure and leak checks | Tamper-evident history | Prometheus metrics and JSON logs |
+| Port and service detection | CVE matching with KEV enrichment | Alerts, webhooks and email, with optional local-AI notes | CSV, JSON and SARIF exports |
+| Web technology fingerprinting | TLS audit, takeover, email security, cloud storage and exposed files | Scheduled scans and a scan watchdog | API tokens and REST API |
+| Directory discovery and screenshots | Exposure and leak checks | Tamper-evident history | Verified backups, restore drill, Prometheus metrics, JSON logs |
 
 ---
 
@@ -199,18 +199,28 @@ Light, mostly DNS-based checks for the misconfigurations that cause real inciden
 - Client-ready **PDF reports**, pre-built in the background after each scan and cached, so downloads are instant: executive summary with top actions, asset inventory, infrastructure, confirmed findings, inferred findings grouped per service, change detection, and remediation with SLA tiers
 - **Finding triage**: mark a finding, a component or a CVE as In progress, False positive, Accepted risk or Resolved. False positive and Accepted risk require a written reason; accepted risk expires (default 90 days, max 365) and the finding returns for review. Resolved findings stay hidden until a later scan reports them again. Triaged findings are left out of PDF reports and counts, and are never deleted
 - Exports: CSV for assets and findings (with triage status and note), plus JSON and SARIF 2.1.0 findings for pipelines, GitHub code scanning and DefectDojo
+- **Optional AI notes** from a local model (Ollama): a one-line summary and a recommended next step for each confirmed change. The rules decide severity unless you opt in to `adjust`; output that fails a strict schema or claims things the data does not say is discarded, and a scan never waits on the model (see [AI-assisted triage](#ai-assisted-triage-optional))
 
 ### Operations
 - Light and dark themes (match system by default), keyboard-navigable menus, and no WCAG A/AA violations in automated checks
-- Three scan profiles (Quick, Standard, Deep), with a per-target default for scheduled scans
+- Three scan profiles (Quick, Standard, Deep), with a per-target default for scheduled scans. Quick runs only the DNS-based posture checks (takeover, email security); Standard and Deep add cloud storage and exposed files
 - Recurring scans via Celery Beat (cron expressions or presets)
 - Cookie sessions (httpOnly, SameSite, CSRF-protected) for the web app, and bearer tokens or revocable, expiring **API tokens** for scripts and CI; no default credentials
 - Admin and viewer roles: viewers are read-only
 - Exposure monitoring for leaks, breaches, lookalike domains, ransomware listings and infostealer counts (see [Exposure monitoring](#exposure-monitoring-leaks-breaches-mentions))
 - Tamper-evident scan history: signed, chained seals per scan, shown in the PDF report (see [Scan integrity](#scan-integrity-tamper-evident-history))
 - Target, asset, vulnerability and scan lists with search, filters and a side panel for details; target pickers that scale to many targets; free-form **tags** to group targets and filter the list
-- Prometheus metrics (`/metrics`), optional JSON logs, scheduled verified database backups and automatic retention of scan artifacts
+- Prometheus metrics (`/metrics`), optional JSON logs and automatic retention of scan artifacts
+- **Backups you can trust**: scheduled database dumps that are read back and checksummed before they are kept, and a restore drill (`restore.sh verify`) that restores the newest one into a scratch database and compares tables and schema revision. `restore.sh apply` replaces the live database in a single transaction, so a failed restore changes nothing (see [Backup and restore](#backup-and-restore))
 - Audit log of target, scan and authentication actions, with source IP
+
+### Resilience and abuse protection
+- **Cancel any scan**, queued or running: the scanner processes it started (nmap, nuclei, feroxbuster and others) are stopped too, and deleting a target cancels its scans and pauses its schedules
+- **One scan per target at a time**, enforced by a lock that survives a worker restart; a **watchdog** fails scans whose worker was lost or that run past `SCAN_MAX_SECONDS`, so a target is never blocked for good
+- **Redis keeps its data** (append-only file in a named volume), so a restart does not drop queued scans or scan locks
+- Every tool and stage is time-bounded and reports a precise status (`ok`, `empty`, `timeout`, `not installed`, `failed`); a stage that did not run cleanly can never make something look fixed
+- **Login brute-force protection**: failures are counted per client and username, per client and per username, and lock further attempts for 15 minutes whatever password is tried; a global per-client API rate limit sits on top (see [Security posture](#security-posture))
+- Production containers run non-root with a read-only filesystem and all capabilities dropped (the worker keeps only `NET_RAW` for nmap), and the worker has a memory cap
 - Docker Compose deployment with healthchecked dependencies, plus a hardened non-root production overlay (see [Production deployment](#production-deployment))
 - Clear action feedback in the UI: scan state on each target row, optimistic switches that roll back and explain when a save fails
 

@@ -9,6 +9,9 @@ All notable changes to this project are recorded here. The format follows [Keep 
 
 - **Login throttle counters can no longer get stuck.** A counter is now created together with its 15-minute expiry. Before, a crash between the two Redis calls could leave one with no expiry and lock that user or address out permanently.
 
+### Documentation
+- README Features now lists optional AI notes, the restore drill, resilience (cancellation, watchdog, per-target lock, persistent Redis, bounded stages), login protection and which posture checks each profile runs.
+
 ### Fixed
 - **amass results were always discarded.** amass 4.x prints a relationship graph (`name (FQDN) --> a_record --> ip`), not bare names, and the parser dropped every line, so amass contributed nothing to any scan. It now reads the names from the graph. Its normal run takes about 110 s (the `-timeout 1` flag only limits the gathering phase), so the default `ASM_AMASS_TIMEOUT` is 150 s instead of 90, which raced with normal completion.
 
