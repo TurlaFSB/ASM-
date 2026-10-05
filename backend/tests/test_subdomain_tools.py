@@ -86,7 +86,7 @@ def test_timeout_status_reads_as_a_warning_in_reports_and_ui_logic():
     assert _module_state("not installed") == "fail"
 
 
-# Captured from amass 4.2.0 (`amass enum -passive -d example.com`): a relationship graph, not a list of names.
+# Shape of amass 4.x output (written from its documented format, not a live capture): a relationship graph, not a list of names.
 AMASS_4_GRAPH = """example.com (FQDN) --> ns_record --> a.iana-servers.net (FQDN)
 example.com (FQDN) --> ns_record --> b.iana-servers.net (FQDN)
 www.example.com (FQDN) --> a_record --> 104.20.23.154 (IPAddress)
