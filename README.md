@@ -89,7 +89,7 @@ It runs entirely on your own infrastructure with Docker Compose. There is no Saa
 
 <img src="docs/images/account.png" alt="Account page with password change and API tokens" width="100%">
 
-A sample of the client-ready report generated for every scan: [asm_report_scan_91.pdf](https://github.com/user-attachments/files/30161571/asm_report_scan_91.pdf).
+A sample of the client-ready report generated for every scan: [https://drive.google.com/file/d/1QaFbcC_UMToU7FzfaigT-inO6tECE3_0/view?usp=sharing].
 
 ---
 
