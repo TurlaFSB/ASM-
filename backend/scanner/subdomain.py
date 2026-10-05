@@ -89,23 +89,39 @@ def _subfinder(domain: str, rate_limit: int = 10):
         return [], f"failed: {type(e).__name__}"
 
 
+_AMASS_FQDN = re.compile(r"([A-Za-z0-9._-]+)\s+\(FQDN\)")
+
+
+def parse_amass_output(stdout: str, domain: str) -> List[str]:
+    """Hostnames in amass output, in scope for `domain`.
+
+    amass 4.x prints a relationship graph, one edge per line ("a.example.com (FQDN) --> a_record --> 1.2.3.4
+    (IPAddress)"), not bare names, so every "<name> (FQDN)" on a line is a candidate. Older versions printed one
+    name per line; a bare line is still accepted. Everything passes through normalize_hostname.
+    """
+    found = set()
+    for line in (stdout or "").splitlines():
+        names = _AMASS_FQDN.findall(line) or [line]
+        for raw in names:
+            host = normalize_hostname(raw, domain)
+            if host:
+                found.add(host)
+    return sorted(found)
+
+
 def _amass(domain: str):
-    """Passive amass enumeration, a secondary source. Bounded by ASM_AMASS_TIMEOUT (seconds, default 90) so a
-    hung engine cannot hold up every scan. Returns (subdomains, status)."""
+    """Passive amass enumeration, a secondary source. Bounded by ASM_AMASS_TIMEOUT (seconds, default 150) so a
+    hung engine cannot hold up every scan. `-timeout 1` limits only the gathering phase (one minute); amass then
+    needs another 40-50 s to finish, so a normal run takes about 110 s. Never add `-dir`: 4.2.0 hangs with it. Returns (subdomains, status)."""
     if os.getenv("ASM_AMASS_ENABLED", "true").strip().lower() in ("0", "false", "no", "off"):
         return [], "skipped (disabled by ASM_AMASS_ENABLED)"
     start = time.time()
     try:
         result = _run_with_process_group_cleanup(
             ["amass", "enum", "-passive", "-d", domain, "-timeout", "1"],
-            timeout=_env_int("ASM_AMASS_TIMEOUT", 90, 20, 900),
+            timeout=_env_int("ASM_AMASS_TIMEOUT", 150, 20, 900),
         )
-        subdomains = []
-        for line in result.stdout.strip().split("\n"):
-            host = normalize_hostname(line, domain)
-            if host:
-                subdomains.append(host)
-        found = sorted(set(subdomains))
+        found = parse_amass_output(result.stdout, domain)
         logger.info(f"[amass] domain={domain} status=ok results={len(found)} duration={time.time() - start:.2f}s")
         return found, ("ok" if found else "empty")
     except subprocess.TimeoutExpired:

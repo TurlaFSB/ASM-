@@ -481,7 +481,7 @@ Set these in `.env.docker`, then recreate the affected services. Only `DATABASE_
 | `ASM_ALLOW_PRIVATE_TARGETS` | `false` | Permit scanning private/reserved addresses (lab use) |
 | `ASM_RATE_MULTIPLIER` | `1` | Scales per-target request rates for all tools |
 | `ASM_AMASS_ENABLED` | `true` | Use amass as a second subdomain source next to subfinder. Set `false` to skip it |
-| `ASM_AMASS_TIMEOUT` | `90` | Seconds before amass is stopped (20 to 900). A stopped amass shows as `timeout`; subfinder results are still used |
+| `ASM_AMASS_TIMEOUT` | `150` | Seconds before amass is stopped (20 to 900). A normal run takes about 110. A stopped amass shows as `timeout`; subfinder results are still used |
 | `ASM_SUBFINDER_TIMEOUT` | `120` | Seconds before subfinder is stopped |
 | `ASM_WORKER_MEM_LIMIT` | `4g` | Memory cap of the worker container in the production overlay |
 | `ASM_PARALLEL_STAGES` | `true` | Run independent web stages in parallel; `false` lowers peak memory |

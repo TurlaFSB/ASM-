@@ -41,9 +41,9 @@ def test_subfinder_statuses(monkeypatch):
 def test_amass_hang_is_reported_as_timeout_and_uses_the_configured_bound(monkeypatch):
     seen = {}
     monkeypatch.setattr(sd, "_run_with_process_group_cleanup",
-                        fake_runner({"amass": subprocess.TimeoutExpired("amass", 90)}, seen))
+                        fake_runner({"amass": subprocess.TimeoutExpired("amass", 150)}, seen))
     monkeypatch.delenv("ASM_AMASS_TIMEOUT", raising=False)
-    assert sd._amass("acme.com") == ([], "timeout") and seen["amass"] == 90
+    assert sd._amass("acme.com") == ([], "timeout") and seen["amass"] == 150
     monkeypatch.setenv("ASM_AMASS_TIMEOUT", "45")
     sd._amass("acme.com")
     assert seen["amass"] == 45
@@ -52,7 +52,7 @@ def test_amass_hang_is_reported_as_timeout_and_uses_the_configured_bound(monkeyp
     assert seen["amass"] == 900
     monkeypatch.setenv("ASM_AMASS_TIMEOUT", "nonsense")
     sd._amass("acme.com")
-    assert seen["amass"] == 90
+    assert seen["amass"] == 150
 
 
 @pytest.mark.parametrize("value", ["false", "0", "no", "OFF"])
@@ -73,7 +73,7 @@ def test_enumerate_merges_sources_keeps_apex_and_reports_each_tool(monkeypatch):
 
 def test_scan_still_proceeds_when_amass_hangs(monkeypatch):
     monkeypatch.setattr(sd, "_run_with_process_group_cleanup", fake_runner({
-        "subfinder": completed(SF), "amass": subprocess.TimeoutExpired("amass", 90)}))
+        "subfinder": completed(SF), "amass": subprocess.TimeoutExpired("amass", 150)}))
     out = sd.enumerate_subdomains("acme.com")
     assert out["module_status"] == {"subfinder": "ok", "amass": "timeout"}
     assert "a.acme.com" in out["subdomains"]
@@ -84,3 +84,32 @@ def test_timeout_status_reads_as_a_warning_in_reports_and_ui_logic():
     assert _module_state("timeout") == "warn" and _module_state("ok") == "ok"
     assert _module_state("skipped (disabled by ASM_AMASS_ENABLED)") == "skip"
     assert _module_state("not installed") == "fail"
+
+
+# Captured from amass 4.2.0 (`amass enum -passive -d example.com`): a relationship graph, not a list of names.
+AMASS_4_GRAPH = """example.com (FQDN) --> ns_record --> a.iana-servers.net (FQDN)
+example.com (FQDN) --> ns_record --> b.iana-servers.net (FQDN)
+www.example.com (FQDN) --> a_record --> 104.20.23.154 (IPAddress)
+mail.example.com (FQDN) --> cname_record --> mx.example.com (FQDN)
+104.20.0.0/16 (Netblock) --> contains --> 104.20.23.154 (IPAddress)
+13335 (ASN) --> managed_by --> CLOUDFLARENET - Cloudflare, Inc. (RIROrganization)
+evil.example.com.attacker.net (FQDN) --> a_record --> 1.2.3.4 (IPAddress)
+-oops.example.com (FQDN) --> a_record --> 1.2.3.4 (IPAddress)
+"""
+
+
+def test_amass_4_graph_output_is_parsed_and_scoped():
+    assert sd.parse_amass_output(AMASS_4_GRAPH, "example.com") == [
+        "example.com", "mail.example.com", "mx.example.com", "www.example.com"]
+
+
+def test_amass_old_plain_output_still_parses():
+    assert sd.parse_amass_output("a.acme.com\nb.acme.com\nother.net\n\n", "acme.com") == ["a.acme.com", "b.acme.com"]
+    assert sd.parse_amass_output("", "acme.com") == [] and sd.parse_amass_output(None, "acme.com") == []
+
+
+def test_amass_status_ok_when_graph_output_has_names(monkeypatch):
+    monkeypatch.setattr(sd, "_run_with_process_group_cleanup",
+                        lambda cmd, timeout, input_text=None: subprocess.CompletedProcess(cmd, 0, AMASS_4_GRAPH, ""))
+    found, status = sd._amass("example.com")
+    assert status == "ok" and "www.example.com" in found
