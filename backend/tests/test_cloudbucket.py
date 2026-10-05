@@ -15,8 +15,19 @@ def test_public_s3_listing_is_reported_without_object_names():
     def get(url):
         return (200, {}, LISTING) if url == "https://acme.s3.amazonaws.com/" else (404, {}, "NoSuchBucket")
     f, state = cb.check_s3("acme", "acme.com", get)
-    assert state == "public" and f["severity"] == "high" and "ownership-unverified" in f["tags"]
+    assert state == "public" and "ownership-unverified" in f["tags"]
     assert "secret-plan" not in str(f) and "cloud-storage" in f["tags"]
+
+
+def test_severity_reflects_that_the_name_is_only_a_guess():
+    def get(url):
+        return (200, {}, LISTING)
+    distinctive, _ = cb.check_s3("northwindtraders", "northwindtraders.com", get)
+    assert distinctive["severity"] == "medium"                      # never high: ownership is unproven
+    for domain in ("example.com", "acme.com", "shop.co.uk", "dataflow.io"):
+        f, _ = cb.check_s3(cb.base_label(domain), domain, get)
+        assert f["severity"] == ("info" if cb.is_generic_label(domain) else "medium")
+    assert cb.is_generic_label("example.com") and cb.is_generic_label("abc.org") and not cb.is_generic_label("northwindtraders.com")
 
 
 def test_private_and_missing_buckets_are_not_findings():

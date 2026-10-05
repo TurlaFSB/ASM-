@@ -276,7 +276,7 @@ def _diff_findings(old, new, ev, skipped):
             skipped.append({"section": sec, "reason": f"low coverage: {held} removal(s) held on host:ports that were "
                                                       f"not fully tested ({', '.join(new.get('degraded') or [])})"})
         if not (add_ok and rm_ok):
-            skipped.append({"section": sec, "reason": f"{source} vulnerability stage did not run cleanly in one of the scans"})
+            skipped.append({"section": sec, "reason": f"the {source} stage had nothing to report or did not finish cleanly in one of the two scans, so absence is not treated as fixed"})
 
 
 # ---------------------------------------------------------------- public API

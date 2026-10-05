@@ -5,7 +5,7 @@ Profiles are the single source of truth for scan depth: the API validates agains
 PROFILES, the pipeline reads the resolved ScanProfile, and the UI lists them via
 GET /scans/profiles so the three never drift apart.
 
-Time estimates are rough (measured on a small lab host) and exist for the UI only.
+Time estimates are rough (measured on a small, quiet target) and exist for the UI only.
 """
 from __future__ import annotations
 
@@ -89,7 +89,7 @@ PROFILES: Dict[str, ScanProfile] = {
         name="quick",
         label="Quick",
         description="Fast triage: top 100 ports, CVE match, network checks, high/critical web findings only.",
-        estimate="~1.5-2 min",
+        estimate="~2-3 min",
         nmap_ports="100",
         nmap_host_timeout=300,
         run_whatweb=False,
@@ -105,7 +105,7 @@ PROFILES: Dict[str, ScanProfile] = {
         name="standard",
         label="Standard",
         description="Balanced: top 1000 ports plus common web/admin ports, tech fingerprinting, TLS, screenshots, curated directory discovery, medium+ web findings.",
-        estimate="~6-10 min",
+        estimate="~10-12 min",
         nmap_ports="1000+",
         nmap_host_timeout=600,
         nmap_version_intensity=5,

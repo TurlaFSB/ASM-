@@ -27,20 +27,38 @@ logger = logging.getLogger(__name__)
 
 SUFFIXES = ("", "-dev", "-staging", "-stage", "-test", "-prod", "-backup", "-backups", "-assets", "-static",
             "-media", "-uploads", "-data", "-logs", "-public", "-files", "-cdn", "-www", "-internal")
+# Names that many unrelated organisations use: a public bucket called "example-files" says nothing about example.com.
+GENERIC_LABELS = frozenset("""example test demo sample sandbox staging dev prod app apps web site sites blog shop store
+    cloud data files file media image images photo photos video videos music news mail email home office team company
+    group global world international service services solutions systems tech technology digital online network net
+    info online portal admin api cdn static assets backup backups docs support help""".split())
 AZURE_CONTAINERS = ("public", "assets", "backup", "backups", "media", "files", "uploads", "data", "$web")
 BODY_LIMIT = 8192
 _S3_NAME = re.compile(r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$")
 _REGION = re.compile(r"^[a-z0-9-]{3,30}$")
 
 
-def candidate_names(domain: str) -> List[str]:
-    """Bucket-name guesses from the registrable label, e.g. acme.co.uk -> acme, acme-dev, ..."""
+def base_label(domain: str) -> str:
+    """The registrable label: acme.co.uk -> acme. Empty if there is none."""
     labels = [p for p in domain.lower().strip(".").split(".") if p]
     if len(labels) < 2:
-        return []
+        return ""
     # skip a second-level public suffix such as co.uk / com.au
-    base = labels[-3] if len(labels) >= 3 and labels[-2] in ("co", "com", "org", "net", "gov", "ac") \
+    return labels[-3] if len(labels) >= 3 and labels[-2] in ("co", "com", "org", "net", "gov", "ac") \
         and len(labels[-1]) == 2 else labels[-2]
+
+
+def is_generic_label(domain: str) -> bool:
+    """Short or common-word labels collide with other organisations' buckets far too often to rate highly."""
+    base = base_label(domain)
+    return len(base) <= 4 or base in GENERIC_LABELS
+
+
+def candidate_names(domain: str) -> List[str]:
+    """Bucket-name guesses from the registrable label, e.g. acme.co.uk -> acme, acme-dev, ..."""
+    base = base_label(domain)
+    if not base:
+        return []
     names = []
     for suffix in SUFFIXES:
         n = f"{base}{suffix}"
@@ -67,9 +85,12 @@ def http_get(url: str) -> Optional[Response]:
 
 
 def _finding(provider: str, name: str, where: str, domain: str) -> Dict:
+    # The name is only a guess, so this is never "high": a stranger's bucket is not the organisation's exposure.
+    # Generic labels (example, test, short names) collide with other organisations constantly: informational.
+    severity = "info" if is_generic_label(domain) else "medium"
     return {
         "template_id": f"cloud-storage-public-{provider.lower().split()[0]}",
-        "name": f"Public {provider} listing: {name}", "severity": "high",
+        "name": f"Public {provider} listing: {name}", "severity": severity,
         "description": (f"The {provider} storage '{name}' allows anyone to list its contents without credentials. "
                         f"It is named after {domain} but ASM cannot prove it belongs to the organisation, so "
                         "confirm ownership first. If it is yours, restrict public access and review what it holds. "

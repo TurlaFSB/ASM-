@@ -20,7 +20,7 @@ accepted Python or npm advisories.
 `cryptography` 50 in `requirements.txt` and installs `sslyze` separately without its own dependency resolution
 (`requirements-sslyze.txt`). A test (`backend/tests/test_sslyze_compat.py`) runs a real TLS scan with this
 combination on every CI run, so a future release that breaks it fails the build instead of the scanner. The split can
-go once `sslyze` allows a newer `cryptography`.
+go once `sslyze` allows a newer `cryptography`. `pip check` will therefore print "sslyze has requirement cryptography<47"; that message is expected and does not indicate a fault.
 
 ### Container image scan (Trivy)
 

@@ -10,6 +10,9 @@ All notable changes to this project are recorded here. The format follows [Keep 
 - **Login throttle counters can no longer get stuck.** A counter is now created together with its 15-minute expiry. Before, a crash between the two Redis calls could leave one with no expiry and lock that user or address out permanently.
 
 ### Changed
+- **Public-bucket findings are no longer rated high.** The bucket name is a guess, so a hit is now *medium*, or *info* when the domain label is short or a common word (a bucket called `example-files` says nothing about `example.com`).
+- Profile time estimates now match measurements: Quick about 2-3 minutes, Standard about 10-12 (directory discovery is most of it).
+- The change-detection note for a skipped section now says that absence is not treated as fixed, instead of the misleading "did not run cleanly".
 - **Redis keeps its data across restarts** (append-only file, one-second fsync, named `redis_data` volume, `noeviction`). Before, `docker compose down` or a Redis crash dropped the task queue (queued scans sat in the list for up to 12 hours) and every scan lock (running scans were failed by the watchdog while still working). A test restarts a real Redis and checks the queue and locks come back.
 - **Subdomain tools are bounded and reported precisely.** amass now stops after `ASM_AMASS_TIMEOUT` seconds (default 90, was a fixed 150) and can be switched off with `ASM_AMASS_ENABLED=false`; before, a hung amass added two and a half minutes to every scan. Tool status now says `ok`, `empty`, `timeout`, `not installed` or `failed` instead of calling every non-result `empty`.
 - The production worker container has a memory cap (`ASM_WORKER_MEM_LIMIT`, default `4g`). A scan peaks near 2 GiB.

@@ -221,7 +221,7 @@ Light, mostly DNS-based checks for the misconfigurations that cause real inciden
 | Profile | Ports | Directory discovery | Nuclei (web) | Typical duration |
 |---|---|---|---|---|
 | **Quick** | Top 100 | none | high, critical | ~2 min |
-| **Standard** (default) | Top 1000 plus common web/admin ports | curated core list | medium and above | ~6-10 min |
+| **Standard** (default) | Top 1000 plus common web/admin ports | curated core list | medium and above | ~10-12 min |
 | **Deep** | All 65535 | core list plus extensions and `common.txt` | medium and above, long budget | ~20-30 min |
 
 Durations are measured on a small lab host and vary with target size. Standard adds about 30 common web, admin and database ports that are outside nmap's top 1000. Services on other ports are not seen by Quick or Standard; use Deep for full-range coverage. Service version detection gets deeper with each profile, which improves CVE matching.
@@ -308,13 +308,13 @@ Four checks that need no heavy tooling, run as part of every Standard and Deep s
 |---|---|---|---|
 | **Subdomain takeover** | A name whose CNAME points at a missing resource at a known provider (high), a provider "not claimed" page (high), or any other dangling CNAME (medium; low if it points inside your own domain) | high / medium / low | Every discovered name, live or not |
 | **Email security** | Missing, multiple, `+all`, `?all`, `ptr` or over-limit SPF; missing or monitor-only DMARC, `pct` below 100, `sp=none`, no `rua`; DKIM keys under 2048 bits (common selectors only); no MTA-STS | high to info | The target domain |
-| **Cloud storage** | A bucket or container named like your domain (`acme`, `acme-backup`, `acme-dev`, ...) that lists its contents to anyone, on S3, Google Cloud Storage or Azure Blob | high, shown as *inferred* | The target domain |
+| **Cloud storage** | A bucket or container named like your domain (`acme`, `acme-backup`, `acme-dev`, ...) that lists its contents to anyone, on S3, Google Cloud Storage or Azure Blob | medium, or info for short and common-word names, shown as *inferred* | The target domain |
 | **Exposed files** | `/.git/HEAD`, `/.env`, `/.svn/wc.db`, `/.htpasswd`, `/.aws/credentials`, SSH keys, `wp-config` backups, `backup.zip` / `.sql` dumps, `phpinfo()`, `server-status`, Spring `/actuator/env` | critical to low | Each live web host |
 
 How they stay trustworthy:
 - **Content, not status codes.** An exposed file is reported only when its first few KB prove it (a git `ref:` line, `KEY=value` lines, ZIP or gzip magic bytes, a SQL dump header). A site that answers 200 to everything produces no findings. Redirects are never followed.
 - **Nothing sensitive is kept.** At most 4 KB is read and none of it is stored. Findings carry the path and a reason, never a value, an archive's file names or a bucket's object names.
-- **Bucket findings are leads.** Anyone can create a bucket named `acme-backup`, so these findings are marked *inferred* and ask you to confirm ownership first. Private buckets (403) are not findings. Only the existence of a public listing is checked; no object is downloaded.
+- **Bucket findings are leads.** Anyone can create a bucket named `acme-backup`, so these findings are marked *inferred*, are never rated above medium (info for short or common-word domains such as `example.com`, where a stranger's bucket is the likely match) and ask you to confirm ownership first. Private buckets (403) are not findings. Only the existence of a public listing is checked; no object is downloaded.
 - **Takeover findings are candidates.** Providers change how they behave, so verify before acting. Nothing is ever registered or claimed.
 - **Silence is never "fixed".** A check that could not run properly (blocked egress, DNS errors) is recorded as partial and cannot produce "resolved" events. A resolved finding must be absent from two comparable scans before it is confirmed.
 - **Public domains only.** IP and internal targets skip takeover, email and cloud checks. The exposed-file check still runs against their web ports.
@@ -612,6 +612,7 @@ docker compose up -d --force-recreate backend celery_worker
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt -r backend/requirements-dev.txt
 pip install --no-deps -r requirements-sslyze.txt     # the TLS scanner, installed separately (see SECURITY.md)
+pip check                                                # will note "sslyze requires cryptography<47"; expected, see SECURITY.md
 pytest
 cd frontend && npm ci && npm run lint && npm test && npm run build
 ```
