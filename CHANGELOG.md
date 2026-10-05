@@ -7,7 +7,10 @@ All notable changes to this project are recorded here. The format follows [Keep 
 ### Security
 - **`cryptography` upgraded to 50.x**, clearing four published advisories (a bundled OpenSSL issue, PKCS#7 decryption leak, and two X.509 verifier issues) that were previously accepted. `sslyze` caps `cryptography` below 47 in its metadata, so it is now installed separately without dependency resolution (`requirements-sslyze.txt`). A new test runs a real TLS scan with the combination in CI.
 
+- **Login throttle counters can no longer get stuck.** A counter is now created together with its 15-minute expiry. Before, a crash between the two Redis calls could leave one with no expiry and lock that user or address out permanently.
+
 ### Changed
+- **Redis keeps its data across restarts** (append-only file, one-second fsync, named `redis_data` volume, `noeviction`). Before, `docker compose down` or a Redis crash dropped the task queue (queued scans sat in the list for up to 12 hours) and every scan lock (running scans were failed by the watchdog while still working). A test restarts a real Redis and checks the queue and locks come back.
 - **Subdomain tools are bounded and reported precisely.** amass now stops after `ASM_AMASS_TIMEOUT` seconds (default 90, was a fixed 150) and can be switched off with `ASM_AMASS_ENABLED=false`; before, a hung amass added two and a half minutes to every scan. Tool status now says `ok`, `empty`, `timeout`, `not installed` or `failed` instead of calling every non-result `empty`.
 - The production worker container has a memory cap (`ASM_WORKER_MEM_LIMIT`, default `4g`). A scan peaks near 2 GiB.
 
@@ -19,6 +22,7 @@ All notable changes to this project are recorded here. The format follows [Keep 
 - **Zombie `chromium` processes** piled up in the worker after screenshot stages. The backend, worker and beat containers now run with a minimal init that reaps them.
 
 ### Added
+- **Restore drill and restore script** (`deploy/restore.sh`): `verify` checks the checksum, restores a backup into a scratch database, compares tables and the schema revision, then drops the scratch database without touching live data; `apply` replaces the live database in one transaction, so a failed restore changes nothing.
 - **Posture checks** in every scan: subdomain takeover (dangling CNAMEs and unclaimed GitHub Pages, Azure, Heroku, S3, Shopify and similar), email security (SPF, DMARC, DKIM key strength, MTA-STS), public cloud storage listings (S3, GCS, Azure Blob) named after the domain, and exposed `.git`, `.env`, backup, credential and debug files confirmed by content. Quick runs the two DNS-only checks. Findings flow through change detection with their own coverage, so a check that could not run never reports something as fixed.
 - **Screenshot viewing**: a gallery of the pictures taken during a scan, opened from the scan's menu on the Scans page. Pictures are matched to their host, served only to signed-in users, and removed with the retention cleanup.
 - **Target tags**: label targets (up to 10 each), edit them from the row menu, and filter the Targets list by tag. `GET /targets/?tag=` filters through the API.

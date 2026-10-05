@@ -21,6 +21,13 @@ services:
     image: redis:8.0.6
     container_name: asm_redis
     restart: unless-stopped
+    # Redis holds the task queue and the per-target scan locks. Without persistence a restart drops both: queued
+    # scans vanish (their rows wait up to 12h before the watchdog drops them) and running scans lose their lock.
+    # AOF with everysec costs at most one second of writes on a crash. noeviction makes Redis refuse writes when
+    # full instead of silently deleting queue or lock keys.
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis_data:/data
     ports:
       - "127.0.0.1:6379:6379"
     healthcheck:
@@ -163,4 +170,5 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
   screenshots_data:

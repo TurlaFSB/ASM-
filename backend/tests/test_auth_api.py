@@ -25,6 +25,11 @@ class FakeRedis:
     def get(self, k): return self.d.get(k)
     def incr(self, k): self.d[k] = int(self.d.get(k, 0)) + 1; return self.d[k]
     def expire(self, k, s): pass
+    def set(self, k, v, ex=None, nx=False):
+        if nx and k in self.d:
+            return None
+        self.d[k] = v
+        return True
     def delete(self, k): self.d.pop(k, None)
 
 

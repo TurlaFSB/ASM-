@@ -54,10 +54,10 @@ def is_locked(client, ip: str, username: str, max_failures: int = MAX_FAILURES) 
 
 
 def _bump(client, key: str, window: int) -> int:
-    n = client.incr(key)
-    if n == 1:
-        client.expire(key, window)
-    return int(n)
+    # Create the counter WITH its expiry first, then increment: INCR keeps the TTL. The old incr-then-expire order
+    # left a counter without any expiry if the process died between the two calls, which locked that key for good.
+    client.set(key, 0, ex=window, nx=True)
+    return int(client.incr(key))
 
 
 def record_failure(client, ip: str, username: str, window: int = WINDOW_SECONDS) -> Optional[int]:

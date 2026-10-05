@@ -383,7 +383,7 @@ ASM performs active scanning, so its own security matters.
 - **Webhook safety.** Destinations must be HTTPS and resolve to public addresses, the connection is pinned to the address that was checked (no DNS-rebinding gap), redirects are never followed, messages are signed (HMAC-SHA256), credentials are never returned by the API, and target-controlled text is defanged in Slack and Discord messages.
 - **Export safety.** CSV exports neutralise spreadsheet formulas.
 - **API tokens.** Stored only as a SHA-256 hash and shown once. They are read-only or full access, expire (at most 365 days), are limited to 25 per user, stop working when their owner is deactivated, are revoked when the password changes or is reset, and cannot create other tokens.
-- **Rate limiting.** A global per-client limit on the API (`429` with `Retry-After`), on top of the stricter login throttle.
+- **Rate limiting.** A global per-client limit on the API (`429` with `Retry-After`), on top of the stricter login throttle: five failures per address and username, 30 per address and 20 per username within 15 minutes lock further attempts for the rest of the window, whatever password is tried. Behind a reverse proxy the address comes from `X-Forwarded-For` (set `FORWARDED_ALLOW_IPS`; the HTTPS overlay does). If Redis is unreachable the throttle fails open so you can still sign in; the failure is logged.
 - **Email safety.** SMTP credentials live only in the environment, TLS certificates are verified, recipient lists are validated, and scan-derived text is escaped in HTML and stripped of line breaks in headers.
 - **Screenshots are served safely.** Clients ask for a picture by position, never by path; the resolved file must be a PNG inside its scan's folder (symlinks and `..` are refused) and only signed-in users can fetch it.
 - **Supply chain.** CI runs CodeQL, gitleaks, Trivy (images), `bandit`, `pip-audit` and `npm audit`, and Dependabot keeps dependencies current.
@@ -689,7 +689,7 @@ docker compose -f docker-compose.yml -f docker-compose.backup.yml up -d backup
 docker logs asm_backup            # one line per backup, or the reason it failed
 ```
 
-Dumps go to the `backups_data` volume, or to a host folder if you set `BACKUP_PATH=/srv/asm-backups` in `.env.docker`. Tune `BACKUP_INTERVAL_HOURS` and `BACKUP_KEEP`. Each dump is read back before it is kept, so an empty or corrupt file is discarded and logged as an error instead of sitting there looking like a backup. Copy the folder off the machine as well. To restore, use the `pg_restore` commands below with the file you choose.
+Dumps go to the `backups_data` volume, or to a host folder if you set `BACKUP_PATH=/srv/asm-backups` in `.env.docker`. Tune `BACKUP_INTERVAL_HOURS` and `BACKUP_KEEP`. Each dump is read back before it is kept, so an empty or corrupt file is discarded and logged as an error instead of sitting there looking like a backup. Copy the folder off the machine as well. To restore, use the commands below with the file you choose.
 
 **Manual database dump** (custom format, compressed, restorable selectively):
 
@@ -700,23 +700,25 @@ docker cp asm_postgres:/tmp/backup.dump ./backups/asm_db_$(date +%Y%m%d).dump
 docker exec asm_postgres rm /tmp/backup.dump
 ```
 
-**Restore** into the running stack (stop the writers first so nothing changes mid-restore):
+**Prove the backup works (do this once, then monthly).** A backup you have never restored is a hope, not a backup. This checks the checksum, restores the newest dump into a scratch database, lists every table's row count and the schema revision, and deletes the scratch database. Your live data is not touched:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.backup.yml run --rm --no-deps backup sh /restore.sh verify
+```
+
+Add a file name to check a specific dump (`... sh /restore.sh verify /backups/asm_db_YYYYMMDDTHHMMSSZ.dump`). It exits non-zero and says why if the file is damaged or does not restore.
+
+**Restore** replaces the live database. Stop the writers first, then apply the dump you chose. The restore runs in one transaction, so if it fails the live database is unchanged:
 
 ```bash
 docker compose stop backend celery_worker celery_beat
-docker cp ./backups/asm_db_YYYYMMDD.dump asm_postgres:/tmp/restore.dump
-docker exec asm_postgres pg_restore -U asm_user -d asm_db --clean --if-exists -v /tmp/restore.dump
+docker compose -f docker-compose.yml -f docker-compose.backup.yml run --rm --no-deps backup sh /restore.sh apply /backups/asm_db_YYYYMMDDTHHMMSSZ.dump --yes
 docker compose start backend celery_worker celery_beat
 ```
 
-**Prove the backup works.** A backup you have never restored is a hope, not a backup. Restore into a scratch database and count rows:
+If you keep dumps in a host folder (`BACKUP_PATH`), the same paths apply: it is mounted at `/backups`. For a dump copied from elsewhere, put it in that folder first.
 
-```bash
-docker exec asm_postgres createdb -U asm_user asm_restore_test
-docker exec asm_postgres pg_restore -U asm_user -d asm_restore_test /tmp/restore.dump
-docker exec asm_postgres psql -U asm_user -d asm_restore_test -c "SELECT count(*) FROM scans;"
-docker exec asm_postgres dropdb -U asm_user asm_restore_test
-```
+**Queue and locks.** Redis keeps the task queue and scan locks in the `redis_data` volume (append-only file), so a restart does not lose queued scans or confuse running ones. Do not use `docker compose down -v` unless you want an empty queue as well as an empty database.
 
 **Files.** Screenshots and scan output live in named volumes (`screenshots_data`, `scan_output_data` in the production overlay). Archive one with a throwaway container:
 

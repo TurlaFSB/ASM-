@@ -27,6 +27,7 @@ services:
     volumes:
       - ${BACKUP_PATH:-backups_data}:/backups
       - ./deploy/backup.sh:/backup.sh:ro
+      - ./deploy/restore.sh:/restore.sh:ro
     command: ["sh", "/backup.sh"]
     read_only: true
     tmpfs: ["/tmp"]

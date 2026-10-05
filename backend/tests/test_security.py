@@ -9,11 +9,18 @@ class FakeRedis:
     def incr(self, k): self.d[k] = int(self.d.get(k, 0)) + 1; return self.d[k]
     def expire(self, k, s): self.ttl[k] = s
     def delete(self, k): self.d.pop(k, None)
+    def set(self, k, v, ex=None, nx=False):
+        if nx and k in self.d:
+            return None
+        self.d[k] = v
+        if ex:
+            self.ttl[k] = ex
+        return True
 
 
 class DeadRedis:
     def get(self, k): raise ConnectionError("down")
-    incr = expire = delete = get
+    incr = expire = delete = set = get
 
 
 def test_lockout_after_five_failures_then_clear():
@@ -102,3 +109,20 @@ def test_app_headers_and_auth_required():
     assert r.headers["x-frame-options"] == "DENY"
     assert c.get("/targets/").status_code == 401
     assert c.get("/audit/").status_code == 401
+
+
+def test_counter_always_has_an_expiry_even_if_the_process_dies_mid_update():
+    """The old incr-then-expire order could leave a counter with no TTL (a permanent lockout)."""
+    class DiesOnIncr(FakeRedis):
+        def incr(self, k): raise ConnectionError("worker killed")
+    r = DiesOnIncr()
+    assert record_failure(r, "1.2.3.4", "admin") is None          # fails open, does not raise
+    assert r.ttl and all(v == 900 for v in r.ttl.values())       # nothing was left without an expiry
+
+
+def test_window_is_not_extended_by_later_failures():
+    r = FakeRedis()
+    record_failure(r, "1.2.3.4", "admin")
+    r.ttl["login_fail:1.2.3.4:admin"] = 100                      # time passed
+    record_failure(r, "1.2.3.4", "admin")
+    assert r.ttl["login_fail:1.2.3.4:admin"] == 100
