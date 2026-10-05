@@ -125,7 +125,10 @@ services:
     container_name: asm_celery_beat
     init: true          # a minimal init (PID 1) reaps finished child processes such as chromium; without it they pile up as zombies
     restart: unless-stopped
-    command: celery -A backend.tasks beat --loglevel=info
+    # The schedule file goes to /tmp: the image's working directory is not writable for the non-root production
+    # user, and beat exits at start-up with a PermissionError if it cannot create the file. The schedule itself is
+    # static configuration, so nothing is lost when /tmp is cleared.
+    command: celery -A backend.tasks beat --loglevel=info -s /tmp/celerybeat-schedule
     env_file:
       - .env.docker
     volumes:

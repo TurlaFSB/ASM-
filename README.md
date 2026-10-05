@@ -575,7 +575,7 @@ Interactive documentation is served by FastAPI at `http://<host>:8000/docs`. All
 | Targets | `/targets/*` (`GET /targets/?tag=` filters by tag; `PUT /targets/{id}/tags`; `GET/PUT /targets/{id}/notifications`; `POST /targets/{id}/notifications/test` for the webhook and `.../test-email` for email) |
 | Scans | `/scans/*` (including `/scans/profiles`, `GET /scans/{id}/screenshots` and `.../screenshots/{n}` for the pictures) |
 | Exports | `GET /scans/{id}/export/assets.csv`, `vulnerabilities.csv`, `vulnerabilities.json`, `vulnerabilities.sarif` (SARIF 2.1.0; triage decisions become `suppressions`). The Scans page has an export menu on each completed scan |
-| Assets and vulnerabilities | `/assets/*`, `/vulnerabilities/*` (`triage=active\|triaged\|all` filter, `GET /vulnerabilities/hidden-count`) |
+| Assets and vulnerabilities | `/assets/*`, `/vulnerabilities/*`. Filters on `GET /vulnerabilities/`, `/summary` and `/rollup`: `severity=critical,high` (any of critical, high, medium, low, info), `tag=posture` (or `takeover`, `email-security`, `cloud-storage`, `exposed-file`), `scan_id`, `target_id`, `triage=active\|triaged\|all`; combine them freely. `GET /vulnerabilities/hidden-count` |
 | Operations | `GET /health`, `GET /ready` (database and Redis), `GET /metrics` (Prometheus text, admin only: scans by status, assets, findings by severity, queue depth, age of the last completed scan) |
 | Finding triage (admin) | `POST /vulnerabilities/triage` with `{ids, status, note, expires_in_days}` |
 | Alerts and schedules | `/alerts/*`, `/schedules/*` |

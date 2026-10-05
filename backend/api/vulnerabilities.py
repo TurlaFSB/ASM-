@@ -3,7 +3,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, case, exists, func, or_
+from sqlalchemy import String, and_, case, cast, exists, func, or_
 from backend import triage as tg
 from backend.audit import log_action
 from backend.db import get_db
@@ -67,8 +67,19 @@ def _has_decision_clause():
     return exists().where(and_(t.target_id == Vulnerability.target_id, t.key == Vulnerability.finding_key))
 
 
-def _scoped(db: Session, scope: str, scan_id: Optional[int], target_id: Optional[int], triage: str = "active"):
+SEVERITY_FILTER = r"^(critical|high|medium|low|info)(,(critical|high|medium|low|info))*$"
+TAG_FILTER = r"^[a-z0-9][a-z0-9._-]{0,39}$"
+
+
+def _scoped(db: Session, scope: str, scan_id: Optional[int], target_id: Optional[int], triage: str = "active",
+            severity: Optional[str] = None, tag: Optional[str] = None):
     q = db.query(Vulnerability)
+    if severity:
+        q = q.filter(func.lower(Vulnerability.severity).in_(severity.split(",")))
+    if tag:
+        # tags is a JSON array of strings; match the quoted element so "posture" never matches "posture-x".
+        # autoescape keeps %, _ and \ in the value literal (the pattern also restricts it to plain characters).
+        q = q.filter(cast(Vulnerability.tags, String).contains(f'"{tag}"', autoescape=True))
     if triage == "active":
         q = q.filter(~_suppressed_clause())
     elif triage == "triaged":
@@ -85,10 +96,12 @@ def _scoped(db: Session, scope: str, scan_id: Optional[int], target_id: Optional
 @router.get("/summary")
 def vuln_summary(scope: str = Query("latest", pattern="^(latest|all)$"), scan_id: Optional[int] = None,
                  target_id: Optional[int] = None, triage: str = Query("active", pattern=TRIAGE_MODES),
+                 severity: Optional[str] = Query(None, pattern=SEVERITY_FILTER),
+                 tag: Optional[str] = Query(None, pattern=TAG_FILTER),
                  db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     """Counts by severity. Default scope is the latest completed scan per target, so repeated
     scans don't inflate the numbers."""
-    base = _scoped(db, scope, scan_id, target_id, triage).subquery()
+    base = _scoped(db, scope, scan_id, target_id, triage, severity, tag).subquery()
     rows = db.query(base.c.severity, func.count()).group_by(base.c.severity).all()
     return {sev: n for sev, n in rows}
 
@@ -98,8 +111,12 @@ def list_vulnerabilities(limit: int = Query(500, ge=1, le=1000), offset: int = Q
                          scope: str = Query("latest", pattern="^(latest|all)$"),
                          scan_id: Optional[int] = None, target_id: Optional[int] = None,
                          triage: str = Query("active", pattern=TRIAGE_MODES),
+                         severity: Optional[str] = Query(None, pattern=SEVERITY_FILTER,
+                                                         description="One or more of critical,high,medium,low,info, comma separated"),
+                         tag: Optional[str] = Query(None, pattern=TAG_FILTER,
+                                                    description="Only findings carrying this tag, e.g. posture, takeover, email-security"),
                          db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
-    q = _scoped(db, scope, scan_id, target_id, triage)
+    q = _scoped(db, scope, scan_id, target_id, triage, severity, tag)
     vulns = (q.order_by(SEVERITY_RANK, Vulnerability.is_exploitable_confirmed.desc(),
                         Vulnerability.cvss_score.desc().nullslast(), Vulnerability.id)
              .limit(limit).offset(offset).all())
@@ -109,11 +126,13 @@ def list_vulnerabilities(limit: int = Query(500, ge=1, le=1000), offset: int = Q
 def vuln_rollup(limit: int = Query(1000, ge=1, le=5000), scope: str = Query("latest", pattern="^(latest|all)$"),
                 scan_id: Optional[int] = None, target_id: Optional[int] = None,
                 triage: str = Query("active", pattern=TRIAGE_MODES),
+                severity: Optional[str] = Query(None, pattern=SEVERITY_FILTER),
+                tag: Optional[str] = Query(None, pattern=TAG_FILTER),
                 db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     """Same data as `/`, but version-matched CVEs collapse into ONE item per (scan, host, component) with
     worst severity, KEV count and 'shown of total' (the per-service cap hides the lowest-risk matches).
     Scanner-verified findings stay one item each. Items are ordered most urgent first."""
-    q = _scoped(db, scope, scan_id, target_id, triage)
+    q = _scoped(db, scope, scan_id, target_id, triage, severity, tag)
     vulns = q.order_by(SEVERITY_RANK, Vulnerability.id).limit(limit).all()
     rows = _serialize_all(db, vulns)
     totals = {}
