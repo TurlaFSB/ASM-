@@ -551,7 +551,7 @@ Nuclei tuning (`NUCLEI_SEVERITY`, `NUCLEI_AUTOSCAN`, `NUCLEI_MAX_HOST_ERROR`, `N
 | **Assets** | Searchable, filterable inventory: ports, technologies, HTTP metadata, discovered paths and risk score. Click a row for the side panel. |
 | **Schedules** | Recurring scans by cron expression or preset interval. |
 | **Changes** | Severity-rated change events between comparable scans, with optional AI notes. |
-| **Vulnerabilities** | Template findings, inferred CVE matches and TLS issues with severity, CVE and CVSS. Triage findings (admins) and switch between Active, Triaged and Everything. |
+| **Vulnerabilities** | Template findings, inferred CVE matches, TLS issues and posture-check findings with severity, CVE and CVSS. Switch *Type* to **Posture checks** (then narrow to takeover, email security, cloud storage or exposed files; storage hits are labelled *Ownership unconfirmed*), and triage findings (admins) between Active, Triaged and Everything. |
 | **Exposure** | Choose a target, switch sources on, press *Check now*, review masked findings and dismiss or reopen them. |
 | **Alerts** | In-app alerts and the delivery log for webhooks and email. |
 | **Account** | Click your name in the sidebar: change your password and manage API tokens. |

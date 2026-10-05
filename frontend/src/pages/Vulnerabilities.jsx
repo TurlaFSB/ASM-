@@ -10,6 +10,10 @@ import { getVulnRollup, getVulnSummary, setFindingTriage, getHiddenFindings } fr
 
 const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
 const VM_PREFIX = "[version match] ";
+// Posture checks: configuration problems found by DNS and light HTTP checks rather than by vulnerability templates.
+const POSTURE_CHECKS = [["takeover", "Takeover"], ["email-security", "Email security"], ["cloud-storage", "Cloud storage"], ["exposed-file", "Exposed files"]];
+const POSTURE_LABEL = Object.fromEntries(POSTURE_CHECKS);
+const postureCheck = (it) => ((it.tags || []).includes("posture") ? (POSTURE_CHECKS.find(([t]) => (it.tags || []).includes(t)) || [])[0] || "posture" : null);
 
 const sevRank = (s) => (s in SEVERITY_ORDER ? SEVERITY_ORDER[s] : 5); // 0 is a valid rank (critical)
 
@@ -46,9 +50,10 @@ export default function Vulnerabilities() {
   const [severity, setSeverity] = useState("all");
   const [source, setSource] = useState("all");   // all | verified | version
   const [scope, setScope] = useState("latest");  // latest scan per target | all history
+  const [tag, setTag] = useState("");            // "" = everything | "posture" | one posture check (server-side filter)
 
   useEffect(() => {
-    const params = { scope, triage: triageMode };
+    const params = { scope, triage: triageMode, ...(tag ? { tag } : {}) };
     Promise.all([getVulnRollup(params), getVulnSummary(params), getHiddenFindings({ scope })])
       .then(([v, s, h]) => {
         setItems(v.data.items);
@@ -58,7 +63,7 @@ export default function Vulnerabilities() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [scope, triageMode, reload]);
+  }, [scope, triageMode, tag, reload]);
 
   const apply = async (ids, status, extra = {}) => {
     setSaving(true);
@@ -90,6 +95,7 @@ export default function Vulnerabilities() {
 
   const changeScope = (next) => { setLoading(true); setScope(next); };
   const changeTriage = (next) => { setLoading(true); setTriageMode(next); };
+  const changeTag = (next) => { setLoading(true); setTag(next); };
 
   const isVerified = (it) => it.kind === "finding" && it.verified;
   const filtered = items.filter(it =>
@@ -110,11 +116,15 @@ export default function Vulnerabilities() {
   const SOURCES = [["all", "All"], ["verified", "Scanner-verified"], ["version", `Version match${unverifiedCount ? ` (${unverifiedCount})` : ""}`]];
   const SCOPES = [["latest", "Latest scan"], ["all", "All history"]];
   const TRIAGE_MODES = [["active", "Active"], ["triaged", "Triaged"], ["all", "Everything"]];
+  const AREAS = [["", "All findings"], ["posture", "Posture checks"]];
+  const CHECKS = [["posture", "All checks"], ...POSTURE_CHECKS.map(([t, l]) => [t, l])];
 
   const flagsFor = (it) => (
     <div className="dl-flags">
       {it.is_exploitable_confirmed && <span className="badge badge-sev-critical" title={(it.exploitability_reasons || []).join(" · ")}>Exploitable</span>}
       {(it.kev_count > 0 || isKev(it)) && <span className="badge badge-sev-critical" title="Listed in CISA Known Exploited Vulnerabilities">KEV{it.kev_count > 1 ? ` ${it.kev_count}` : ""}</span>}
+      {postureCheck(it) && <span className="badge badge-sev-info" title="Found by a posture check (DNS and light HTTP checks)">{POSTURE_LABEL[postureCheck(it)] || "Posture"}</span>}
+      {(it.tags || []).includes("ownership-unverified") && <span className="badge badge-sev-info" title="The storage name was guessed from your domain. Confirm it belongs to you before acting.">Ownership unconfirmed</span>}
       {!isVerified(it) && <span className="badge badge-sev-info" title="Inferred from a service version; not confirmed by a scanner check">Unverified</span>}
       <TriageChip t={it.triage} />
     </div>
@@ -137,7 +147,11 @@ export default function Vulnerabilities() {
       </div>
 
       <div className="filters">
-        <span className="field-label">Source</span>
+        <span className="field-label">Type</span>
+        <Segmented value={tag ? "posture" : ""} onChange={(v) => changeTag(v)} options={AREAS} label="Type" />
+        {tag && (<><span className="field-label" style={{ marginLeft: 8 }}>Check</span>
+          <Segmented value={tag} onChange={changeTag} options={CHECKS} label="Posture check" /></>)}
+        <span className="field-label" style={{ marginLeft: 8 }}>Source</span>
         <Segmented value={source} onChange={setSource} options={SOURCES} label="Source" />
         <span className="field-label" style={{ marginLeft: 8 }}>Showing</span>
         <Segmented value={scope} onChange={changeScope} options={SCOPES} label="Scope" />

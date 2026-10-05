@@ -9,6 +9,9 @@ All notable changes to this project are recorded here. The format follows [Keep 
 
 - **Login throttle counters can no longer get stuck.** A counter is now created together with its 15-minute expiry. Before, a crash between the two Redis calls could leave one with no expiry and lock that user or address out permanently.
 
+### Added (UI)
+- **Posture filter** on the Vulnerabilities page: show only posture-check findings, or narrow to takeover, email security, cloud storage or exposed files. The severity tiles follow the filter, rows carry a badge for their check, and guessed storage names are labelled *Ownership unconfirmed*.
+
 ### Added (API)
 - **`severity` and `tag` filters** on `GET /vulnerabilities/`, `/summary` and `/rollup`, for scripts and pipelines (for example `?tag=posture&severity=high,critical`). Values are validated, tags match exactly, and wildcard characters are never interpreted. Before, the endpoint ignored such parameters and returned everything; only the web page filtered.
 

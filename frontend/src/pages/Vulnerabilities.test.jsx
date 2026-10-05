@@ -70,3 +70,30 @@ describe("Finding triage", () => {
     await waitFor(() => expect(api.getVulnRollup).toHaveBeenLastCalledWith(expect.objectContaining({ triage: "triaged" })));
   });
 });
+
+describe("Posture checks", () => {
+  const posture = { kind: "finding", id: 9, verified: true, severity: "info", name: "Public Amazon S3 listing: acme-files",
+    template_id: "cloud-storage-public-amazon", host: "acme-files", matched_at: "https://acme-files.s3.amazonaws.com/",
+    cvss_score: null, cve_id: null, tags: ["cloud-storage", "posture", "ownership-unverified", "amazon"] };
+
+  it("labels a posture finding with its check and warns that ownership is unconfirmed", async () => {
+    api.getVulnRollup.mockResolvedValue({ data: { items: [posture], findings: 1, lines: 1 } });
+    api.getVulnSummary.mockResolvedValue({ data: {} });
+    api.getHiddenFindings.mockResolvedValue({ data: { hidden: 0 } });
+    render(<ToastProvider><Vulnerabilities /></ToastProvider>);
+    expect(await screen.findByText("Cloud storage")).toBeInTheDocument();
+    expect(screen.getByText("Ownership unconfirmed")).toBeInTheDocument();
+  });
+
+  it("asks the server for posture findings only, then narrows to one check", async () => {
+    setup();
+    await screen.findByText("Exposed admin panel");
+    await userEvent.click(screen.getByRole("button", { name: "Posture checks" }));
+    await waitFor(() => expect(api.getVulnRollup).toHaveBeenLastCalledWith(expect.objectContaining({ tag: "posture" })));
+    expect(api.getVulnSummary).toHaveBeenLastCalledWith(expect.objectContaining({ tag: "posture" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Email security" }));
+    await waitFor(() => expect(api.getVulnRollup).toHaveBeenLastCalledWith(expect.objectContaining({ tag: "email-security" })));
+    await userEvent.click(screen.getByRole("button", { name: "All findings" }));
+    await waitFor(() => expect(api.getVulnRollup).toHaveBeenLastCalledWith({ scope: "latest", triage: "active" }));
+  });
+});
