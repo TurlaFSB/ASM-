@@ -7,6 +7,10 @@ All notable changes to this project are recorded here. The format follows [Keep 
 ### Security
 - **`cryptography` upgraded to 50.x**, clearing four published advisories (a bundled OpenSSL issue, PKCS#7 decryption leak, and two X.509 verifier issues) that were previously accepted. `sslyze` caps `cryptography` below 47 in its metadata, so it is now installed separately without dependency resolution (`requirements-sslyze.txt`). A new test runs a real TLS scan with the combination in CI.
 
+### Changed
+- **Subdomain tools are bounded and reported precisely.** amass now stops after `ASM_AMASS_TIMEOUT` seconds (default 90, was a fixed 150) and can be switched off with `ASM_AMASS_ENABLED=false`; before, a hung amass added two and a half minutes to every scan. Tool status now says `ok`, `empty`, `timeout`, `not installed` or `failed` instead of calling every non-result `empty`.
+- The production worker container has a memory cap (`ASM_WORKER_MEM_LIMIT`, default `4g`). A scan peaks near 2 GiB.
+
 ### Fixed
 - **Deleting a target now stops everything for it**: its schedules are paused (and hidden), and a scan that is queued or running is cancelled. Before, a scan kept running and schedules stayed armed.
 - **Resuming a paused schedule** waits for its next time slot instead of firing at once for a time that passed while it was paused. The Schedules switch now sets the state explicitly, so a double click can no longer undo itself.

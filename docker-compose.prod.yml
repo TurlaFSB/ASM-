@@ -58,6 +58,9 @@ services:
   celery_worker:
     <<: *app-prod
     cap_add: [NET_RAW]
+    # A scan peaks at about 2 GiB on a typical target (nuclei loads ~11k templates next to headless Chromium and
+    # feroxbuster). The cap keeps a runaway scan from taking the whole host down; raise it for very large targets.
+    mem_limit: ${ASM_WORKER_MEM_LIMIT:-4g}
     depends_on:
       volume-init: { condition: service_completed_successfully }
       postgres: { condition: service_healthy }

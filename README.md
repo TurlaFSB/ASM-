@@ -480,6 +480,10 @@ Set these in `.env.docker`, then recreate the affected services. Only `DATABASE_
 |---|---|---|
 | `ASM_ALLOW_PRIVATE_TARGETS` | `false` | Permit scanning private/reserved addresses (lab use) |
 | `ASM_RATE_MULTIPLIER` | `1` | Scales per-target request rates for all tools |
+| `ASM_AMASS_ENABLED` | `true` | Use amass as a second subdomain source next to subfinder. Set `false` to skip it |
+| `ASM_AMASS_TIMEOUT` | `90` | Seconds before amass is stopped (20 to 900). A stopped amass shows as `timeout`; subfinder results are still used |
+| `ASM_SUBFINDER_TIMEOUT` | `120` | Seconds before subfinder is stopped |
+| `ASM_WORKER_MEM_LIMIT` | `4g` | Memory cap of the worker container in the production overlay |
 | `ASM_PARALLEL_STAGES` | `true` | Run independent web stages in parallel; `false` lowers peak memory |
 | `ASM_NMAP_SCAN_TYPE` | `auto` | `auto`, `syn` or `connect`. `auto` uses SYN scans when allowed and falls back to connect scans |
 | `DIRBUSTER_MAX_SECONDS` | `900` | Upper bound for directory discovery per scan |
@@ -741,7 +745,7 @@ docker run --rm -v asm_screenshots_data:/data -v "$PWD/backups":/out busybox:1.3
 | Scanner tool "not found" | Binary missing from the image | `docker exec asm_celery_worker which <tool>`; fix the Dockerfile |
 | Worker ignores code changes | No auto-reload on the worker | `docker compose restart celery_worker` |
 | Frontend changes not visible | Static bundle served by nginx | Rebuild the `frontend` image and hard-refresh |
-| Worker exits with code 137 mid-scan (`OOMKilled`) | Docker ran out of memory on a target with many subdomains | Give Docker more memory (Docker Desktop: Settings, Resources), set `ASM_PARALLEL_STAGES=false` to lower the peak, and lower `NUCLEI_CONCURRENCY`. A scan left `running` by a lost worker is failed automatically within about 10 minutes |
+| Worker exits with code 137 mid-scan (`OOMKilled`) | Docker ran out of memory on a target with many subdomains | Give Docker more memory (Docker Desktop: Settings, Resources) or raise `ASM_WORKER_MEM_LIMIT` (production overlay, default `4g`; a typical scan peaks near 2 GiB), set `ASM_PARALLEL_STAGES=false` to lower the peak, and lower `NUCLEI_CONCURRENCY`. A scan left `running` by a lost worker is failed automatically within about 10 minutes |
 | Email test says `authentication failed` | Wrong SMTP login. Gmail needs an app password, not the account password | Create an app password, set it in `ASM_SMTP_PASSWORD`, and recreate `backend` and `celery_worker` |
 | The Email box says it is not set up on this server | `ASM_SMTP_HOST` or `ASM_SMTP_FROM` is missing | Set both in `.env.docker` and recreate `backend` and `celery_worker` |
 | No *View screenshots* item on a scan | The scan ran before screenshot viewing existed, was a profile that skips screenshots, or its pictures were removed by retention | Run a new Standard or Deep scan |

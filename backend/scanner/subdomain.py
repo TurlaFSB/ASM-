@@ -51,15 +51,21 @@ def _run_with_process_group_cleanup(cmd: List[str], timeout: int, input_text: st
         raise
 
 
-def run_subfinder(domain: str, rate_limit: int = 10) -> List[str]:
-    """Run subfinder against domain. Returns list of subdomains."""
+def _env_int(name: str, default: int, lo: int, hi: int) -> int:
+    try:
+        return max(lo, min(hi, int(os.getenv(name, str(default)))))
+    except ValueError:
+        return default
+
+
+def _subfinder(domain: str, rate_limit: int = 10):
+    """Returns (subdomains, status): ok | empty | timeout | not installed | failed: ..."""
     start = time.time()
     try:
         result = _run_with_process_group_cleanup(
             ["subfinder", "-d", domain, "-silent", "-rate-limit", str(rate_limit), "-json"],
-            timeout=120,
+            timeout=_env_int("ASM_SUBFINDER_TIMEOUT", 120, 10, 900),
         )
-
         subdomains = []
         for line in result.stdout.strip().split("\n"):
             if line:
@@ -68,54 +74,59 @@ def run_subfinder(domain: str, rate_limit: int = 10) -> List[str]:
                     subdomains.append(data.get("host", ""))
                 except json.JSONDecodeError:
                     subdomains.append(line.strip())
-
-        duration = time.time() - start
         clean = [normalize_hostname(s, domain) for s in subdomains]
-        clean = [s for s in clean if s]
-        logger.info(f"[subfinder] domain={domain} status=ok results={len(clean)} duration={duration:.2f}s")
-        return list(set(clean))
-
+        clean = sorted({s for s in clean if s})
+        logger.info(f"[subfinder] domain={domain} status=ok results={len(clean)} duration={time.time() - start:.2f}s")
+        return clean, ("ok" if clean else "empty")
     except subprocess.TimeoutExpired:
-        duration = time.time() - start
-        logger.error(f"[subfinder] domain={domain} status=timeout duration={duration:.2f}s")
-        return []
+        logger.error(f"[subfinder] domain={domain} status=timeout duration={time.time() - start:.2f}s")
+        return [], "timeout"
     except FileNotFoundError:
         logger.error("[subfinder] tool_not_found")
-        return []
-    except Exception as e:
+        return [], "not installed"
+    except Exception as e:  # noqa: BLE001
         logger.error(f"[subfinder] domain={domain} status=failed error={e}")
-        return []
+        return [], f"failed: {type(e).__name__}"
 
 
-def run_amass(domain: str) -> List[str]:
-    """Run amass passive enumeration. Returns list of subdomains."""
+def _amass(domain: str):
+    """Passive amass enumeration, a secondary source. Bounded by ASM_AMASS_TIMEOUT (seconds, default 90) so a
+    hung engine cannot hold up every scan. Returns (subdomains, status)."""
+    if os.getenv("ASM_AMASS_ENABLED", "true").strip().lower() in ("0", "false", "no", "off"):
+        return [], "skipped (disabled by ASM_AMASS_ENABLED)"
     start = time.time()
     try:
         result = _run_with_process_group_cleanup(
             ["amass", "enum", "-passive", "-d", domain, "-timeout", "1"],
-            timeout=150,
+            timeout=_env_int("ASM_AMASS_TIMEOUT", 90, 20, 900),
         )
-
         subdomains = []
         for line in result.stdout.strip().split("\n"):
             host = normalize_hostname(line, domain)
             if host:
                 subdomains.append(host)
-
-        duration = time.time() - start
-        logger.info(f"[amass] domain={domain} status=ok results={len(subdomains)} duration={duration:.2f}s")
-        return list(set(subdomains))
-
+        found = sorted(set(subdomains))
+        logger.info(f"[amass] domain={domain} status=ok results={len(found)} duration={time.time() - start:.2f}s")
+        return found, ("ok" if found else "empty")
     except subprocess.TimeoutExpired:
-        duration = time.time() - start
-        logger.error(f"[amass] domain={domain} status=timeout duration={duration:.2f}s")
-        return []
+        logger.error(f"[amass] domain={domain} status=timeout duration={time.time() - start:.2f}s")
+        return [], "timeout"
     except FileNotFoundError:
         logger.error("[amass] tool_not_found")
-        return []
-    except Exception as e:
+        return [], "not installed"
+    except Exception as e:  # noqa: BLE001
         logger.error(f"[amass] domain={domain} status=failed error={e}")
-        return []
+        return [], f"failed: {type(e).__name__}"
+
+
+def run_subfinder(domain: str, rate_limit: int = 10) -> List[str]:
+    """Run subfinder against domain. Returns list of subdomains."""
+    return _subfinder(domain, rate_limit)[0]
+
+
+def run_amass(domain: str) -> List[str]:
+    """Run amass passive enumeration. Returns list of subdomains."""
+    return _amass(domain)[0]
 
 
 def normalize_hostname(raw: str, domain: str) -> str:
@@ -155,17 +166,10 @@ def enumerate_subdomains(domain: str, rate_limit: int = 10) -> Dict:
     logger.info(f"[SCAN] START subdomain_enumeration domain={domain}")
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        sf_future = executor.submit(run_subfinder, domain, rate_limit)
-        am_future = executor.submit(run_amass, domain)
-
-        subfinder_results = sf_future.result()
-        amass_results = am_future.result()
-
-    if not subfinder_results:
-        results["module_status"]["subfinder"] = "empty"
-
-    if not amass_results:
-        results["module_status"]["amass"] = "empty"
+        sf_future = executor.submit(_subfinder, domain, rate_limit)
+        am_future = executor.submit(_amass, domain)
+        subfinder_results, results["module_status"]["subfinder"] = sf_future.result()
+        amass_results, results["module_status"]["amass"] = am_future.result()
 
     # Always include the apex domain itself as a scan candidate, regardless
     # of what subfinder/amass find -- otherwise private/local-only domains
