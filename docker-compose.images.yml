@@ -1,0 +1,28 @@
+# Run published, signed images instead of building from source. Use together with the production overlay:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.images.yml pull
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.images.yml up -d
+#
+# ASM_VERSION selects the release (default: latest). For reproducible deployments pin by digest instead, as shown in
+# the release notes: ASM_BACKEND_IMAGE=ghcr.io/turlafsb/asm-backend@sha256:... (see docs/RELEASING.md).
+#
+# The backend image is the production target, so always combine this file with docker-compose.prod.yml.
+
+x-backend-image: &backend-image
+  image: ${ASM_BACKEND_IMAGE:-ghcr.io/turlafsb/asm-backend:${ASM_VERSION:-latest}}
+  build: !reset null
+  pull_policy: always
+
+services:
+  migrate:
+    <<: *backend-image
+  backend:
+    <<: *backend-image
+  celery_worker:
+    <<: *backend-image
+  celery_beat:
+    <<: *backend-image
+  frontend:
+    image: ${ASM_FRONTEND_IMAGE:-ghcr.io/turlafsb/asm-frontend:${ASM_VERSION:-latest}}
+    build: !reset null
+    pull_policy: always

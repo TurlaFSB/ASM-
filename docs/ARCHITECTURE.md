@@ -9,13 +9,13 @@
 | Celery worker | Runs one scan at a time; owns the scanner tools and their child processes |
 | Celery beat | Starts scheduled scans, the stuck-scan reaper, exposure sweeps and the daily retention job |
 | PostgreSQL | Targets, scans, assets, findings, changes, seals, users, audit log |
-| Redis | Celery broker and results, per-target scan lock, cancellation flags, revoked-token list, rate-limit counters |
+| Redis | Celery broker and results, per-target scan lock, cancellation flags, revoked-token list, rate-limit and login-throttle counters. Persisted (append-only file in a named volume), so a restart keeps the queue and locks |
 
 ## Scan lifecycle
 
 1. The API creates a `pending` scan (one active scan per target is enforced by a database constraint) and queues `run_scan`.
 2. The worker takes a per-target Redis lock, starts a *guard* thread (cancellation, runtime limit, lock renewal) and moves the scan to `running`.
-3. Stages run in order: subdomains, DNS, WHOIS/ASN, ports, HTTP probing, then the web-analysis group in parallel (technologies, directory discovery, Nuclei, TLS, screenshots, CVE matching). IP and internal targets skip public discovery.
+3. Stages run in order: subdomains, DNS, WHOIS/ASN, ports, HTTP probing, then the web-analysis group in parallel (technologies, directory discovery, Nuclei, TLS, screenshots, CVE matching) and the posture checks (subdomain takeover, email security, cloud storage exposure, exposed sensitive files; Quick runs only the two DNS-based ones). Posture findings are ordinary findings tagged `posture`, so they flow through triage, reports and change detection. IP and internal targets skip public discovery, takeover, email and cloud checks.
 4. Results are saved (assets with change detection, findings, discovered paths), a snapshot is diffed against the previous comparable scan, alerts and the webhook digest are produced, and the scan is sealed.
 5. Risk scoring runs, the scan is marked `completed`, and the PDF report is pre-built in the background.
 
@@ -24,6 +24,13 @@ Failure handling: a cancelled scan persists nothing; a timed-out scan is failed 
 ## Data integrity
 
 Every completed scan gets a signed seal chained to the target's previous seal (Ed25519, key derived from `SECRET_KEY`). Editing or deleting history breaks the chain and is reported by `/integrity`. Retention never deletes scans, findings, change events, seals or the audit log; it only removes on-disk artifacts and delivery logs.
+
+## Resilience and recovery
+
+- **Bounded stages.** Every external tool runs under a timeout and reports `ok`, `empty`, `timeout`, `not installed` or `failed`. The change-detection coverage model treats anything but `ok` as "not vouched for", so a stage that failed can never make a finding look fixed.
+- **Locks and the watchdog.** One scan per target at a time (a Redis lock renewed by the guard thread, plus a database constraint). Beat's reaper fails scans whose worker was lost or that exceeded their runtime, so a target is never blocked for good.
+- **Backups.** The backup service writes verified, checksummed PostgreSQL dumps. `deploy/restore.sh verify` proves a dump restores (scratch database, table counts, schema revision); `apply` replaces the live database in one transaction.
+- **Releases.** Tagged releases publish signed images with provenance and an SBOM; see [RELEASING.md](RELEASING.md).
 
 ## Threat model
 

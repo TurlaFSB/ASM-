@@ -466,6 +466,18 @@ Sign in, then use **Users** (admins only) to add accounts, change roles, reset p
 
 Open **Targets**, choose *Add Target*, confirm you are authorized to scan it, then press *Scan*. Optional next steps: [email notifications](#notifications), [HTTPS](#https-with-automatic-certificates) and [scheduled backups](#backup-and-restore).
 
+
+### Run a published release instead of building
+
+From v0.3.0 on, tagged releases publish signed images to GitHub Container Registry. Use them with the production overlay to skip the local build:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.images.yml pull
+docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.images.yml up -d
+```
+
+Set `ASM_VERSION` to choose a release, or pin the digests from the release notes. How to verify the signature and roll back: [docs/RELEASING.md](docs/RELEASING.md).
+
 ---
 
 ## Configuration

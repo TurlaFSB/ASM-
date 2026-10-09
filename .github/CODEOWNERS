@@ -1,0 +1,5 @@
+# Every change is reviewed by the maintainer. Add narrower rules as more maintainers join.
+*                       @TurlaFSB
+/.github/workflows/     @TurlaFSB
+/deploy/                @TurlaFSB
+/SECURITY.md            @TurlaFSB
