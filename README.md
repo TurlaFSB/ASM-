@@ -686,6 +686,7 @@ Before exposing it, set in `.env.docker`:
 - `SECRET_KEY` to a long random value (it also derives the scan-seal signing key; rotating it marks older seals `valid_unverified_signature`).
 - `COOKIE_SECURE=true` and serve the app over HTTPS. The web app and API must share a host name for the login cookie.
 - A strong database password.
+- `REDIS_PASSWORD` (for example `openssl rand -hex 24`). The production overlay refuses to start Redis without it, and the backend adds it to `REDIS_URL` for you. Recreate all services after adding it, since the queue connection changes.
 
 ### HTTPS with automatic certificates
 

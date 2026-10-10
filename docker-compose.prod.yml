@@ -29,6 +29,24 @@ x-app-prod: &app-prod
     PYTHONDONTWRITEBYTECODE: "1"
 
 services:
+  # Redis requires a password in production. Set REDIS_PASSWORD in .env.docker (openssl rand -hex 24): the
+  # application services read it from there and add it to REDIS_URL, so it is set in exactly one place.
+  redis:
+    env_file:
+      - .env.docker
+    command:
+      - sh
+      - -c
+      - |
+        test -n "$$REDIS_PASSWORD" || { echo "REDIS_PASSWORD is not set in .env.docker" >&2; exit 1; }
+        exec redis-server --appendonly yes --appendfsync everysec --maxmemory-policy noeviction \
+          --requirepass "$$REDIS_PASSWORD"
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   volume-init:
     image: busybox:1.37
     container_name: asm_volume_init

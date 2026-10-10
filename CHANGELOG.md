@@ -5,6 +5,7 @@ All notable changes to this project are recorded here. The format follows [Keep 
 ## [Unreleased]
 
 ### Security
+- Redis requires a password in the production overlay (`REDIS_PASSWORD` in `.env.docker`); the backend adds it to `REDIS_URL`, and a test confirms a real Redis rejects unauthenticated clients.
 - Nuclei 3.11.1, Subfinder 2.17.0 and HTTPX 1.12.0 (Go 1.26 builds) replace older pins that carried fixable CRITICAL findings; the release image scan now checks vulnerabilities only and skips the unmaintained Amass 4.2.0 binary, which is documented in SECURITY.md.
 
 ### Changed

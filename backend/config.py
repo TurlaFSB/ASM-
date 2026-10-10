@@ -1,4 +1,6 @@
-from pydantic import field_validator
+from urllib.parse import quote, urlsplit, urlunsplit
+
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from dotenv import load_dotenv
 
@@ -7,6 +9,7 @@ load_dotenv()
 class Settings(BaseSettings):
     database_url: str
     redis_url: str
+    redis_password: str = ""   # optional; folded into redis_url so the password is set in one place
     app_env: str = "development"
     app_host: str = "0.0.0.0"  # nosec B104
     app_port: int = 8000
@@ -28,6 +31,17 @@ class Settings(BaseSettings):
                 "Generate one with: python3 -c \"import secrets; print(secrets.token_hex(32))\""
             )
         return v
+
+    @model_validator(mode="after")
+    def _redis_password_into_url(self):
+        """REDIS_PASSWORD is added to REDIS_URL unless the URL already carries credentials."""
+        if self.redis_password:
+            parts = urlsplit(self.redis_url)
+            if parts.password is None:
+                host = parts.netloc.rsplit("@", 1)[-1]
+                netloc = f":{quote(self.redis_password, safe='')}@{host}"
+                self.redis_url = urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+        return self
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
