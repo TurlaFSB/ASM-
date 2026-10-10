@@ -60,7 +60,7 @@ def test_login_success_returns_token_and_me_shows_role(env):
     r = login(c, "view1", "another long password")
     assert r.status_code == 200 and r.json()["token_type"] == "bearer"
     me = c.get("/auth/me", headers={"Authorization": f"Bearer {r.json()['access_token']}"})
-    assert me.json() == {"username": "view1", "role": "viewer"}
+    assert me.json() == {"username": "view1", "role": "viewer", "mfa_enabled": False}
     assert db.query(AuditLog).filter_by(action="login_success").count() == 1
 
 

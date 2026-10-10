@@ -96,7 +96,7 @@ def get_current_user(request: Request, bearer: Optional[str] = Depends(oauth2_sc
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
         username: str = payload.get("sub")
-        if username is None:
+        if username is None or payload.get("purpose"):      # a half-finished sign-in (MFA step) is not a session
             raise credentials_exception
     except jwt.PyJWTError:
         raise credentials_exception

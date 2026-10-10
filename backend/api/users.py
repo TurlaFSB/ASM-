@@ -18,7 +18,8 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 def _view(u: User) -> dict:
     return {"id": u.id, "username": u.username, "role": u.role or "admin", "is_active": bool(u.is_active),
-            "created_at": u.created_at, "last_login_at": u.last_login_at, "password_changed_at": u.password_changed_at}
+            "created_at": u.created_at, "last_login_at": u.last_login_at, "password_changed_at": u.password_changed_at,
+            "mfa_enabled": bool(u.mfa_enabled)}
 
 
 def _ip(request: Request) -> Optional[str]:
@@ -121,4 +122,18 @@ def reset_password(user_id: int, payload: PasswordReset, request: Request, db: S
     from backend import api_tokens
     api_tokens.revoke_all(db, u.id)
     log_action(db, admin.username, "user_password_reset", detail={"user": u.username}, ip_address=_ip(request))
+    return {"ok": True}
+
+
+@router.post("/{user_id}/reset-mfa")
+def reset_mfa(user_id: int, request: Request, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    """For someone who lost their phone and recovery codes: turns their two-step sign-in off and signs them out
+    everywhere. They can switch it on again after signing in with their password."""
+    u = _get(db, user_id)
+    if u.id == admin.id:
+        raise HTTPException(status_code=409, detail="Turn off your own two-step sign-in from the account menu.")
+    u.mfa_enabled, u.mfa_secret, u.mfa_last_step, u.mfa_recovery = False, None, None, None
+    u.token_version = (u.token_version or 0) + 1
+    db.commit()
+    log_action(db, admin.username, "user_mfa_reset", detail={"user": u.username}, ip_address=_ip(request))
     return {"ok": True}

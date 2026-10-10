@@ -1,5 +1,5 @@
 import hmac
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import jwt
 import redis
@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
-from backend import sessions
+from backend import mfa, sessions
 from backend.user_policy import validate_password, validate_username
 from backend.auth import (pwd_context, verify_password, authenticate_user, create_access_token, get_current_user, set_session_cookies,
                           set_csrf_cookie, clear_session_cookies, SESSION_COOKIE, CSRF_COOKIE)
@@ -19,6 +19,8 @@ from backend.audit import log_action
 from backend.security import is_locked, record_failure, clear_failures
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+MFA_CHALLENGE_MINUTES = 5
 
 _redis = None
 
@@ -50,6 +52,12 @@ def login(request: Request, response: Response, form_data: OAuth2PasswordRequest
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    if user.mfa_enabled:
+        # Password accepted, second step pending: no session yet. The challenge only works at /auth/mfa/verify.
+        log_action(db, user.username, "login_mfa_required", ip_address=ip)
+        challenge = create_access_token({"sub": user.username, "purpose": "mfa", "ver": user.token_version or 0},
+                                        expires_delta=timedelta(minutes=MFA_CHALLENGE_MINUTES))
+        return {"mfa_required": True, "mfa_token": challenge, "username": user.username}
     clear_failures(rc, ip, form_data.username)
     log_action(db, user.username, "login_success", ip_address=ip)
     user.last_login_at = datetime.now(timezone.utc)
@@ -68,7 +76,7 @@ def get_me(request: Request, response: Response, current_user: User = Depends(ge
     # would make every state-changing call fail, so hand out a fresh CSRF cookie here.
     if request.cookies.get(SESSION_COOKIE) and not request.cookies.get(CSRF_COOKIE):
         set_csrf_cookie(response)
-    return {"username": current_user.username, "role": current_user.role}
+    return {"username": current_user.username, "role": current_user.role, "mfa_enabled": bool(current_user.mfa_enabled)}
 
 
 def _client_ip(request: Request) -> str:
@@ -169,3 +177,158 @@ def first_run_setup(payload: SetupPayload, request: Request, response: Response,
     log_action(db, user.username, "setup_completed", ip_address=ip)
     set_session_cookies(response, create_access_token({"sub": user.username, "ver": 0}))
     return {"username": user.username, "role": user.role}
+
+
+# ---------------------------------------------------------------- two-step sign-in (authenticator app)
+class MfaVerify(BaseModel):
+    mfa_token: str
+    code: str
+
+
+def _too_many():
+    return HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many failed attempts. Try again in 15 minutes.",
+                         headers={"Retry-After": "900"})
+
+
+def _check_second_factor(user: User, code: str) -> bool:
+    """True if `code` is a fresh authenticator code or an unused recovery code. Updates the user; caller commits."""
+    secret = mfa.decrypt_secret(user.mfa_secret)
+    if mfa.looks_like_recovery(code):
+        remaining = mfa.consume_recovery(user.mfa_recovery, code)
+        if remaining is None:
+            return False
+        user.mfa_recovery = remaining
+        return True
+    if not secret:
+        return False
+    step = mfa.verify_code(secret, code, user.mfa_last_step)
+    if step is None:
+        return False
+    user.mfa_last_step = step
+    return True
+
+
+@router.post("/mfa/verify")
+def mfa_verify(payload: MfaVerify, request: Request, response: Response, db: Session = Depends(get_db)):
+    """Second step of sign-in: the challenge from /auth/token plus a code from the authenticator app (or a recovery code)."""
+    ip = _client_ip(request)
+    rc = _redis_client()
+    bad = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="That sign-in has expired or the code is wrong. Start again.")
+    try:
+        claims = jwt.decode(payload.mfa_token, settings.secret_key, algorithms=[settings.algorithm])
+    except jwt.PyJWTError:
+        raise bad
+    if claims.get("purpose") != "mfa" or not claims.get("sub"):
+        raise bad
+    username = str(claims["sub"])
+    if is_locked(rc, ip, username):
+        raise _too_many()
+    user = db.query(User).filter(User.username == username, User.is_active == True).first()  # noqa: E712
+    if user is None or not user.mfa_enabled or int(claims.get("ver", 0)) != int(user.token_version or 0):
+        raise bad
+    if not _check_second_factor(user, payload.code):
+        db.rollback()
+        record_failure(rc, ip, username)
+        log_action(db, username, "mfa_failed", ip_address=ip)
+        raise bad
+    clear_failures(rc, ip, username)
+    user.last_login_at = datetime.now(timezone.utc)
+    db.commit()
+    log_action(db, username, "login_success", detail={"mfa": True}, ip_address=ip)
+    token = create_access_token({"sub": user.username, "ver": user.token_version or 0})
+    set_session_cookies(response, token)
+    return {"access_token": token, "token_type": "bearer", "username": user.username,
+            "recovery_codes_left": len(user.mfa_recovery or [])}
+
+
+class PasswordOnly(BaseModel):
+    password: str
+
+
+class CodeOnly(BaseModel):
+    code: str
+
+
+class PasswordAndCode(BaseModel):
+    password: str
+    code: str
+
+
+def _reauth(user: User, password: str, request: Request, db: Session) -> None:
+    ip, rc = _client_ip(request), _redis_client()
+    if is_locked(rc, ip, user.username):
+        raise _too_many()
+    if not verify_password(password, user.hashed_password):
+        record_failure(rc, ip, user.username)
+        log_action(db, user.username, "mfa_reauth_failed", ip_address=ip)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password is incorrect.")
+
+
+@router.post("/mfa/setup")
+def mfa_setup(payload: PasswordOnly, request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Starts enrolment: returns a new secret and the otpauth link for the authenticator app. Nothing is
+    switched on until /auth/mfa/enable confirms a code from the app."""
+    if current_user.mfa_enabled:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Two-step sign-in is already on. Turn it off first to enrol again.")
+    _reauth(current_user, payload.password, request, db)
+    secret = mfa.new_secret()
+    current_user.mfa_secret = mfa.encrypt_secret(secret)
+    current_user.mfa_last_step = None
+    db.commit()
+    return {"secret": secret, "otpauth_uri": mfa.provisioning_uri(current_user.username, secret), "issuer": mfa.ISSUER}
+
+
+@router.post("/mfa/enable")
+def mfa_enable(payload: CodeOnly, request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.mfa_enabled:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Two-step sign-in is already on.")
+    secret = mfa.decrypt_secret(current_user.mfa_secret)
+    if not secret:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Start setup first.")
+    ip, rc = _client_ip(request), _redis_client()
+    if is_locked(rc, ip, current_user.username):
+        raise _too_many()
+    step = mfa.verify_code(secret, payload.code)
+    if step is None:
+        record_failure(rc, ip, current_user.username)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="That code is not right. Check the app and the time on your phone.")
+    codes, hashes = mfa.new_recovery_codes()
+    current_user.mfa_enabled = True
+    current_user.mfa_last_step = step
+    current_user.mfa_recovery = hashes
+    db.commit()
+    log_action(db, current_user.username, "mfa_enabled", ip_address=ip)
+    return {"ok": True, "recovery_codes": codes}
+
+
+def _require_enabled_and_code(user: User, payload: PasswordAndCode, request: Request, db: Session) -> None:
+    if not user.mfa_enabled:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Two-step sign-in is not on.")
+    _reauth(user, payload.password, request, db)
+    if not _check_second_factor(user, payload.code):
+        db.rollback()
+        record_failure(_redis_client(), _client_ip(request), user.username)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="That code is not right.")
+
+
+@router.post("/mfa/disable")
+def mfa_disable(payload: PasswordAndCode, request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _require_enabled_and_code(current_user, payload, request, db)
+    current_user.mfa_enabled = False
+    current_user.mfa_secret = None
+    current_user.mfa_last_step = None
+    current_user.mfa_recovery = None
+    db.commit()
+    log_action(db, current_user.username, "mfa_disabled", ip_address=_client_ip(request))
+    return {"ok": True}
+
+
+@router.post("/mfa/recovery-codes")
+def mfa_new_recovery_codes(payload: PasswordAndCode, request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Replaces all recovery codes (the old ones stop working) and shows the new set once."""
+    _require_enabled_and_code(current_user, payload, request, db)
+    codes, hashes = mfa.new_recovery_codes()
+    current_user.mfa_recovery = hashes
+    db.commit()
+    log_action(db, current_user.username, "mfa_recovery_regenerated", ip_address=_client_ip(request))
+    return {"recovery_codes": codes}

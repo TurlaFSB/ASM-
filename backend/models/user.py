@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, text
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, JSON, text
 from sqlalchemy.sql import func
 from backend.db import Base
 
@@ -15,3 +15,9 @@ class User(Base):
     token_version = Column(Integer, nullable=False, default=0, server_default=text("0"))
     last_login_at = Column(DateTime(timezone=True), nullable=True)
     password_changed_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Two-step sign-in (authenticator app). The secret is stored encrypted; recovery codes only as hashes.
+    mfa_enabled = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    mfa_secret = Column(String, nullable=True)
+    mfa_last_step = Column(Integer, nullable=True)        # newest accepted 30-second step: a code works once
+    mfa_recovery = Column(JSON, nullable=True)            # list of sha256 hashes of unused recovery codes
