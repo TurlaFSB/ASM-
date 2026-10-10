@@ -1,0 +1,63 @@
+name: End-to-end
+
+# Builds the real images, starts the whole stack next to a deliberately misconfigured lab web server and scans it
+# through the API. Unit tests cannot catch a broken tool version, a changed flag or a stage that silently stops
+# producing results; this does. See lab/README.md.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "lab/**"
+      - "docker-compose*.yml"
+      - "requirements*.txt"
+      - ".github/workflows/e2e.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - "lab/**"
+      - "docker-compose*.yml"
+      - "requirements*.txt"
+      - ".github/workflows/e2e.yml"
+  schedule:
+    - cron: "17 3 * * *"          # nightly: catches upstream tool/template changes that no commit caused
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lab-scan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Write throwaway settings
+        run: |
+          pg="$(openssl rand -hex 16)"
+          key="$(openssl rand -hex 32)"
+          echo "POSTGRES_PASSWORD=$pg" > .env
+          cp .env.docker.example .env.docker
+          sed -i "s|asm_user:CHANGE_ME@|asm_user:${pg}@|; s|^SECRET_KEY=.*|SECRET_KEY=${key}|" .env.docker
+          echo "SECRET_KEY=${key}" >> "$GITHUB_ENV"
+          echo "::add-mask::${key}"
+          echo "::add-mask::${pg}"
+
+      - name: Build and start the stack and the lab
+        run: docker compose -f docker-compose.yml -f lab/docker-compose.lab.yml up -d --build
+
+      - name: Scan the lab and check the result
+        run: python3 lab/e2e.py
+
+      - name: Show service logs when something failed
+        if: failure()
+        run: docker compose -f docker-compose.yml -f lab/docker-compose.lab.yml logs --no-color --tail=200
+
+      - name: Stop and clean up
+        if: always()
+        run: docker compose -f docker-compose.yml -f lab/docker-compose.lab.yml down -v

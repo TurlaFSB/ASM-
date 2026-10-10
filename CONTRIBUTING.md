@@ -27,6 +27,7 @@ The backend tests use in-memory SQLite and stubbed scanners, so they need no Doc
 3. Schema changes come with an Alembic revision in `backend/migrations/versions/`. Never edit an applied revision.
 4. User-visible changes update the README and the [CHANGELOG](CHANGELOG.md).
 5. No secrets, tokens or real target data in code, tests or screenshots.
+6. Changes to scanners, tool versions or the pipeline also pass the [end-to-end lab](lab/README.md) (CI runs it for you on the pull request).
 
 ## Where things live
 
@@ -37,6 +38,7 @@ The backend tests use in-memory SQLite and stubbed scanners, so they need no Doc
 | Change detection | `backend/diffing/` |
 | Exposure sources | `backend/exposure/` (add a source by implementing the base class and registering it) |
 | Reports | `backend/reports.py`, `backend/templates/report.html` |
+| End-to-end lab | `lab/` (misconfigured target, expectations, driver) |
 | Frontend | `frontend/src/pages/`, `frontend/src/components/`, design tokens in `frontend/src/design.css` |
 
 More background is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
