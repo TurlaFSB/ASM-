@@ -66,6 +66,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
     from backend.scanner.sslyze_scan import run_sslyze
     from backend.scanner.takeover import run_takeover_check
     from backend.scanner.emailsec import run_email_security
+    from backend.scanner.dns_hygiene import run_dns_hygiene
     from backend.scanner.cloudbucket import run_cloud_bucket_check
     from backend.scanner.sensitive_files import run_sensitive_file_check
     from backend.scanner.vuln import run_nuclei, network_tags_from_services
@@ -266,6 +267,8 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                             if (prof.run_takeover and not internal_target) else None,
                 "email_security": (lambda: run_email_security(domain))
                                   if (prof.run_email_security and not internal_target) else None,
+                "dns_hygiene": (lambda: run_dns_hygiene(domain))
+                               if (prof.run_dns_hygiene and not internal_target) else None,
                 "cloud_buckets": (lambda: run_cloud_bucket_check(domain))
                                  if (prof.run_cloud_buckets and not internal_target) else None,
                 "sensitive_files": (lambda: run_sensitive_file_check(host_urls, effective_rate(rate_limit)))
@@ -282,7 +285,7 @@ def run_scan(self, target_id: int, domain: str, rate_limit: int = 10, scan_id: i
                 "nuclei": {"findings": []}, "sslyze": {"findings": []},
                 "screenshot": {"screenshots": []}, "cve_match": {"findings": []},
                 "nuclei_network": {"findings": []},
-                "takeover": {"findings": []}, "email_security": {"findings": []},
+                "takeover": {"findings": []}, "email_security": {"findings": []}, "dns_hygiene": {"findings": []},
                 "cloud_buckets": {"findings": []}, "sensitive_files": {"findings": []},
             },
             parallel=_os.getenv("ASM_PARALLEL_STAGES", "true").lower() != "false",

@@ -112,6 +112,7 @@ def env(monkeypatch):
                       "severity": "high", "host": "old.example.org", "vuln_type": "subdomain-takeover",
                       "tags": ["takeover", "posture", "dns"]}], "module_status": "ok"})
     stub("backend.scanner.emailsec", "run_email_security", {"findings": [], "module_status": "ok"})
+    stub("backend.scanner.dns_hygiene", "run_dns_hygiene", {"findings": [], "module_status": "ok"})
     stub("backend.scanner.cloudbucket", "run_cloud_bucket_check", {"findings": [], "module_status": "ok"})
     stub("backend.scanner.sensitive_files", "run_sensitive_file_check", {"findings": [], "module_status": "ok"})
 
@@ -183,9 +184,9 @@ def test_ip_target_skips_discovery(env):
     assert "enumerate_subdomains" not in env.calls and "resolve_subdomains" not in env.calls
     assert res["total_assets"] == 1
     # DNS-name based posture checks make no sense for an IP; the file check still runs against its web ports
-    assert "run_takeover_check" not in env.calls and "run_email_security" not in env.calls
+    assert "run_takeover_check" not in env.calls and "run_email_security" not in env.calls and "run_dns_hygiene" not in env.calls
     assert "run_cloud_bucket_check" not in env.calls
-    assert mr["takeover"].startswith("skipped") and mr["email_security"].startswith("skipped")
+    assert mr["takeover"].startswith("skipped") and mr["email_security"].startswith("skipped") and mr["dns_hygiene"].startswith("skipped")
 
 
 def test_cancelled_before_start_never_runs(env):

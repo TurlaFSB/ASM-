@@ -114,7 +114,7 @@ def list_vulnerabilities(limit: int = Query(500, ge=1, le=1000), offset: int = Q
                          severity: Optional[str] = Query(None, pattern=SEVERITY_FILTER,
                                                          description="One or more of critical,high,medium,low,info, comma separated"),
                          tag: Optional[str] = Query(None, pattern=TAG_FILTER,
-                                                    description="Only findings carrying this tag, e.g. posture, takeover, email-security"),
+                                                    description="Only findings carrying this tag, e.g. posture, takeover, email-security, dns-hygiene"),
                          db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     q = _scoped(db, scope, scan_id, target_id, triage, severity, tag)
     vulns = (q.order_by(SEVERITY_RANK, Vulnerability.is_exploitable_confirmed.desc(),

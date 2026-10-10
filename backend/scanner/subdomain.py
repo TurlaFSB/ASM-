@@ -110,11 +110,13 @@ def parse_amass_output(stdout: str, domain: str) -> List[str]:
 
 
 def _amass(domain: str):
-    """Passive amass enumeration, a secondary source. Bounded by ASM_AMASS_TIMEOUT (seconds, default 150) so a
+    """Passive amass enumeration, an optional secondary source (off by default). Bounded by ASM_AMASS_TIMEOUT (seconds, default 150) so a
     hung engine cannot hold up every scan. `-timeout 1` limits only the gathering phase (one minute); amass then
     needs another 40-50 s to finish, so a normal run takes about 110 s. Never add `-dir`: 4.2.0 hangs with it. Returns (subdomains, status)."""
-    if os.getenv("ASM_AMASS_ENABLED", "true").strip().lower() in ("0", "false", "no", "off"):
-        return [], "skipped (disabled by ASM_AMASS_ENABLED)"
+    # Opt-in: on real targets it returned little beyond what subfinder finds (often only the apex) and holds the
+    # subdomain stage open for 60-150 s. Set ASM_AMASS_ENABLED=true to use it as a second source.
+    if os.getenv("ASM_AMASS_ENABLED", "false").strip().lower() not in ("1", "true", "yes", "on"):
+        return [], "skipped (off; set ASM_AMASS_ENABLED=true to use it)"
     start = time.time()
     try:
         result = _run_with_process_group_cleanup(

@@ -237,7 +237,7 @@ def _is_degraded(snap: Dict, finding: Dict) -> bool:
 
 def _diff_findings(old, new, ev, skipped):
     of, nf = old["findings"], new["findings"]
-    for source in ("web", "network", "cve", "tls", "takeover", "email", "cloud", "files"):
+    for source in ("web", "network", "cve", "tls", "takeover", "email", "dns", "cloud", "files"):
         sec = f"findings_{source}"
         add_ok, rm_ok = _can_add(old, new, sec), _can_remove(old, new, sec)
         held = 0

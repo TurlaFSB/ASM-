@@ -134,6 +134,7 @@ def collect_web_results(stage_results: Dict, prof, enable_dirbuster: bool, http_
 
     # posture checks: their findings travel through the same save / score / diff path as scanner findings
     for key, enabled in (("takeover", prof.run_takeover), ("email_security", prof.run_email_security),
+                         ("dns_hygiene", prof.run_dns_hygiene),
                          ("cloud_buckets", prof.run_cloud_buckets), ("sensitive_files", prof.run_sensitive_files)):
         data = stage_results.get(key)
         if data is None:

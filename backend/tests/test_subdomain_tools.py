@@ -55,12 +55,24 @@ def test_amass_hang_is_reported_as_timeout_and_uses_the_configured_bound(monkeyp
     assert seen["amass"] == 150
 
 
-@pytest.mark.parametrize("value", ["false", "0", "no", "OFF"])
-def test_amass_can_be_switched_off_and_is_never_started(monkeypatch, value):
+@pytest.fixture(autouse=True)
+def _amass_on_unless_a_test_says_otherwise(monkeypatch):
+    monkeypatch.setenv("ASM_AMASS_ENABLED", "true")
+
+
+@pytest.mark.parametrize("value", ["false", "0", "no", "OFF", ""])
+def test_amass_is_off_unless_enabled_and_is_never_started(monkeypatch, value):
     monkeypatch.setenv("ASM_AMASS_ENABLED", value)
     monkeypatch.setattr(sd, "_run_with_process_group_cleanup", lambda *a, **k: pytest.fail("amass must not run"))
     out, status = sd._amass("acme.com")
     assert out == [] and status.startswith("skipped")
+
+
+def test_amass_is_off_by_default(monkeypatch):
+    monkeypatch.delenv("ASM_AMASS_ENABLED", raising=False)
+    monkeypatch.setattr(sd, "_run_with_process_group_cleanup", lambda *a, **k: pytest.fail("amass must not run"))
+    out, status = sd._amass("acme.com")
+    assert out == [] and status.startswith("skipped") and "ASM_AMASS_ENABLED=true" in status
 
 
 def test_enumerate_merges_sources_keeps_apex_and_reports_each_tool(monkeypatch):
@@ -82,7 +94,7 @@ def test_scan_still_proceeds_when_amass_hangs(monkeypatch):
 def test_timeout_status_reads_as_a_warning_in_reports_and_ui_logic():
     from backend.reports import _module_state
     assert _module_state("timeout") == "warn" and _module_state("ok") == "ok"
-    assert _module_state("skipped (disabled by ASM_AMASS_ENABLED)") == "skip"
+    assert _module_state("skipped (off; set ASM_AMASS_ENABLED=true to use it)") == "skip"
     assert _module_state("not installed") == "fail"
 
 

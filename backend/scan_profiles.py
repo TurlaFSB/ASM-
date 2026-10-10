@@ -47,6 +47,7 @@ class ScanProfile:
     # Posture checks: DNS and light HTTP, no heavy tooling
     run_takeover: bool = True          # dangling CNAMEs / unclaimed third-party services
     run_email_security: bool = True    # SPF, DMARC, DKIM, MTA-STS
+    run_dns_hygiene: bool = True       # dangling name servers, CAA, DNSSEC
     run_cloud_buckets: bool = True     # public S3 / GCS / Azure listings named after the domain
     run_sensitive_files: bool = True   # exposed .git, .env, backups (content-verified)
 
@@ -75,6 +76,8 @@ class ScanProfile:
             names.append("takeover")
         if self.run_email_security:
             names.append("email security")
+        if self.run_dns_hygiene:
+            names.append("DNS hygiene")
         if self.run_cloud_buckets:
             names.append("cloud storage")
         if self.run_sensitive_files:

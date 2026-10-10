@@ -52,7 +52,7 @@ It runs entirely on your own infrastructure with Docker Compose. There is no Saa
 |---|---|---|---|
 | Subdomains, DNS, WHOIS and ASN | Nuclei templates and network checks | Snapshot diffs with severity | PDF reports with remediation SLAs |
 | Port and service detection | CVE matching with KEV enrichment | Alerts, webhooks and email, with optional local-AI notes | CSV, JSON and SARIF exports |
-| Web technology fingerprinting | TLS audit, takeover, email security, cloud storage and exposed files | Scheduled scans and a scan watchdog | API tokens and REST API |
+| Web technology fingerprinting | TLS audit, takeover, email security, DNS hygiene, cloud storage and exposed files | Scheduled scans and a scan watchdog | API tokens and REST API |
 | Directory discovery and screenshots | Exposure and leak checks | Tamper-evident history | Verified backups, restore drill, Prometheus metrics, JSON logs |
 
 ---
@@ -169,7 +169,7 @@ Each scan runs as one Celery task and reports progress per stage to the UI. Data
 ## Features
 
 ### Reconnaissance
-- Subdomain enumeration (Subfinder, Amass); the apex target is always included, so private and lab hosts work
+- Subdomain enumeration (Subfinder, with Amass as an opt-in second source); the apex target is always included, so private and lab hosts work
 - WHOIS and ASN lookup: registrar, dates, name servers, network ownership
 - DNS resolution, Nmap service/version detection, httpx probing with redirect following
 - WhatWeb technology fingerprinting merged with httpx detection and de-duplicated
@@ -186,6 +186,7 @@ Each scan runs as one Celery task and reports progress per stage to the UI. Data
 Light, mostly DNS-based checks for the misconfigurations that cause real incidents. They run inside the normal scan, their findings appear on the Vulnerabilities page and in reports, and they feed change detection like any other finding. See [Posture checks](#posture-checks).
 - **Subdomain takeover**: dangling CNAMEs and unclaimed third-party services (GitHub Pages, Azure, Heroku, S3, Shopify and others)
 - **Email security**: SPF, DMARC, DKIM key strength and MTA-STS
+- **DNS hygiene**: name servers that no longer exist (a zone-takeover risk, rated high), no CAA policy, and DNSSEC not enabled
 - **Cloud storage exposure**: public S3, Google Cloud Storage and Azure Blob listings named after the domain
 - **Exposed sensitive files**: `.git`, `.env`, backups, credentials and debug pages, confirmed by their content
 
@@ -203,7 +204,7 @@ Light, mostly DNS-based checks for the misconfigurations that cause real inciden
 
 ### Operations
 - Light and dark themes (match system by default), keyboard-navigable menus, and no WCAG A/AA violations in automated checks
-- Three scan profiles (Quick, Standard, Deep), with a per-target default for scheduled scans. Quick runs only the DNS-based posture checks (takeover, email security); Standard and Deep add cloud storage and exposed files
+- Three scan profiles (Quick, Standard, Deep), with a per-target default for scheduled scans. Quick runs only the DNS-based posture checks (takeover, email security, DNS hygiene); Standard and Deep add cloud storage and exposed files
 - Recurring scans via Celery Beat (cron expressions or presets)
 - Cookie sessions (httpOnly, SameSite, CSRF-protected) for the web app, and bearer tokens or revocable, expiring **API tokens** for scripts and CI; no default credentials
 - Admin and viewer roles: viewers are read-only
@@ -317,6 +318,7 @@ Four checks that need no heavy tooling, run as part of every Standard and Deep s
 | Check | What it looks for | Severity | Runs on |
 |---|---|---|---|
 | **Subdomain takeover** | A name whose CNAME points at a missing resource at a known provider (high), a provider "not claimed" page (high), or any other dangling CNAME (medium; low if it points inside your own domain) | high / medium / low | Every discovered name, live or not |
+| **DNS hygiene** | NS records naming hosts that do not exist; no CAA record (looked up like a CA does, up the tree); no DS record (DNSSEC off) | high, info | The target domain; NS and DNSSEC only at a zone apex |
 | **Email security** | Missing, multiple, `+all`, `?all`, `ptr` or over-limit SPF; missing or monitor-only DMARC, `pct` below 100, `sp=none`, no `rua`; DKIM keys under 2048 bits (common selectors only); no MTA-STS | high to info | The target domain |
 | **Cloud storage** | A bucket or container named like your domain (`acme`, `acme-backup`, `acme-dev`, ...) that lists its contents to anyone, on S3, Google Cloud Storage or Azure Blob | medium, or info for short and common-word names, shown as *inferred* | The target domain |
 | **Exposed files** | `/.git/HEAD`, `/.env`, `/.svn/wc.db`, `/.htpasswd`, `/.aws/credentials`, SSH keys, `wp-config` backups, `backup.zip` / `.sql` dumps, `phpinfo()`, `server-status`, Spring `/actuator/env` | critical to low | Each live web host |
@@ -511,7 +513,7 @@ Set these in `.env.docker`, then recreate the affected services. Only `DATABASE_
 |---|---|---|
 | `ASM_ALLOW_PRIVATE_TARGETS` | `false` | Permit scanning private/reserved addresses (lab use) |
 | `ASM_RATE_MULTIPLIER` | `1` | Scales per-target request rates for all tools |
-| `ASM_AMASS_ENABLED` | `true` | Use amass as a second subdomain source next to subfinder. Set `false` to skip it |
+| `ASM_AMASS_ENABLED` | `false` | Use amass as an optional second subdomain source next to subfinder. Off by default: on real targets it added little (often only the apex) and held the stage open for about two minutes |
 | `ASM_AMASS_TIMEOUT` | `150` | Seconds before amass is stopped (20 to 900). A normal run takes about 110. A stopped amass shows as `timeout`; subfinder results are still used |
 | `ASM_SUBFINDER_TIMEOUT` | `120` | Seconds before subfinder is stopped |
 | `ASM_WORKER_MEM_LIMIT` | `4g` | Memory cap of the worker container in the production overlay |
@@ -572,7 +574,7 @@ Nuclei tuning (`NUCLEI_SEVERITY`, `NUCLEI_AUTOSCAN`, `NUCLEI_MAX_HOST_ERROR`, `N
 | **Assets** | Searchable, filterable inventory: ports, technologies, HTTP metadata, discovered paths and risk score. Click a row for the side panel. |
 | **Schedules** | Recurring scans by cron expression or preset interval. |
 | **Changes** | Severity-rated change events between comparable scans, with optional AI notes. |
-| **Vulnerabilities** | Template findings, inferred CVE matches, TLS issues and posture-check findings with severity, CVE and CVSS. Switch *Type* to **Posture checks** (then narrow to takeover, email security, cloud storage or exposed files; storage hits are labelled *Ownership unconfirmed*), and triage findings (admins) between Active, Triaged and Everything. |
+| **Vulnerabilities** | Template findings, inferred CVE matches, TLS issues and posture-check findings with severity, CVE and CVSS. Switch *Type* to **Posture checks** (then narrow to takeover, email security, DNS hygiene, cloud storage or exposed files; storage hits are labelled *Ownership unconfirmed*), and triage findings (admins) between Active, Triaged and Everything. |
 | **Exposure** | Choose a target, switch sources on, press *Check now*, review masked findings and dismiss or reopen them. |
 | **Alerts** | In-app alerts and the delivery log for webhooks and email. |
 | **Account** | Click your name in the sidebar: change your password and manage API tokens. |

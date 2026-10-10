@@ -37,7 +37,7 @@ def test_build_vulnerabilities_maps_fields():
 
 def prof(**kw):
     base = dict(name="quick", run_dirbuster=False, run_nuclei_network=False, run_takeover=True,
-                run_email_security=True, run_cloud_buckets=False, run_sensitive_files=True)
+                run_email_security=True, run_dns_hygiene=True, run_cloud_buckets=False, run_sensitive_files=True)
     base.update(kw)
     return SimpleNamespace(**base)
 

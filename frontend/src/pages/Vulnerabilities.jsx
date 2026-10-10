@@ -11,7 +11,7 @@ import { getVulnRollup, getVulnSummary, setFindingTriage, getHiddenFindings } fr
 const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
 const VM_PREFIX = "[version match] ";
 // Posture checks: configuration problems found by DNS and light HTTP checks rather than by vulnerability templates.
-const POSTURE_CHECKS = [["takeover", "Takeover"], ["email-security", "Email security"], ["cloud-storage", "Cloud storage"], ["exposed-file", "Exposed files"]];
+const POSTURE_CHECKS = [["takeover", "Takeover"], ["email-security", "Email security"], ["dns-hygiene", "DNS hygiene"], ["cloud-storage", "Cloud storage"], ["exposed-file", "Exposed files"]];
 const POSTURE_LABEL = Object.fromEntries(POSTURE_CHECKS);
 const postureCheck = (it) => ((it.tags || []).includes("posture") ? (POSTURE_CHECKS.find(([t]) => (it.tags || []).includes(t)) || [])[0] || "posture" : null);
 

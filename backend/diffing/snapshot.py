@@ -62,6 +62,7 @@ def compute_coverage(profile_name: str, module_results: Dict) -> Dict:
         "findings_tls": lvl(prof.run_sslyze and _ok(mr.get("sslyze"))),
         "findings_takeover": lvl(prof.run_takeover and _ok(mr.get("takeover"))),
         "findings_email": lvl(prof.run_email_security and _ok(mr.get("email_security"))),
+        "findings_dns": lvl(prof.run_dns_hygiene and _ok(mr.get("dns_hygiene"))),
         "findings_cloud": lvl(prof.run_cloud_buckets and _ok(mr.get("cloud_buckets"))),
         "findings_files": lvl(prof.run_sensitive_files and _ok(mr.get("sensitive_files"))),
     }
@@ -76,7 +77,7 @@ def finding_source(tags) -> str:
     if "sslyze" in t:
         return "tls"
     if "posture" in t:                       # ASM's own posture checks, never a scanner's tags
-        for tag, source in (("takeover", "takeover"), ("email-security", "email"),
+        for tag, source in (("takeover", "takeover"), ("email-security", "email"), ("dns-hygiene", "dns"),
                             ("cloud-storage", "cloud"), ("exposed-file", "files")):
             if tag in t:
                 return source

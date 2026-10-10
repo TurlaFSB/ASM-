@@ -15,7 +15,7 @@
 
 1. The API creates a `pending` scan (one active scan per target is enforced by a database constraint) and queues `run_scan`.
 2. The worker takes a per-target Redis lock, starts a *guard* thread (cancellation, runtime limit, lock renewal) and moves the scan to `running`.
-3. Stages run in order: subdomains, DNS, WHOIS/ASN, ports, HTTP probing, then the web-analysis group in parallel (technologies, directory discovery, Nuclei, TLS, screenshots, CVE matching) and the posture checks (subdomain takeover, email security, cloud storage exposure, exposed sensitive files; Quick runs only the two DNS-based ones). Posture findings are ordinary findings tagged `posture`, so they flow through triage, reports and change detection. IP and internal targets skip public discovery, takeover, email and cloud checks.
+3. Stages run in order: subdomains, DNS, WHOIS/ASN, ports, HTTP probing, then the web-analysis group in parallel (technologies, directory discovery, Nuclei, TLS, screenshots, CVE matching) and the posture checks (subdomain takeover, email security, DNS hygiene, cloud storage exposure, exposed sensitive files; Quick runs only the three DNS-based ones). Posture findings are ordinary findings tagged `posture`, so they flow through triage, reports and change detection. IP and internal targets skip public discovery, takeover, email, DNS hygiene and cloud checks.
 4. Results are saved (assets with change detection, findings, discovered paths), a snapshot is diffed against the previous comparable scan, alerts and the webhook digest are produced, and the scan is sealed.
 5. Risk scoring runs, the scan is marked `completed`, and the PDF report is pre-built in the background.
 
