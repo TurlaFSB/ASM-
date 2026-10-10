@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { getUnreadAlerts, getMe } from "../api";
-import { Sun, Moon, Monitor, Shield, Target, Activity, Database, Bell, AlertTriangle, LogOut, Clock, GitCompare, Radar, Users, Settings } from "lucide-react";
+import { Sun, Moon, Monitor, Shield, Target, Activity, Database, Bell, AlertTriangle, LogOut, Clock, GitCompare, Radar, Users, Settings, ScrollText } from "lucide-react";
 import { getThemePref, setThemePref } from "../lib/theme";
 import ChangePassword from "./ChangePassword";
 import turlaLogo from "../assets/TURLA.png";
@@ -42,7 +42,10 @@ export default function Navbar({ onLogout }) {
     { path: "/vulnerabilities", label: "Vulnerabilities", icon: <AlertTriangle size={18} /> },
     { path: "/exposure", label: "Exposure", icon: <Radar size={18} /> },
     { path: "/alerts", label: "Alerts", icon: <Bell size={18} /> },
-    ...(role === "admin" ? [{ path: "/users", label: "Users", icon: <Users size={18} /> }] : []),
+    ...(role === "admin" ? [
+      { path: "/users", label: "Users", icon: <Users size={18} /> },
+      { path: "/audit", label: "Audit log", icon: <ScrollText size={18} /> },
+    ] : []),
   ];
 
   return (

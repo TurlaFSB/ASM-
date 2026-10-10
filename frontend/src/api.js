@@ -54,6 +54,7 @@ export const changePassword = (current_password, new_password) => api.post("/aut
 export const getApiTokens = () => api.get("/auth/tokens/");
 export const createApiToken = (data) => api.post("/auth/tokens/", data);
 export const revokeApiToken = (id) => api.delete(`/auth/tokens/${id}`);
+export const getAudit = (params) => api.get("/audit/", { params });
 export const getUsers = () => api.get("/users/");
 export const createUser = (data) => api.post("/users/", data);
 export const updateUser = (id, data) => api.patch(`/users/${id}`, data);

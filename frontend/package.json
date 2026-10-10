@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@fontsource/inter": "^5.2.8",
     "axios": "^1.18.1",
     "lucide-react": "^1.49.0",
     "qrcode": "^1.5.4",

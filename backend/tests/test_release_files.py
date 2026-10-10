@@ -50,3 +50,19 @@ def test_release_workflow_triggers_only_on_version_tags():
     assert on["push"]["tags"] == ["v[0-9]+.[0-9]+.[0-9]+"]
     perms = wf["jobs"]["images"]["permissions"]
     assert perms["packages"] == "write" and perms["id-token"] == "write"
+
+
+def test_api_version_matches_the_newest_dated_changelog_section():
+    import re
+    from pathlib import Path
+    from backend.version import __version__
+    changelog = (Path(__file__).resolve().parents[2] / "CHANGELOG.md").read_text()
+    newest = re.search(r"^## \[(\d+\.\d+\.\d+)\] - \d{4}-\d{2}-\d{2}$", changelog, re.M).group(1)
+    assert __version__ == newest
+
+
+def test_health_reports_the_real_version():
+    from fastapi.testclient import TestClient
+    from backend.main import app
+    from backend.version import __version__
+    assert TestClient(app).get("/health").json()["version"] == __version__

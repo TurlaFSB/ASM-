@@ -17,11 +17,14 @@ The first published release since 0.2.0; it includes everything prepared as 0.3.
 - **DNS hygiene** posture check: dangling name servers (high), missing CAA and DNSSEC (info), with its own change-detection coverage, report advice and a filter on the Vulnerabilities page.
 - **Two-step sign-in** (optional per account): authenticator-app codes (TOTP, RFC 6238 test vectors in the tests), single-use codes, ten recovery codes, encrypted secrets, lockout on wrong codes, and an admin reset for lost devices. Migration 0017.
 - `python -m backend.scripts.reset_password` to recover an account (for example the only admin) from the server shell.
+- **Audit log page** (admins) with filters by kind of event and username, and paging on `GET /audit`.
 - Code of Conduct (Contributor Covenant 2.1).
 - `limit`/`offset` and an `X-Total-Count` header on the per-scan asset list and on findings by scan or target (default 5000, maximum 20000); a test exercises six thousand rows of each.
 
 ### Changed
 - Amass is now opt-in (`ASM_AMASS_ENABLED=true`): on real targets it added little beyond subfinder and held the subdomain stage open for about two minutes.
+- The interface font (Inter) is bundled with the app instead of loaded from Google, so the page makes no third-party requests and the Content Security Policy no longer lists external hosts.
+- The API version in `/health` and the docs comes from one place (`backend/version.py`), and the release workflow refuses a tag that does not match it.
 - The backend image starts with a JSON-form `CMD`; release jobs run on `ubuntu-24.04`.
 
 ## [0.3.0] - 2026-10-09

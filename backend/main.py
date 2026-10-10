@@ -1,3 +1,4 @@
+from backend.version import __version__
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, Request
@@ -64,7 +65,7 @@ app = FastAPI(
     openapi_url=None if _is_prod else "/openapi.json",
     title="ASM Platform",
     description="Attack Surface Management Platform",
-    version="0.1.0"
+    version=__version__
 )
 
 # Added before CORS so that CORS wraps it: a 429 must still carry CORS headers or the browser hides it.
@@ -104,7 +105,7 @@ async def health_check():
     return {
         "status": "ok",
         "env": settings.app_env,
-        "version": "0.1.0"
+        "version": __version__
     }
 
 @app.get("/ready")

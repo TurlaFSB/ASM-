@@ -213,7 +213,7 @@ Light, mostly DNS-based checks for the misconfigurations that cause real inciden
 - Target, asset, vulnerability and scan lists with search, filters and a side panel for details; target pickers that scale to many targets; free-form **tags** to group targets and filter the list
 - Prometheus metrics (`/metrics`), optional JSON logs and automatic retention of scan artifacts
 - **Backups you can trust**: scheduled database dumps that are read back and checksummed before they are kept, and a restore drill (`restore.sh verify`) that restores the newest one into a scratch database and compares tables and schema revision. `restore.sh apply` replaces the live database in a single transaction, so a failed restore changes nothing (see [Backup and restore](#backup-and-restore))
-- Audit log of target, scan and authentication actions, with source IP
+- Audit log of target, scan, account and authentication actions, with source IP, readable in the web app (admins) and through `GET /audit` with `action`, `username`, `limit` and `offset` filters
 
 ### Resilience and abuse protection
 - **Cancel any scan**, queued or running: the scanner processes it started (nmap, nuclei, feroxbuster and others) are stopped too, and deleting a target cancels its scans and pauses its schedules
@@ -577,8 +577,9 @@ Nuclei tuning (`NUCLEI_SEVERITY`, `NUCLEI_AUTOSCAN`, `NUCLEI_MAX_HOST_ERROR`, `N
 | **Vulnerabilities** | Template findings, inferred CVE matches, TLS issues and posture-check findings with severity, CVE and CVSS. Switch *Type* to **Posture checks** (then narrow to takeover, email security, DNS hygiene, cloud storage or exposed files; storage hits are labelled *Ownership unconfirmed*), and triage findings (admins) between Active, Triaged and Everything. |
 | **Exposure** | Choose a target, switch sources on, press *Check now*, review masked findings and dismiss or reopen them. |
 | **Alerts** | In-app alerts and the delivery log for webhooks and email. |
-| **Account** | Click your name in the sidebar: change your password and manage API tokens. |
-| **Users** | Admins only: add accounts, make someone admin or viewer, reset passwords, deactivate or reactivate. |
+| **Account** | Click your name in the sidebar: change your password, manage two-step sign-in and API tokens. |
+| **Users** | Admins only: add accounts, make someone admin or viewer, reset passwords or two-step sign-in, deactivate or reactivate. |
+| **Audit log** | Admins only: who signed in, changed accounts, or started and changed scans, with time and source IP. Filter by kind of event or username; older entries load in pages of 100. |
 
 The appearance switch at the bottom of the sidebar selects light, system or dark. Viewer accounts can read every page but cannot change anything.
 
