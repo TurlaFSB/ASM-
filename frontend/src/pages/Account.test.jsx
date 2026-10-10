@@ -4,14 +4,16 @@ import userEvent from "@testing-library/user-event";
 
 vi.mock("../api", () => ({
   getMe: vi.fn(), getApiTokens: vi.fn(), createApiToken: vi.fn(), revokeApiToken: vi.fn(),
+  mfaSetup: vi.fn(), mfaEnable: vi.fn(), mfaDisable: vi.fn(), mfaNewRecoveryCodes: vi.fn(),
 }));
+vi.mock("qrcode", () => ({ default: { toDataURL: vi.fn().mockResolvedValue("data:image/png;base64,AAAA") } }));
 
 import * as api from "../api";
 import ToastProvider from "../components/Toast";
 import Account from "./Account";
 
-function setup(role = "admin", tokens = []) {
-  api.getMe.mockResolvedValue({ data: { username: "pranav", role } });
+function setup(role = "admin", tokens = [], mfa_enabled = false) {
+  api.getMe.mockResolvedValue({ data: { username: "pranav", role, mfa_enabled } });
   api.getApiTokens.mockResolvedValue({ data: tokens });
   return render(<ToastProvider><Account /></ToastProvider>);
 }
@@ -69,5 +71,47 @@ describe("Account page", () => {
     expect(await screen.findByText("Revoked")).toBeInTheDocument();
     expect(screen.getByText("Expired")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Actions for token/ })).not.toBeInTheDocument();
+  });
+
+  it("turns on two-step sign-in: password, scan, code, then shows recovery codes once", async () => {
+    api.mfaSetup.mockResolvedValue({ data: { secret: "JBSWY3DPEHPK3PXP", otpauth_uri: "otpauth://totp/x" } });
+    api.mfaEnable.mockResolvedValue({ data: { ok: true, recovery_codes: ["aaaaaa-bbbbbb", "cccccc-dddddd"] } });
+    setup();
+    await userEvent.click(await screen.findByRole("button", { name: /Turn on/ }));
+    const cont = screen.getByRole("button", { name: "Continue" });
+    expect(cont).toBeDisabled();
+    await userEvent.type(screen.getByLabelText("Your password"), "correct horse battery");
+    await userEvent.click(cont);
+    await waitFor(() => expect(api.mfaSetup).toHaveBeenCalledWith("correct horse battery"));
+    expect(await screen.findByAltText(/QR code/)).toBeInTheDocument();
+    expect(screen.getByText("JBSWY3DPEHPK3PXP")).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("6-digit code"), "123456");
+    await userEvent.click(screen.getAllByRole("button", { name: "Turn on" }).pop());
+    await waitFor(() => expect(api.mfaEnable).toHaveBeenCalledWith("123456"));
+    expect(await screen.findByLabelText("Recovery codes")).toHaveTextContent("aaaaaa-bbbbbb");
+  });
+
+  it("shows an error from the server when the code is wrong and stays on the step", async () => {
+    api.mfaSetup.mockResolvedValue({ data: { secret: "S", otpauth_uri: "otpauth://totp/x" } });
+    api.mfaEnable.mockRejectedValue({ response: { data: { detail: "That code is not right." } } });
+    setup();
+    await userEvent.click(await screen.findByRole("button", { name: /Turn on/ }));
+    await userEvent.type(screen.getByLabelText("Your password"), "pw-long-enough-1");
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await userEvent.type(await screen.findByLabelText("6-digit code"), "000000");
+    await userEvent.click(screen.getAllByRole("button", { name: "Turn on" }).pop());
+    expect(await screen.findByRole("alert")).toHaveTextContent("That code is not right.");
+  });
+
+  it("turning it off needs password and code", async () => {
+    api.mfaDisable.mockResolvedValue({ data: { ok: true } });
+    setup("admin", [], true);
+    await userEvent.click(await screen.findByRole("button", { name: "Turn off" }));
+    const go = screen.getAllByRole("button", { name: "Turn off" }).pop();
+    expect(go).toBeDisabled();
+    await userEvent.type(screen.getByLabelText("Your password"), "pw-long-enough-1");
+    await userEvent.type(screen.getByLabelText("Code"), "654321");
+    await userEvent.click(go);
+    await waitFor(() => expect(api.mfaDisable).toHaveBeenCalledWith("pw-long-enough-1", "654321"));
   });
 });

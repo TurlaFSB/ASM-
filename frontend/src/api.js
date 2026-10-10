@@ -41,6 +41,12 @@ export const login = (username, password) => {
   const params = new URLSearchParams({ username, password });
   return api.post("/auth/token", params);
 };
+export const mfaVerify = (mfa_token, code) => api.post("/auth/mfa/verify", { mfa_token, code });
+export const mfaSetup = (password) => api.post("/auth/mfa/setup", { password });
+export const mfaEnable = (code) => api.post("/auth/mfa/enable", { code });
+export const mfaDisable = (password, code) => api.post("/auth/mfa/disable", { password, code });
+export const mfaNewRecoveryCodes = (password, code) => api.post("/auth/mfa/recovery-codes", { password, code });
+export const resetUserMfa = (id) => api.post(`/users/${id}/reset-mfa`);
 export const logout = () => api.post("/auth/logout");
 export const getSetupStatus = () => api.get("/auth/setup-status");
 export const setupAccount = (data) => api.post("/auth/setup", data);

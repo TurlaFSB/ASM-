@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Plus, ShieldCheck, Eye, UserX, UserCheck, KeyRound } from "lucide-react";
-import { getUsers, getMe, createUser, updateUser, resetUserPassword } from "../api";
+import { getUsers, getMe, createUser, updateUser, resetUserPassword, resetUserMfa } from "../api";
 import Sheet from "../components/Sheet";
 import Segmented from "../components/Segmented";
 import RowMenu from "../components/RowMenu";
@@ -24,6 +24,7 @@ export default function Users() {
   const [me, setMe] = useState(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  const [confirmMfa, setConfirmMfa] = useState(null);
   const [sheet, setSheet] = useState(null);                // null | "new" | user (reset password)
   const [form, setForm] = useState({ username: "", password: "", role: "viewer" });
   const [busy, setBusy] = useState(false);
@@ -63,6 +64,14 @@ export default function Users() {
         <button type="button" className="btn btn-primary" onClick={openNew}><Plus size={16} /> Add user</button>
       </div>
 
+      <ConfirmDialog open={!!confirmMfa} tone="danger" title={`Reset two-step sign-in for ${confirmMfa?.username}?`} confirmLabel="Reset"
+        onConfirm={async () => {
+          const u = confirmMfa; setConfirmMfa(null);
+          try { await resetUserMfa(u.id); toast(`Two-step sign-in turned off for ${u.username}. They are signed out everywhere.`); load(); }
+          catch (e) { toast(errText(e, "Could not reset two-step sign-in."), "bad"); }
+        }} onCancel={() => setConfirmMfa(null)}>
+        Use this when they lost their phone and recovery codes. They sign in with their password only until they turn it on again.
+      </ConfirmDialog>
       <ConfirmDialog open={!!confirmOff} tone="danger" title={`Deactivate ${confirmOff?.username}?`} confirmLabel="Deactivate"
         onConfirm={() => { const u = confirmOff; setConfirmOff(null); patch(u, { is_active: false }, `${u.username} deactivated and signed out.`); }}
         onCancel={() => setConfirmOff(null)}>
@@ -119,6 +128,7 @@ export default function Users() {
                         ? { label: "Make viewer", icon: Eye, onClick: () => patch(u, { role: "viewer" }, `${u.username} is now a viewer.`) }
                         : { label: "Make admin", icon: ShieldCheck, onClick: () => patch(u, { role: "admin" }, `${u.username} is now an admin.`) },
                       { label: "Reset password", icon: KeyRound, onClick: () => openReset(u) },
+                      ...(u.mfa_enabled ? [{ label: "Reset two-step sign-in", icon: ShieldCheck, onClick: () => setConfirmMfa(u) }] : []),
                       { type: "divider" },
                       u.is_active
                         ? { label: "Deactivate", icon: UserX, danger: true, onClick: () => setConfirmOff(u) }

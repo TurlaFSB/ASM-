@@ -384,6 +384,7 @@ ASM performs active scanning, so its own security matters.
 - **Browser sessions use an httpOnly, SameSite=Lax cookie** (never readable by page scripts, so an XSS bug cannot steal the login) plus a CSRF token that every state-changing request must echo in `X-CSRF-Token`. API clients can still send `Authorization: Bearer <token>` from `/auth/token`; those calls need no CSRF header. Set `COOKIE_SECURE=true` when serving over HTTPS. The web app and API must share a host name (different ports are fine).
 - **Login throttling.** Failed logins are counted per IP and username, per IP, and per username across all IPs; unknown usernames cost the same time as wrong passwords.
 - **Admin and viewer roles.** Viewers can read everything but every change route (targets, scans, schedules, audit log, users) needs an admin.
+- **Two-step sign-in (optional, per account).** Turn it on in Account with any authenticator app (Google Authenticator, Authy, 1Password). After the password, sign-in needs a 6-digit code that works once; ten single-use recovery codes cover a lost phone. The secret is stored encrypted with a key derived from `SECRET_KEY`, wrong codes count toward the login lockout, and turning it off or making new recovery codes needs the password and a code. API tokens are separate credentials and skip the second step. An admin can switch it off for someone who lost both phone and codes (Users page, signs them out everywhere).
 - **Real sign-out.** Logging out puts the session token on a server-side deny-list, so a copied cookie or token stops working. Changing or resetting a password, changing a role, or deactivating an account signs that person out everywhere at once (every token carries a version that is checked against the account). If Redis is unreachable the deny-list check is skipped and logged; the version check still applies.
 - **Account safety.** Passwords need at least 12 characters (and at most 72 bytes, because longer ones would be silently cut by bcrypt). You cannot demote or deactivate yourself, and the last active admin cannot be removed. First-run setup needs a code from the server log and is throttled.
 - **Untrusted scan data is scrubbed.** NUL bytes from hostile banners are stripped before they reach PostgreSQL, and API docs are switched off when `APP_ENV=production`.
@@ -457,6 +458,14 @@ Prefer the terminal? This works too (add `--viewer` for a read-only account):
 ```bash
 docker exec -it asm_backend python3 -m backend.scripts.create_admin
 ```
+
+**Locked out?** Another admin can reset your password (and two-step sign-in) from the Users page. If you were the only admin, shell access to the server is the proof of ownership:
+
+```bash
+docker exec -it asm_backend python3 -m backend.scripts.reset_password <username> --clear-mfa
+```
+
+It asks for the new password with hidden input, ends every session and API token of that account, and records the reset in the audit log. Leave out `--clear-mfa` to keep two-step sign-in on.
 
 ### 5. Sign in and add your team
 

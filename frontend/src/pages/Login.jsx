@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { login, getSetupStatus, setupAccount } from "../api";
+import { login, getSetupStatus, setupAccount, mfaVerify } from "../api";
 import { resetRole } from "../components/useRole";
 import turlaLogo from "../assets/TURLA.png";
 
@@ -18,6 +18,8 @@ export default function Login({ onLogin }) {
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [challenge, setChallenge] = useState(null);     // { token } while the second step is pending
+  const [otp, setOtp] = useState("");
 
   useEffect(() => { getSetupStatus().then(r => setSetup(!!r.data.needs_setup)).catch(() => {}); }, []);
 
@@ -27,13 +29,21 @@ export default function Login({ onLogin }) {
     if (setup && password !== confirm) { setError("The two passwords do not match."); return; }
     setLoading(true);
     try {
-      if (setup) await setupAccount({ setup_code: code, username, password });
-      else await login(username, password);
+      if (challenge) {
+        await mfaVerify(challenge.token, otp);
+      } else if (setup) {
+        await setupAccount({ setup_code: code, username, password });
+      } else {
+        const r = await login(username, password);
+        if (r.data?.mfa_required) { setChallenge({ token: r.data.mfa_token }); setOtp(""); return; }
+      }
       resetRole();
       onLogin();
     } catch (err) {
       const status = err.response?.status;
-      setError(!err.response ? "Cannot reach the server. Check that the API is running."
+      setError(challenge ? (status === 429 ? "Too many attempts. Wait a few minutes and try again."
+        : status === 401 ? "That code is wrong or the sign-in expired. Check the code, or start again."
+        : "Could not verify the code.") : !err.response ? "Cannot reach the server. Check that the API is running."
         : status === 429 ? "Too many attempts. Wait a few minutes and try again."
         : setup ? detail(err, "Could not create the account.")
         : "Invalid username or password.");
@@ -49,6 +59,15 @@ export default function Login({ onLogin }) {
           <img src={turlaLogo} alt="" />
           <h1>{setup ? "Set up ASM Platform" : "ASM Platform"}</h1>
         </div>
+        {challenge ? (
+          <>
+            <p className="login-note">Enter the 6-digit code from your authenticator app, or one of your recovery codes.</p>
+            <label className="login-field">
+              <span>Code</span>
+              <input value={otp} onChange={e => setOtp(e.target.value)} autoComplete="one-time-code" inputMode="text" spellCheck="false" autoFocus required />
+            </label>
+          </>
+        ) : (<>
         {setup && (
           <>
             <p className="login-note">Create the first admin account. The setup code is in the backend log:
@@ -73,10 +92,12 @@ export default function Login({ onLogin }) {
             <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)} autoComplete="new-password" required />
           </label>
         )}
+        </>)}
         {error && <div className="login-error" role="alert">{error}</div>}
         <button type="submit" className="btn btn-primary" disabled={loading}>
-          {loading ? (setup ? "Creating..." : "Signing in...") : (setup ? "Create admin account" : "Sign in")}
+          {loading ? (challenge ? "Checking..." : setup ? "Creating..." : "Signing in...") : (challenge ? "Verify" : setup ? "Create admin account" : "Sign in")}
         </button>
+        {challenge && <button type="button" className="btn btn-secondary" onClick={() => { setChallenge(null); setOtp(""); setPassword(""); setError(""); }}>Start again</button>}
       </form>
     </div>
   );

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Plus, KeyRound, Copy, Check, Trash2 } from "lucide-react";
-import { getMe, getApiTokens, createApiToken, revokeApiToken } from "../api";
+import { Plus, KeyRound, Copy, Check, Trash2, ShieldCheck } from "lucide-react";
+import QRCode from "qrcode";
+import { getMe, getApiTokens, createApiToken, revokeApiToken, mfaSetup, mfaEnable, mfaDisable, mfaNewRecoveryCodes } from "../api";
 import Sheet from "../components/Sheet";
 import Segmented from "../components/Segmented";
 import RowMenu from "../components/RowMenu";
@@ -37,6 +38,38 @@ export default function Account() {
   const [secret, setSecret] = useState(null);       // shown once, right after creating
   const [copied, setCopied] = useState(false);
   const [confirmRevoke, setConfirmRevoke] = useState(null);
+
+  // Two-step sign-in. mfa: null | { step: "password" | "scan" | "codes" | "off" | "regen", ... }
+  const [mfa, setMfa] = useState(null);
+  const [mfaForm, setMfaForm] = useState({ password: "", code: "" });
+  const [mfaBusy, setMfaBusy] = useState(false);
+  const [mfaErr, setMfaErr] = useState("");
+
+  const openMfa = (step) => { setMfaForm({ password: "", code: "" }); setMfaErr(""); setMfa({ step }); };
+  const mfaRun = async (fn) => {
+    setMfaBusy(true); setMfaErr("");
+    try { await fn(); } catch (e) { setMfaErr(errText(e, "That did not work.")); }
+    finally { setMfaBusy(false); }
+  };
+  const startEnrol = () => mfaRun(async () => {
+    const r = await mfaSetup(mfaForm.password);
+    const qr = await QRCode.toDataURL(r.data.otpauth_uri, { margin: 1, width: 192 });
+    setMfaForm({ password: "", code: "" });
+    setMfa({ step: "scan", secret: r.data.secret, qr });
+  });
+  const finishEnrol = () => mfaRun(async () => {
+    const r = await mfaEnable(mfaForm.code);
+    setMfa({ step: "codes", codes: r.data.recovery_codes });
+    load();
+  });
+  const turnOff = () => mfaRun(async () => {
+    await mfaDisable(mfaForm.password, mfaForm.code);
+    setMfa(null); toast("Two-step sign-in is off."); load();
+  });
+  const regenerate = () => mfaRun(async () => {
+    const r = await mfaNewRecoveryCodes(mfaForm.password, mfaForm.code);
+    setMfa({ step: "codes", codes: r.data.recovery_codes });
+  });
 
   const load = () => {
     Promise.all([getMe(), getApiTokens()])
@@ -79,6 +112,23 @@ export default function Account() {
         <button type="button" className="btn btn-secondary" onClick={() => window.dispatchEvent(new Event("asm:change-password"))}>
           <KeyRound size={16} /> Change password
         </button>
+      </section>
+
+      <section className="account-section" aria-labelledby="acc-mfa">
+        <h2 id="acc-mfa" className="section-title">Two-step sign-in</h2>
+        <p className="muted-note">
+          {me?.mfa_enabled
+            ? "On. Signing in needs a 6-digit code from your authenticator app after your password. API tokens are not affected."
+            : "Off. Add an authenticator app (Google Authenticator, Authy, 1Password and similar) so a stolen password alone is not enough to sign in."}
+        </p>
+        {me?.mfa_enabled ? (
+          <div className="section-head" style={{ justifyContent: "flex-start", gap: 8 }}>
+            <button type="button" className="btn btn-secondary" onClick={() => openMfa("regen")}>New recovery codes</button>
+            <button type="button" className="btn btn-secondary" onClick={() => openMfa("off")}>Turn off</button>
+          </div>
+        ) : (
+          <button type="button" className="btn btn-secondary" onClick={() => openMfa("password")}><ShieldCheck size={16} /> Turn on</button>
+        )}
       </section>
 
       <section className="account-section" aria-labelledby="acc-tok">
@@ -126,6 +176,58 @@ export default function Account() {
         onConfirm={() => { const t = confirmRevoke; setConfirmRevoke(null); revoke(t); }} onCancel={() => setConfirmRevoke(null)}>
         Anything using this token stops working straight away. This cannot be undone.
       </ConfirmDialog>
+
+      <Sheet open={!!mfa} onClose={() => setMfa(null)}
+        title={{ password: "Turn on two-step sign-in", scan: "Scan the code", codes: "Save your recovery codes", off: "Turn off two-step sign-in", regen: "New recovery codes" }[mfa?.step] || ""}
+        footer={mfa?.step === "codes" ? (
+          <button type="button" className="btn btn-primary" onClick={() => setMfa(null)}>I have saved them</button>
+        ) : (
+          <>
+            <button type="button" className="btn btn-secondary" onClick={() => setMfa(null)}>Cancel</button>
+            {mfa?.step === "password" && <button type="button" className="btn btn-primary" disabled={mfaBusy || !mfaForm.password} onClick={startEnrol}>Continue</button>}
+            {mfa?.step === "scan" && <button type="button" className="btn btn-primary" disabled={mfaBusy || mfaForm.code.length < 6} onClick={finishEnrol}>Turn on</button>}
+            {mfa?.step === "off" && <button type="button" className="btn btn-primary" disabled={mfaBusy || !mfaForm.password || !mfaForm.code} onClick={turnOff}>Turn off</button>}
+            {mfa?.step === "regen" && <button type="button" className="btn btn-primary" disabled={mfaBusy || !mfaForm.password || !mfaForm.code} onClick={regenerate}>Create new codes</button>}
+          </>
+        )}>
+        {mfaErr && <div className="login-error" role="alert">{mfaErr}</div>}
+        {mfa?.step === "password" && (
+          <div className="form-field">
+            <label htmlFor="mfa-pw">Your password</label>
+            <input id="mfa-pw" type="password" autoComplete="current-password" value={mfaForm.password} onChange={e => setMfaForm({ ...mfaForm, password: e.target.value })} />
+          </div>
+        )}
+        {mfa?.step === "scan" && (
+          <>
+            <p className="sheet-hint" style={{ marginTop: 0 }}>Scan this with your authenticator app, then type the 6-digit code it shows.</p>
+            <img src={mfa.qr} alt="QR code for your authenticator app" width={192} height={192} />
+            <p className="sheet-hint">Cannot scan? Enter this key by hand: <code>{mfa.secret}</code></p>
+            <div className="form-field">
+              <label htmlFor="mfa-code">6-digit code</label>
+              <input id="mfa-code" inputMode="numeric" autoComplete="one-time-code" maxLength={7} value={mfaForm.code} onChange={e => setMfaForm({ ...mfaForm, code: e.target.value })} />
+            </div>
+          </>
+        )}
+        {mfa?.step === "codes" && (
+          <>
+            <p className="sheet-hint" style={{ marginTop: 0 }}>If you lose your phone, each of these signs you in once. They are shown only now, so store them somewhere safe.</p>
+            <pre className="mono" aria-label="Recovery codes">{(mfa.codes || []).join("\n")}</pre>
+          </>
+        )}
+        {(mfa?.step === "off" || mfa?.step === "regen") && (
+          <>
+            <p className="sheet-hint" style={{ marginTop: 0 }}>Confirm with your password and a code from your app (or a recovery code).{mfa.step === "regen" ? " Your old recovery codes stop working." : ""}</p>
+            <div className="form-field">
+              <label htmlFor="mfa-pw2">Your password</label>
+              <input id="mfa-pw2" type="password" autoComplete="current-password" value={mfaForm.password} onChange={e => setMfaForm({ ...mfaForm, password: e.target.value })} />
+            </div>
+            <div className="form-field">
+              <label htmlFor="mfa-code2">Code</label>
+              <input id="mfa-code2" autoComplete="one-time-code" value={mfaForm.code} onChange={e => setMfaForm({ ...mfaForm, code: e.target.value })} />
+            </div>
+          </>
+        )}
+      </Sheet>
 
       <Sheet open={open} title={secret ? "Copy your token" : "New API token"} onClose={() => setOpen(false)}
         footer={secret ? (

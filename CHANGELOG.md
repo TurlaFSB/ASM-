@@ -9,6 +9,8 @@ All notable changes to this project are recorded here. The format follows [Keep 
 - Nuclei 3.11.1, Subfinder 2.17.0 and HTTPX 1.12.0 (Go 1.26 builds) replace older pins that carried fixable CRITICAL findings; the release image scan now checks vulnerabilities only and skips the unmaintained Amass 4.2.0 binary, which is documented in SECURITY.md.
 
 ### Added
+- **Two-step sign-in** (optional per account): authenticator-app codes (TOTP, RFC 6238 test vectors in the tests), single-use codes, ten recovery codes, encrypted secrets, lockout on wrong codes, and an admin reset for lost devices. Migration 0017.
+- `python -m backend.scripts.reset_password` to recover an account (for example the only admin) from the server shell.
 - Code of Conduct (Contributor Covenant 2.1).
 - `limit`/`offset` and an `X-Total-Count` header on the per-scan asset list and on findings by scan or target (default 5000, maximum 20000); a test exercises six thousand rows of each.
 
