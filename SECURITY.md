@@ -24,6 +24,8 @@ go once `sslyze` allows a newer `cryptography`. `pip check` will therefore print
 
 ### Container image scan (Trivy)
 
-The image scan lists fixable HIGH and CRITICAL findings as annotations on the Security workflow. As of 2026-10-04 they are all inside the bundled third-party command-line tools (Nuclei, Subfinder, HTTPX and Amass are pinned to older releases built with older Go toolchains and libraries). These tools run only against targets the operator has authorized and are not exposed as network services, so the practical risk is limited, but the pins will be raised once each newer release is verified against the scanner modules (output format and flags). Until then the CRITICAL gate reports without failing the build.
+The image scan lists fixable HIGH and CRITICAL findings as annotations on the Security workflow, and the release workflow refuses to publish an image with a fixable CRITICAL vulnerability. On 2026-10-10 Nuclei, Subfinder and HTTPX were raised to releases built with Go 1.26 (the older pins carried fixable CRITICAL findings in their bundled Go runtime and libraries); their flags and output were checked against the scanner modules.
+
+Known exception: Amass 4.2.0 is the last release of the v4 line and is no longer updated upstream, so its bundled Go runtime and `pgx` library are old. The release gate skips that one binary (`--skip-files usr/local/bin/amass`) and scans everything else. Amass runs only against targets the operator has authorized, is not exposed as a network service, and does not use its PostgreSQL support here. It will be replaced once a maintained release (or a source build) is verified against the subdomain parser.
 
 Removed on 2026-10-03: `python-jose` (and its `ecdsa` dependency) was replaced by `PyJWT`.

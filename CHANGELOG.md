@@ -4,6 +4,12 @@ All notable changes to this project are recorded here. The format follows [Keep 
 
 ## [Unreleased]
 
+### Security
+- Nuclei 3.11.1, Subfinder 2.17.0 and HTTPX 1.12.0 (Go 1.26 builds) replace older pins that carried fixable CRITICAL findings; the release image scan now checks vulnerabilities only and skips the unmaintained Amass 4.2.0 binary, which is documented in SECURITY.md.
+
+### Changed
+- The backend image starts with a JSON-form `CMD`; release jobs run on `ubuntu-24.04`.
+
 ## [0.3.0] - 2026-10-09
 
 ### Added

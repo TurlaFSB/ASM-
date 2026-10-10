@@ -20,9 +20,9 @@ RUN curl -sL https://github.com/mozilla/geckodriver/releases/download/v${GECKODR
     && chmod +x /usr/local/bin/geckodriver
 
 # ProjectDiscovery tools: Nuclei, Subfinder, HTTPX (prebuilt binaries)
-ARG NUCLEI_VERSION=3.3.7
-ARG SUBFINDER_VERSION=2.6.6
-ARG HTTPX_VERSION=1.6.8
+ARG NUCLEI_VERSION=3.11.1
+ARG SUBFINDER_VERSION=2.17.0
+ARG HTTPX_VERSION=1.12.0
 RUN curl -sL https://github.com/projectdiscovery/nuclei/releases/download/v${NUCLEI_VERSION}/nuclei_${NUCLEI_VERSION}_linux_amd64.zip -o /tmp/nuclei.zip \
     && unzip -o /tmp/nuclei.zip -d /usr/local/bin nuclei && rm /tmp/nuclei.zip \
     && curl -sL https://github.com/projectdiscovery/subfinder/releases/download/v${SUBFINDER_VERSION}/subfinder_${SUBFINDER_VERSION}_linux_amd64.zip -o /tmp/subfinder.zip \
@@ -36,7 +36,8 @@ RUN curl -sL https://github.com/projectdiscovery/nuclei/releases/download/v${NUC
 RUN nuclei -update-templates \
     && test "$(find /root/nuclei-templates -name '*.yaml' | wc -l)" -gt 1000
 
-# Amass (Go binary release)
+# Amass (Go binary release). 4.2.0 is the last v4 release and is no longer updated upstream, so its bundled
+# Go runtime and pgx are old; the release gate skips this one binary (see docs/RELEASING.md and SECURITY.md).
 ARG AMASS_VERSION=4.2.0
 RUN curl -sL https://github.com/owasp-amass/amass/releases/download/v${AMASS_VERSION}/amass_Linux_amd64.zip -o /tmp/amass.zip \
     && unzip -o /tmp/amass.zip -d /tmp \
@@ -83,8 +84,7 @@ ENV DISPLAY=:99
 
 EXPOSE 8000
 
-CMD Xvfb :99 -screen 0 1280x1024x24 & \
-    python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
+CMD ["sh", "-c", "Xvfb :99 -screen 0 1280x1024x24 & exec python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000"]
 
 # ── Production image: runs as an unprivileged user, owns nothing it does not need ──
 FROM base AS prod

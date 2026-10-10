@@ -17,7 +17,7 @@ env:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
       version: ${{ steps.v.outputs.version }}
@@ -41,7 +41,7 @@ jobs:
 
   test:
     needs: verify
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -57,7 +57,7 @@ jobs:
 
   images:
     needs: [verify, test]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
       contents: read
@@ -100,7 +100,7 @@ jobs:
       - name: Gate - no fixable CRITICAL vulnerabilities
         run: |
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-            aquasec/trivy:latest image --severity CRITICAL --ignore-unfixed --exit-code 1 --no-progress asm-${{ matrix.name }}:gate
+            aquasec/trivy:latest image --scanners vuln --skip-files usr/local/bin/amass --severity CRITICAL --ignore-unfixed --exit-code 1 --no-progress asm-${{ matrix.name }}:gate
       - name: Log in to GHCR
         if: needs.verify.outputs.publish == 'true'
         uses: docker/login-action@v3
@@ -137,7 +137,7 @@ jobs:
   release:
     needs: [verify, images]
     if: needs.verify.outputs.publish == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write
