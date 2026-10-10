@@ -4,6 +4,10 @@ All notable changes to this project are recorded here. The format follows [Keep 
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-10
+
+The first published release since 0.2.0; it includes everything prepared as 0.3.0 below.
+
 ### Security
 - Redis requires a password in the production overlay (`REDIS_PASSWORD` in `.env.docker`); the backend adds it to `REDIS_URL`, and a test confirms a real Redis rejects unauthenticated clients.
 - Nuclei 3.11.1, Subfinder 2.17.0 and HTTPX 1.12.0 (Go 1.26 builds) replace older pins that carried fixable CRITICAL findings; the release image scan now checks vulnerabilities only and skips the unmaintained Amass 4.2.0 binary, which is documented in SECURITY.md.
@@ -21,6 +25,8 @@ All notable changes to this project are recorded here. The format follows [Keep 
 - The backend image starts with a JSON-form `CMD`; release jobs run on `ubuntu-24.04`.
 
 ## [0.3.0] - 2026-10-09
+
+Not tagged on its own: these changes ship as part of 0.4.0.
 
 ### Added
 - **Posture checks** in every scan: subdomain takeover (dangling CNAMEs and unclaimed GitHub Pages, Azure, Heroku, S3, Shopify and similar), email security (SPF, DMARC, DKIM key strength, MTA-STS), public cloud storage listings (S3, GCS, Azure Blob) named after the domain, and exposed `.git`, `.env`, backup, credential and debug files confirmed by content. Quick runs the two DNS-only checks. Findings flow through change detection with their own coverage, so a check that could not run never reports something as fixed.
@@ -46,7 +52,7 @@ All notable changes to this project are recorded here. The format follows [Keep 
 - **Public-bucket findings are no longer rated high.** The bucket name is a guess, so a hit is now *medium*, or *info* when the domain label is short or a common word (a bucket called `example-files` says nothing about `example.com`).
 - **Subdomain tools are bounded and reported precisely.** amass stops after `ASM_AMASS_TIMEOUT` seconds (default 150) and can be switched off with `ASM_AMASS_ENABLED=false`. Tool status says `ok`, `empty`, `timeout`, `not installed` or `failed` instead of calling every non-result `empty`.
 - The production worker container has a memory cap (`ASM_WORKER_MEM_LIMIT`, default `4g`). A scan peaks near 2 GiB.
-- Profile time estimates match measurements: Quick about 2-3 minutes, Standard about 10-12 (directory discovery is most of it).
+- Profile time estimates match measurements: Quick about 2-3 minutes, Standard about 3-12 depending on how many hosts are found (about 2 minutes for a single small host).
 - The change-detection note for a skipped section says that absence is not treated as fixed, instead of the misleading "did not run cleanly".
 - README Features lists optional AI notes, the restore drill, resilience, login protection and which posture checks each profile runs.
 

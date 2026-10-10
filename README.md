@@ -232,7 +232,7 @@ Light, mostly DNS-based checks for the misconfigurations that cause real inciden
 | Profile | Ports | Directory discovery | Nuclei (web) | Typical duration |
 |---|---|---|---|---|
 | **Quick** | Top 100 | none | high, critical | ~2 min |
-| **Standard** (default) | Top 1000 plus common web/admin ports | curated core list | medium and above | ~10-12 min |
+| **Standard** (default) | Top 1000 plus common web/admin ports | curated core list | medium and above | ~3-12 min (grows with the number of hosts) |
 | **Deep** | All 65535 | core list plus extensions and `common.txt` | medium and above, long budget | ~20-30 min |
 
 Durations are measured on a small lab host and vary with target size. Standard adds about 30 common web, admin and database ports that are outside nmap's top 1000. Services on other ports are not seen by Quick or Standard; use Deep for full-range coverage. Service version detection gets deeper with each profile, which improves CVE matching.
@@ -480,7 +480,7 @@ Open **Targets**, choose *Add Target*, confirm you are authorized to scan it, th
 
 ### Run a published release instead of building
 
-From v0.3.0 on, tagged releases publish signed images to GitHub Container Registry. Use them with the production overlay to skip the local build:
+From v0.4.0 on, tagged releases publish signed images to GitHub Container Registry. Use them with the production overlay to skip the local build:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.images.yml pull

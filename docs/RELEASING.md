@@ -5,12 +5,12 @@ Releases are cut from `main` by pushing a version tag. The workflow (`.github/wo
 ## Cut a release
 
 1. Make sure `main` is green (CI and Security workflows).
-2. In `CHANGELOG.md`, move the entries under `## [Unreleased]` into a new dated section, for example `## [0.3.0] - 2026-10-09`. The workflow fails if the tag has no such dated section, so a release cannot go out without notes.
+2. In `CHANGELOG.md`, move the entries under `## [Unreleased]` into a new dated section, for example `## [0.4.0] - 2026-10-10`. The workflow fails if the tag has no such dated section, so a release cannot go out without notes.
 3. Commit and push that change.
 4. Tag and push:
    ```bash
-   git tag -a v0.3.0 -m "v0.3.0"
-   git push origin v0.3.0
+   git tag -a v0.4.0 -m "v0.4.0"
+   git push origin v0.4.0
    ```
 5. Watch **Actions > Release**. When it finishes, the release page lists the images with their digests.
 

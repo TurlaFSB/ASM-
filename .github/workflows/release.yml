@@ -1,6 +1,6 @@
 name: Release
 
-# Push a tag like v0.3.0 to publish. The tag must match a "## [0.3.0]" heading in CHANGELOG.md.
+# Push a tag like v0.4.0 to publish. The tag must match a "## [0.4.0]" heading in CHANGELOG.md.
 # Run it by hand (Actions > Release > Run workflow) for a dry run: it builds and scans both images but publishes nothing.
 on:
   push:
