@@ -7,7 +7,7 @@ import requests
 
 from backend.exposure.base import CollectorError
 
-ALLOWED_HOSTS = {"api.github.com", "api.xposedornot.com", "www.ransomlook.io", "cavalier.hudsonrock.com"}
+ALLOWED_HOSTS = {"crt.sh", "api.github.com", "api.xposedornot.com", "www.ransomlook.io", "cavalier.hudsonrock.com"}
 MAX_BYTES = 2 * 1024 * 1024
 TIMEOUT = (5, 20)
 USER_AGENT = "ASM-Platform-Exposure/1"
@@ -28,7 +28,8 @@ class Response:
 
 
 class HttpClient:
-    def get(self, url: str, params: Optional[dict] = None, headers: Optional[dict] = None) -> Response:
+    def get(self, url: str, params: Optional[dict] = None, headers: Optional[dict] = None,
+            max_bytes: int = MAX_BYTES) -> Response:
         from urllib.parse import urlparse
         host = (urlparse(url).hostname or "").lower()
         if host not in ALLOWED_HOSTS or not url.startswith("https://"):
@@ -39,7 +40,7 @@ class HttpClient:
                 buf = b""
                 for chunk in r.iter_content(65536):
                     buf += chunk
-                    if len(buf) > MAX_BYTES:
+                    if len(buf) > max_bytes:
                         raise CollectorError("response too large")
                 return Response(r.status_code, buf, {k.lower(): v for k, v in r.headers.items()})
         except CollectorError:

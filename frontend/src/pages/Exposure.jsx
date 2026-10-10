@@ -12,7 +12,7 @@ import { useToast } from "../components/toastContext";
 
 const STATUS = [["open", "Open"], ["dismissed", "Dismissed"], ["resolved", "Resolved"]];
 const IMPORTANCE = [["important", "Medium and above"], ["all", "Everything"]];
-const SOURCE_LABEL = { github_code: "GitHub public code", xposedornot: "Breach records", lookalike_domains: "Lookalike domain", ransomlook: "Ransomware leak site", hudsonrock: "Infostealer logs" };
+const SOURCE_LABEL = { github_code: "GitHub public code", xposedornot: "Breach records", lookalike_domains: "Lookalike domain", ransomlook: "Ransomware leak site", hudsonrock: "Infostealer logs", ct_logs: "Certificate transparency" };
 
 function errorText(e, fallback) {
   const d = e?.response?.data?.detail;

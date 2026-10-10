@@ -120,6 +120,9 @@ def run_collectors(db: Session, target: Target, sources: Optional[List[str]] = N
         if reason:
             result[name] = {"status": reason, "found": 0, "new": 0}
             continue
+        # A source that reports "everything that exists" must not announce all of it the first time it runs.
+        baseline = bool(getattr(collector, "silent_baseline", False)) and not db.query(CollectorRun).filter(
+            CollectorRun.target_id == target.id, CollectorRun.source == name, CollectorRun.status == "ok").first()
         run = CollectorRun(target_id=target.id, source=name, status="running", started_at=now)
         db.add(run)
         try:
@@ -132,7 +135,8 @@ def run_collectors(db: Session, target: Target, sources: Optional[List[str]] = N
             found = collector.collect(target.domain, http, sleep)
             fresh, count = _upsert(db, target, name, found, now, complete=getattr(found, "complete", True))
             run.status, run.found, run.new = "ok", count, len(fresh)
-            to_notify.extend(fresh)
+            if not baseline:
+                to_notify.extend(fresh)
         except RateLimited:
             db.rollback()
             run.status, run.error = "rate_limited", "rate limited"

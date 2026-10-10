@@ -31,7 +31,7 @@ It runs entirely on your own infrastructure with Docker Compose. There is no Saa
 
 - **Change-first.** Every scan is stored as a snapshot and compared with the previous comparable one. A coverage-aware trust model means a timed-out stage never produces a false "closed" or "removed" alert.
 - **Risk you can act on.** Findings are scored against CISA's Known Exploited Vulnerabilities (KEV) catalog, so *Critical* means exploitation in the wild, not just a high CVSS number. Version-matched CVEs are labelled *inferred* and kept apart from scanner-confirmed findings.
-- **Beyond your own infrastructure.** Optional exposure monitoring looks for leaked credentials in public code, breach records, lookalike domains, ransomware listings and infostealer counts.
+- **Beyond your own infrastructure.** Optional exposure monitoring looks for leaked credentials in public code, breach records, lookalike domains, ransomware listings, infostealer counts and new certificates in transparency logs.
 - **Evidence that holds up.** Every scan is sealed into a signed, hash-chained history, and each scan produces a client-ready PDF report.
 - **Built to be run safely.** Authorization is enforced at the API, private ranges are refused by default, and the platform itself follows the security practices it checks for (see [Security posture](#security-posture)).
 
@@ -75,7 +75,7 @@ It runs entirely on your own infrastructure with Docker Compose. There is no Saa
 
 <img src="docs/images/vulnerabilities.png" alt="Vulnerabilities page with severity counts, source filters and grouped CVE findings" width="100%">
 
-**Exposure.** Switch on the sources you want per target: GitHub code, breach records, lookalike domains, ransomware listings and infostealer counts.
+**Exposure.** Switch on the sources you want per target: GitHub code, certificate transparency, breach records, lookalike domains, ransomware listings and infostealer counts.
 
 <img src="docs/images/exposure.png" alt="Exposure monitoring sources for a target" width="100%">
 
@@ -341,6 +341,7 @@ Looks for things about a target that live OUTSIDE its own infrastructure. Every 
 | Source | What it finds | Needs |
 |---|---|---|
 | GitHub public code | Public files that mention the domain next to passwords, keys or tokens | a free GitHub token in `ASM_GITHUB_TOKEN` (no scopes) |
+| Certificate transparency | New host names that publicly trusted certificates are issued for ([crt.sh](https://crt.sh)). A name whose newest certificate is under two weeks old is rated *low*, older names *info*; wildcard certificates are called out. The first run only records what exists, so nothing is announced until a new name appears. Set the target's minimum alert severity to *low* to be notified | nothing |
 | XposedOrNot | Public breach records for the domain's own service | nothing |
 | Ransomware leak sites | Whether the domain or organisation name is listed as a victim on ransomware leak sites (data from [RansomLook.io](https://www.ransomlook.io), CC BY 4.0) | nothing |
 | Infostealer logs | How many employee and customer credential sets for the domain appear in Hudson Rock's free infostealer database (counts and dates only, never credentials). Off until you read [Hudson Rock's terms](https://www.hudsonrock.com/terms-of-use) and set `ASM_HUDSONROCK_ACK=true` | the acknowledgement variable |
@@ -836,6 +837,7 @@ ASM is built for authorized security assessments only. Scan assets you own or ha
 
 ## Credits and further reading
 
+- Certificate transparency search: [crt.sh](https://crt.sh) by Sectigo.
 - Ransomware leak-site listings: [RansomLook.io](https://www.ransomlook.io), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 - Infostealer exposure counts: free OSINT lookup by [Hudson Rock](https://www.hudsonrock.com).
 - Known-exploited data: [CISA KEV catalog](https://www.cisa.gov/known-exploited-vulnerabilities-catalog). CVE data: [NVD](https://nvd.nist.gov).
