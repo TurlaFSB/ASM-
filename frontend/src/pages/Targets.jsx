@@ -25,6 +25,7 @@ function extractErrorMessage(err, fallback) {
 
 // UX pre-check only; backend/validators.py is authoritative (private ranges etc.)
 const IPV4_REGEX = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
+const CIDR_REGEX = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}\/(3[0-2]|[12]?\d)$/;
 const DOMAIN_REGEX = /^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.[A-Za-z0-9-]{1,63}(?<!-))*\.[A-Za-z]{2,}$/;
 
 const formatDate = (iso) =>
@@ -64,7 +65,7 @@ const validators = {
     const val = v.trim().toLowerCase();
     if (!val) return "Domain is required";
     if (val.length > 253) return "Domain exceeds 253 characters";
-    if (!DOMAIN_REGEX.test(val) && !IPV4_REGEX.test(val)) return "Invalid format (e.g. example.com or 8.8.8.8)";
+    if (!DOMAIN_REGEX.test(val) && !IPV4_REGEX.test(val) && !CIDR_REGEX.test(val)) return "Invalid format (e.g. example.com, 8.8.8.8 or 203.0.113.0/28)";
     return null;
   },
   authorized_by: (v) => {
@@ -349,7 +350,7 @@ export default function Targets() {
           <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting || !isFormValid}>{submitting ? "Adding..." : "Add target"}</button>
         </>}>
         <div className="form-field">
-          <label htmlFor="t-domain">Domain or IP address</label>
+          <label htmlFor="t-domain">Domain, IP address or range</label>
           <input
             className={fieldClass("domain")}
             id="t-domain" placeholder="example.com"
@@ -415,7 +416,7 @@ export default function Targets() {
             checked={form.authorized}
             onChange={e => setForm({ ...form, authorized: e.target.checked })}
           />
-          I confirm I have explicit permission to scan this domain
+          I confirm I have explicit permission to scan this target
         </label>
 
       </Sheet>

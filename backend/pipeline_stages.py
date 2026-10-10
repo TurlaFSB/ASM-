@@ -8,14 +8,14 @@ import logging
 import socket
 from typing import Dict, List, Optional, Tuple
 
-from backend.validators import INTERNAL_SUFFIXES, classify_target
+from backend.validators import INTERNAL_SUFFIXES, cidr_hosts, classify_target
 
 logger = logging.getLogger(__name__)
 
 
 def is_internal_target(domain: str) -> bool:
     """A raw IP or an internal/lab host name: public subdomain discovery cannot find anything for these."""
-    return classify_target(domain) == "ip" or domain.lower().endswith(INTERNAL_SUFFIXES)
+    return classify_target(domain) in ("ip", "cidr") or domain.lower().endswith(INTERNAL_SUFFIXES)
 
 
 def enter_stage(task, db, scan, stage: str) -> None:
@@ -26,8 +26,41 @@ def enter_stage(task, db, scan, stage: str) -> None:
         db.commit()
 
 
+# Ports probed to decide whether an address in a range is alive. Hosts that drop all of these are missed;
+# the port-scan stage afterwards looks at the real port list for the hosts that answer.
+SWEEP_PORTS = (22, 80, 443, 445, 3389, 8080, 8443, 21, 25, 53, 139, 3306, 5432, 6379)
+
+
+def _answers(ip: str, timeout: float) -> bool:
+    for port in SWEEP_PORTS:
+        try:
+            with socket.create_connection((ip, port), timeout=timeout):
+                return True
+        except ConnectionRefusedError:
+            return True            # a refusal is an answer: the host is up, the port is closed
+        except OSError:
+            continue
+    return False
+
+
+def sweep_range(cidr: str, probe=None, timeout: float = 0.6, workers: int = 64) -> Tuple[List[Dict], str]:
+    """Find the live addresses of a CIDR target (TCP connect sweep; no raw sockets or root needed)."""
+    from concurrent.futures import ThreadPoolExecutor
+    probe = probe or _answers
+    ips = cidr_hosts(cidr)
+    with ThreadPoolExecutor(max_workers=max(1, min(workers, len(ips)))) as pool:
+        flags = list(pool.map(lambda ip: probe(ip, timeout), ips))
+    live = [{"subdomain": ip, "ip": ip} for ip, up in zip(ips, flags) if up]
+    if not live:
+        # "resolved..." is what lets a scan mark missing assets as gone; an empty sweep may just be a blocked network
+        return [], f"range sweep found no live address in {len(ips)} (removals not trusted)"
+    return live, f"resolved directly (range sweep: {len(live)} of {len(ips)} addresses answered)"
+
+
 def internal_live_hosts(domain: str) -> Tuple[List[Dict], str]:
-    """The single 'live host' of an IP/internal target and the DNS status text to record."""
+    """The live host(s) of an IP/internal/range target and the DNS status text to record."""
+    if classify_target(domain) == "cidr":
+        return sweep_range(domain)
     try:
         ipaddress.ip_address(domain)
         resolved = domain

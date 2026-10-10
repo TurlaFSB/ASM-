@@ -391,6 +391,7 @@ ASM performs active scanning, so its own security matters.
 - **Account safety.** Passwords need at least 12 characters (and at most 72 bytes, because longer ones would be silently cut by bcrypt). You cannot demote or deactivate yourself, and the last active admin cannot be removed. First-run setup needs a code from the server log and is throttled.
 - **Untrusted scan data is scrubbed.** NUL bytes from hostile banners are stripped before they reach PostgreSQL, and API docs are switched off when `APP_ENV=production`.
 - **Input validation.** Hostname format and length are enforced, and the per-target rate limit is bounded (1-100 req/s).
+- **Network ranges are bounded.** A CIDR target is capped (`ASM_MAX_CIDR_HOSTS`), must not touch loopback, link-local, multicast or reserved space, and follows the same private-range rule as single addresses. Authorize only ranges you own or are cleared to test.
 - **Private address protection.** Scanning private and reserved ranges is refused unless explicitly enabled (`ASM_ALLOW_PRIVATE_TARGETS`). Discovered hostnames that resolve to loopback, link-local, private or carrier-grade NAT space are skipped too.
 - **Scope stays on the target.** URLs that HTTP probing reaches by following a redirect to another organisation are dropped before any scanner runs against them.
 - **Webhook safety.** Destinations must be HTTPS and resolve to public addresses, the connection is pinned to the address that was checked (no DNS-rebinding gap), redirects are never followed, messages are signed (HMAC-SHA256), credentials are never returned by the API, and target-controlled text is defanged in Slack and Discord messages.
@@ -511,7 +512,8 @@ Set these in `.env.docker`, then recreate the affected services. Only `DATABASE_
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ASM_ALLOW_PRIVATE_TARGETS` | `false` | Permit scanning private/reserved addresses (lab use) |
+| `ASM_ALLOW_PRIVATE_TARGETS` | `false` | Permit scanning private/reserved addresses and ranges (lab use) |
+| `ASM_MAX_CIDR_HOSTS` | `256` | Largest network range one target may cover (a /24); never above 1024 |
 | `ASM_RATE_MULTIPLIER` | `1` | Scales per-target request rates for all tools |
 | `ASM_AMASS_ENABLED` | `false` | Use amass as an optional second subdomain source next to subfinder. Off by default: on real targets it added little (often only the apex) and held the stage open for about two minutes |
 | `ASM_AMASS_TIMEOUT` | `150` | Seconds before amass is stopped (20 to 900). A normal run takes about 110. A stopped amass shows as `timeout`; subfinder results are still used |
@@ -569,7 +571,7 @@ Nuclei tuning (`NUCLEI_SEVERITY`, `NUCLEI_AUTOSCAN`, `NUCLEI_MAX_HOST_ERROR`, `N
 | Page | What you do there |
 |---|---|
 | **Dashboard** | Posture at a glance: risk, open findings, recent scans and changes. |
-| **Targets** | *Add Target* with domain, authorizer and rate limit (the authorization box is mandatory and enforced server-side). Per row: pick a profile, switch directory scanning on or off, press *Scan*, and open History, Infrastructure and Notifications (severity, webhook and email recipients). The row menu edits **tags**, and the chips above the list filter by tag. The button shows *Queued* or *Scanning* while a scan is active. |
+| **Targets** | *Add Target* with a domain, IP address or network range (for example `203.0.113.0/28`), authorizer and rate limit (the authorization box is mandatory and enforced server-side). Per row: pick a profile, switch directory scanning on or off, press *Scan*, and open History, Infrastructure and Notifications (severity, webhook and email recipients). The row menu edits **tags**, and the chips above the list filter by tag. The button shows *Queued* or *Scanning* while a scan is active. |
 | **Scans** | Per-stage progress, cancel at any time, download the PDF report, and use the row menu for screenshots and CSV, JSON or SARIF exports. |
 | **Assets** | Searchable, filterable inventory: ports, technologies, HTTP metadata, discovered paths and risk score. Click a row for the side panel. |
 | **Schedules** | Recurring scans by cron expression or preset interval. |
@@ -799,13 +801,11 @@ Shipped work is listed in the [CHANGELOG](CHANGELOG.md). What is next:
 | Area | Status |
 |---|---|
 | Scheduled PDF report delivery by email | Planned |
-| Multi-factor authentication and email-based password reset | Planned |
-| Network ranges (CIDR) as targets | Planned |
+| Email-based password reset (two-step sign-in and a command-line reset already ship) | Planned |
 | Ticketing integration (Jira, GitHub Issues) for findings | Planned |
 | De-duplicate recurring TLS findings across scans | Planned |
 | Screenshot perceptual-hash diffing (flag a page that changed visually) | Planned |
 | Dark-web mention monitoring via licensed intelligence APIs | Planned |
-| Pinned image digests and published container images | Planned |
 | More unit coverage for the scan orchestrator stages | Ongoing |
 
 ---

@@ -41,7 +41,7 @@ class RateLimited(CollectorError):
 def registrable_parts(domain: str) -> Optional[Tuple[str, str]]:
     """('acme', 'co.uk') for www.acme.co.uk; None for IPs, internal names and single labels."""
     d = (domain or "").strip().lower().rstrip(".")
-    if not d or d.endswith(INTERNAL_SUFFIXES) or "." not in d:
+    if not d or "/" in d or d.endswith(INTERNAL_SUFFIXES) or "." not in d:
         return None
     try:
         ipaddress.ip_address(d)

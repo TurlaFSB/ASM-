@@ -17,6 +17,7 @@ The first published release since 0.2.0; it includes everything prepared as 0.3.
 - **DNS hygiene** posture check: dangling name servers (high), missing CAA and DNSSEC (info), with its own change-detection coverage, report advice and a filter on the Vulnerabilities page.
 - **Two-step sign-in** (optional per account): authenticator-app codes (TOTP, RFC 6238 test vectors in the tests), single-use codes, ten recovery codes, encrypted secrets, lockout on wrong codes, and an admin reset for lost devices. Migration 0017.
 - `python -m backend.scripts.reset_password` to recover an account (for example the only admin) from the server shell.
+- **Network ranges (CIDR) as targets**: a TCP sweep finds the live addresses, which then go through the normal pipeline as internal hosts. Capped at 256 addresses by default (`ASM_MAX_CIDR_HOSTS`, at most 1024); dangerous ranges are always refused and a sweep that finds nothing never marks assets as gone.
 - **Audit log page** (admins) with filters by kind of event and username, and paging on `GET /audit`.
 - Code of Conduct (Contributor Covenant 2.1).
 - `limit`/`offset` and an `X-Total-Count` header on the per-scan asset list and on findings by scan or target (default 5000, maximum 20000); a test exercises six thousand rows of each.
