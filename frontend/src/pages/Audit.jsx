@@ -14,7 +14,7 @@ const GROUPS = {
     "mfa_enabled", "mfa_disabled", "mfa_recovery_regenerated", "cli_password_reset", "api_token_created", "api_token_revoked"],
   scans: ["target_created", "target_deleted", "target_profile_updated", "target_tags_updated", "dirbuster_toggle_updated", "scan_triggered",
     "scan_cancelled", "scan_completed", "scan_failed", "schedule_created", "schedule_updated", "schedule_toggled", "schedule_deleted",
-    "finding_triaged", "notification_settings_updated"],
+    "finding_triaged", "notification_settings_updated", "ticketing_settings_updated"],
 };
 const GROUP_OPTIONS = [["all", "Everything"], ["signin", "Sign-in"], ["access", "Accounts and access"], ["scans", "Targets and scans"]];
 

@@ -122,3 +122,6 @@ export const runExposureNow = (targetId) => api.post(`/exposure/targets/${target
 export const getExposureFindings = (params) => api.get("/exposure/findings", { params });
 export const setExposureFindingStatus = (id, status) => api.patch(`/exposure/findings/${id}`, { status });
 export const getExposureRuns = (params) => api.get("/exposure/runs", { params });
+export const getTicketing = (id) => api.get(`/targets/${id}/ticketing`);
+export const updateTicketing = (id, data) => api.put(`/targets/${id}/ticketing`, data);
+export const checkTicketing = (id) => api.post(`/targets/${id}/ticketing/check`);

@@ -198,6 +198,13 @@ def record_changes_and_alerts(db, scan, module_results: Dict) -> None:
         module_results["notify"] = (f"ok ({note['alerts']} alerts, webhook {note['webhook']})"
                                     if note["qualifying"] else "nothing to announce")
         logger.info(f"[notify] {module_results['notify']}")
+        from backend.tickets import create_for_scan
+        tk = create_for_scan(db, scan)
+        if tk["status"] != "off":
+            module_results["tickets"] = (f"ok ({tk['created']} opened, {tk['failed']} failed"
+                                         + (f", {tk['omitted']} over the limit" if tk["omitted"] else "") + ")"
+                                         if tk["status"] == "ok" else tk["status"])
+            logger.info(f"[tickets] {module_results['tickets']}")
     except Exception as e:  # noqa: BLE001
         db.rollback()
         logger.exception("[diff] failed to record changes")

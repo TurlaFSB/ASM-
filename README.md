@@ -307,6 +307,22 @@ ASM_PUBLIC_URL=https://asm.example.com
 
 Recreate the services (`docker compose up -d backend celery_worker`), then add recipients under the target's Notifications panel and press **Send test email**. With Gmail, use an [app password](https://myaccount.google.com/apppasswords) (not your account password) and the same address for `ASM_SMTP_USER` and `ASM_SMTP_FROM`. Messages carry no secrets, scan-derived text is HTML-escaped, line breaks are stripped from headers, and TLS certificates are always verified.
 
+**Tickets** (GitHub Issues or Jira Cloud) are opened for new serious findings. Credentials are a deployment setting; the destination and threshold are per target. In `.env.docker`:
+
+```env
+ASM_TICKETS_PROVIDER=github          # or jira
+ASM_TICKETS_GITHUB_TOKEN=<fine-grained token limited to one repository, "Issues: Read and write">
+# Jira Cloud instead:
+# ASM_JIRA_URL=https://yourcompany.atlassian.net
+# ASM_JIRA_EMAIL=bot@yourcompany.com
+# ASM_JIRA_TOKEN=<API token>
+```
+
+Recreate `backend` and `celery_worker`, open the target's Notifications panel, and under **Tickets** enter `owner/repository` (or the Jira project key), pick the lowest severity that should open a ticket (default *High*), and press **Check connection**, which reads the destination and creates nothing. After that, every new confirmed change at or above that level opens one ticket. Rules that keep it quiet and safe:
+- A baseline scan opens nothing, and a change never gets a second ticket, even if it disappears and returns, or a task is retried. A failed attempt is kept, shown on the panel and retried on the next scans (four tries in all).
+- At most `ASM_TICKETS_MAX_PER_SCAN` tickets per scan (default 10), most severe first; the rest stay on the Changes page.
+- Tokens are never stored in the database or returned by the API. Text that came from the scanned target is cleaned and `@mentions` are defanged before it is sent. Tickets are not closed or updated automatically.
+
 Every delivery, whether webhook or email, is recorded and shown on the **Alerts** page with its result. A failed delivery never affects the scan or its in-app alerts.
 
 ---
@@ -536,6 +552,10 @@ Set these in `.env.docker`, then recreate the affected services. Only `DATABASE_
 | Variable | Default | Purpose |
 |---|---|---|
 | `ASM_SMTP_HOST`, `ASM_SMTP_FROM` | unset | Both are required to turn email on; recipients are set per target |
+| `ASM_TICKETS_PROVIDER` | unset | `github` or `jira` turns ticketing on (see [Notifications](#notifications)); the destination is set per target |
+| `ASM_TICKETS_GITHUB_TOKEN` | unset | Fine-grained token with Issues write access to the destination repository |
+| `ASM_JIRA_URL`, `ASM_JIRA_EMAIL`, `ASM_JIRA_TOKEN` | unset | Jira Cloud site (https), account email and API token; `ASM_JIRA_ISSUE_TYPE` (default `Task`) |
+| `ASM_TICKETS_MAX_PER_SCAN` | `10` | Most tickets one scan may open (1 to 50) |
 | `ASM_SMTP_PORT` | `587` (`465` for `ssl`, `25` for `none`) | SMTP port |
 | `ASM_SMTP_SECURITY` | `starttls` | `starttls`, `ssl` or `none`. Certificates are always verified when TLS is on |
 | `ASM_SMTP_USER`, `ASM_SMTP_PASSWORD` | unset | SMTP login, if your server needs one |
@@ -803,7 +823,7 @@ Shipped work is listed in the [CHANGELOG](CHANGELOG.md). What is next:
 |---|---|
 | Scheduled PDF report delivery by email | Planned |
 | Email-based password reset (two-step sign-in and a command-line reset already ship) | Planned |
-| Ticketing integration (Jira, GitHub Issues) for findings | Planned |
+| Close or update tickets when a finding is fixed | Planned |
 | De-duplicate recurring TLS findings across scans | Planned |
 | Screenshot perceptual-hash diffing (flag a page that changed visually) | Planned |
 | Dark-web mention monitoring via licensed intelligence APIs | Planned |

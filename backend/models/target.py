@@ -22,6 +22,8 @@ class Target(Base):
     alert_min_severity = Column(String, nullable=False, default="medium", server_default="medium")
     tags = Column(JSONB, nullable=True)               # free-form labels for grouping, e.g. ["prod", "team-a"]; NULL/[] = none
     email_recipients = Column(JSONB, nullable=True)   # addresses that get the change/exposure digest by email; NULL/[] = off
+    ticket_destination = Column(String, nullable=True)   # owner/repo (GitHub) or project key (Jira); NULL = no tickets
+    ticket_min_severity = Column(String, nullable=False, default="high", server_default="high")
     exposure_sources = Column(JSONB, nullable=True)  # enabled leak/breach collectors, e.g. ["github_code"]; NULL/[] = off
     
     # Rate limiting per target

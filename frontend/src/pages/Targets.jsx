@@ -8,6 +8,7 @@ import Skeleton from "../components/Skeleton";
 import "../components/ToggleSwitch.css";
 import ProfilePicker from "../components/ProfilePicker";
 import NotificationSettings from "../components/NotificationSettings";
+import TicketingSettings from "../components/TicketingSettings";
 import TagEditor from "../components/TagEditor";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { useToast } from "../components/toastContext";
@@ -503,7 +504,7 @@ export default function Targets() {
                     onSaved={(t) => { setTargets(prev => prev.map(x => x.id === t.id ? { ...x, tags: t.tags } : x)); setTagEditId(null); toast("Tags saved."); }} />
                 </div>
               )}
-              {panel === "notif" && <div className="target-panel"><NotificationSettings target={target} /></div>}
+              {panel === "notif" && <div className="target-panel"><NotificationSettings target={target} /><TicketingSettings target={target} /></div>}
               {panel === "history" && (
                 <div className="target-panel">
         {!historyData[target.id] ? (

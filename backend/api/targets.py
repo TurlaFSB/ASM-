@@ -408,6 +408,78 @@ def test_email(target_id: int, db: Session = Depends(get_db), current_user: dict
     return {"status": rec.status, "attempts": rec.attempts, "error": rec.error}
 
 
+class TicketingUpdate(BaseModel):
+    destination: Optional[str] = None      # omitted/null keeps the current one; "" turns ticketing off for this target
+    min_severity: Optional[str] = None     # omitted/null keeps the current threshold
+
+    @field_validator("min_severity")
+    @classmethod
+    def _sev(cls, v):
+        from backend.notifications import SEVERITIES
+        if v is None:
+            return None
+        v = (v or "").lower()
+        if v not in SEVERITIES:
+            raise ValueError(f"must be one of: {', '.join(SEVERITIES)}")
+        return v
+
+
+def _ticketing_view(db: Session, t: Target) -> dict:
+    from backend import tickets
+    from backend.models.ticket import Ticket
+    recent = (db.query(Ticket).filter(Ticket.target_id == t.id).order_by(Ticket.id.desc()).limit(10).all())
+    return {"target_id": t.id, **tickets.status(), "destination": t.ticket_destination,
+            "min_severity": t.ticket_min_severity or "high",
+            "recent": [{"id": r.id, "severity": r.severity, "title": r.title, "status": r.status, "key": r.external_key,
+                        "url": r.url, "error": r.error, "attempts": r.attempts, "scan_id": r.scan_id,
+                        "created_at": r.created_at.isoformat() if r.created_at else None} for r in recent]}
+
+
+@router.get("/{target_id}/ticketing")
+def get_ticketing(target_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    return _ticketing_view(db, _active_target(db, target_id))
+
+
+@router.put("/{target_id}/ticketing")
+def update_ticketing(target_id: int, payload: TicketingUpdate, request: Request, db: Session = Depends(get_db),
+                     current_user: dict = Depends(require_admin)):
+    from backend import tickets
+    t = _active_target(db, target_id)
+    if payload.destination is not None:
+        provider = tickets.provider_name()
+        if payload.destination.strip() and provider is None:
+            raise HTTPException(status_code=422, detail="Ticketing is not set up on this server. Set ASM_TICKETS_PROVIDER first.")
+        try:
+            t.ticket_destination = tickets.validate_destination(provider, payload.destination) or None
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    if payload.min_severity is not None:
+        t.ticket_min_severity = payload.min_severity
+    db.commit()
+    db.refresh(t)
+    log_action(db, current_user.username, "ticketing_settings_updated", target_id=t.id,
+               detail={"destination": t.ticket_destination, "min_severity": t.ticket_min_severity},
+               ip_address=request.client.host if request.client else None)
+    return _ticketing_view(db, t)
+
+
+@router.post("/{target_id}/ticketing/check")
+def check_ticketing(target_id: int, db: Session = Depends(get_db), current_user: dict = Depends(require_admin)):
+    """Read-only: confirms the credentials work and the destination exists. Creates nothing."""
+    import requests
+    from backend import tickets
+    t = _active_target(db, target_id)
+    provider = tickets.provider_name()
+    if provider is None or tickets.missing_settings(provider):
+        raise HTTPException(status_code=422, detail="Ticketing is not set up on this server. See the README for the ASM_TICKETS_* and ASM_JIRA_* variables.")
+    if not t.ticket_destination:
+        raise HTTPException(status_code=422, detail="Choose a destination first")
+    try:
+        return {"ok": True, "message": tickets.check_destination(requests, provider, t.ticket_destination)}
+    except tickets.TicketError as e:
+        return {"ok": False, "message": e.label}
+
+
 @router.delete("/{target_id}")
 def delete_target(target_id: int, request: Request, db: Session = Depends(get_db), current_user: dict = Depends(require_admin)):
     target = db.query(Target).filter(Target.id == target_id).first()
