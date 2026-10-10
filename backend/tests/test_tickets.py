@@ -213,13 +213,13 @@ def test_odd_success_body_is_a_failure_not_a_crash(db):
 
 def test_text_from_the_target_cannot_ping_people_or_smuggle_controls(db):
     sc = scan(db)
-    ev(db, sc, summary="Title says @everyone and @octocat ‮\x00 evil", ai_summary="Look at @admin", ai_action="Fix it")
+    ev(db, sc, summary="Title says @everyone and @octocat \u202e\x00 evil", ai_summary="Look at @admin", ai_action="Fix it")
     http = FakeHttp(GH_OK)
     run(db, sc, http)
     sent = http.calls[0][2]["json"]
     blob = sent["title"] + sent["body"]
     assert "@everyone" not in blob and "@octocat" not in blob and "@admin" not in blob
-    assert "‮" not in blob and "\x00" not in blob
+    assert "\u202e" not in blob and "\x00" not in blob
     assert "Suggested action: Fix it" in sent["body"]
 
 

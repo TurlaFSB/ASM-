@@ -92,8 +92,8 @@ def test_wildcard_is_called_out_and_link_is_safe():
 
 
 def test_text_from_the_log_is_cleaned():
-    f = run([cert(["a.acme.com"], issuer="CN=Evil‮ CA\x00")])[0]
-    assert "‮" not in f.summary and "\x00" not in f.summary
+    f = run([cert(["a.acme.com"], issuer="CN=Evil\u202e CA\x00")])[0]
+    assert "\u202e" not in f.summary and "\x00" not in f.summary
 
 
 def test_too_many_names_marks_run_incomplete(monkeypatch):

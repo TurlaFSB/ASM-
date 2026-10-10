@@ -151,10 +151,10 @@ def test_exploited_claim_needs_the_kev_flag():
 
 
 def test_real_letters_survive_but_invisible_formatting_characters_do_not():
-    ev = dict(EV, asset="münchen.example.com", subject="/a‮b​c")
+    ev = dict(EV, asset="münchen.example.com", subject="/a\u202eb\u200bc")
     body = build_messages(ev)[-1]["content"]
     assert "münchen.example.com" in body and "\\u00fc" not in body
-    assert "‮" not in body and "​" not in body
+    assert "\u202e" not in body and "\u200b" not in body
 
 
 def test_internet_claim_needs_support_in_the_summary_but_advice_is_fine():

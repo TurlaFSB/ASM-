@@ -4,6 +4,13 @@ All notable changes to this project are recorded here. The format follows [Keep 
 
 ## [Unreleased]
 
+### Security
+- Release workflow now defaults to a read-only token; its `verify` and `test` jobs previously inherited the repository default.
+- All GitHub Actions are pinned to commit hashes and the Docker, CodeQL and gitleaks actions moved to Node 24 releases (this also removes the Node 20 deprecation warnings).
+- Literal invisible Unicode characters in a few source and test files were replaced with visible escapes, and a test now keeps them out.
+- A leftover debug log line in the HTTP probe stage no longer dumps raw tool output at error level.
+- A repository audit (full-history secret scan, screenshots, dependency audits, code patterns) found no leaked credentials; see SECURITY.md.
+
 ## [0.4.0] - 2026-10-10
 
 The first published release since 0.2.0; it includes everything prepared as 0.3.0 below.

@@ -29,3 +29,12 @@ The image scan lists fixable HIGH and CRITICAL findings as annotations on the Se
 Known exception: Amass 4.2.0 is the last release of the v4 line and is no longer updated upstream, so its bundled Go runtime and `pgx` library are old. The release gate skips that one binary (`--skip-files usr/local/bin/amass`) and scans everything else. Amass runs only against targets the operator has authorized, is not exposed as a network service, and does not use its PostgreSQL support here. It will be replaced once a maintained release (or a source build) is verified against the subdomain parser.
 
 Removed on 2026-10-03: `python-jose` (and its `ecdsa` dependency) was replaced by `PyJWT`.
+
+## Repository and CI hygiene
+
+- The full git history (every branch and tag) is scanned for secrets with gitleaks on every push and weekly. The last manual audit, on the day of the 0.4.0 release, found nothing.
+- Every GitHub Action is pinned to a full commit hash, with the version in a comment. Dependabot proposes the bumps.
+- Every workflow has a top-level read-only `permissions` block; jobs that need more (publishing images, creating the release) ask for it themselves. `pull_request_target` is not used.
+- `backend/tests/test_repo_hygiene.py` fails the build if a file that looks like a secret (`.env`, `.bak`, `.pem`, `.key`) is tracked, if source files contain invisible or bidirectional Unicode characters (the "Trojan Source" trick), or if an action is not pinned.
+- The two places that deliberately skip TLS verification (the takeover and exposed-file checks, which must inspect hosts with broken certificates) never send credentials and read at most a few kilobytes.
+

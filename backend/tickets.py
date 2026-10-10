@@ -37,7 +37,7 @@ TIMEOUT = (5, 15)
 GITHUB_API = "https://api.github.com"
 _REPO = re.compile(r"^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$")
 _JIRA_KEY = re.compile(r"^[A-Z][A-Z0-9_]{1,9}$")
-_CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f​-‏‪-‮⁦-⁩]")
+_CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f\u200b-\u200f\u202a-\u202e\u2066-\u2069]")
 
 
 class TicketError(Exception):
@@ -108,7 +108,7 @@ def _safe(text, limit: int) -> str:
     """Untrusted text: no control or bidi characters, bounded, and @mentions broken so nobody is pinged."""
     s = _CTRL.sub("", str(text if text is not None else ""))
     s = " ".join(s.split())
-    return s.replace("@", "@​")[:limit]
+    return s.replace("@", "@\u200b")[:limit]
 
 
 def build_ticket(target: Target, scan: Scan, e: ChangeEvent) -> Dict:

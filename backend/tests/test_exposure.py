@@ -96,7 +96,7 @@ def test_path_severity():
 
 
 def test_input_hygiene():
-    assert clean_text("a\x00b‮c  d\n", 10) == "abc d"
+    assert clean_text("a\x00b\u202ec  d\n", 10) == "abc d"
     assert safe_https_url("https://github.com/x/y", ("github.com",)) == "https://github.com/x/y"
     assert safe_https_url("http://github.com/x", ("github.com",)) is None
     assert safe_https_url("https://evil.example/x", ("github.com",)) is None

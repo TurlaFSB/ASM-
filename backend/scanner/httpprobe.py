@@ -66,7 +66,9 @@ def run_httpx(hosts: List[str], rate_limit: int = 10) -> Dict:
         duration = time.time() - start
         logger.info(f"[httpx] hosts_in={len(hosts)} status=ok results={len(result['hosts'])} duration={duration:.2f}s")
         if len(result["hosts"]) == 0:
-            logger.error(f"[httpx] DEBUG hosts={hosts!r} returncode={httpx_result.returncode} stderr={httpx_result.stderr[:1000]!r} stdout={httpx_result.stdout[:500]!r}")
+            # Not an error: a target with no web service is normal. Keep enough to tell "nothing there" from "tool broke".
+            logger.warning(f"[httpx] no web services found hosts_in={len(hosts)} returncode={httpx_result.returncode} "
+                           f"stderr={httpx_result.stderr[:300]!r}")
 
     except subprocess.TimeoutExpired:
         duration = time.time() - start
