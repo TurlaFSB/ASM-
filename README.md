@@ -816,7 +816,7 @@ Shipped work is listed in the [CHANGELOG](CHANGELOG.md). What is next:
 
 ## Contributing and security
 
-Issues and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (design and threat model) and the [CHANGELOG](CHANGELOG.md). Before opening a pull request, run `pytest` and `npm run lint` and keep new behaviour covered by tests. Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md); do not open a public issue for them.
+Issues and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md), the [Code of Conduct](CODE_OF_CONDUCT.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (design and threat model) and the [CHANGELOG](CHANGELOG.md). Before opening a pull request, run `pytest` and `npm run lint` and keep new behaviour covered by tests. Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md); do not open a public issue for them.
 
 ## Scope and responsible use
 

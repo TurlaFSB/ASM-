@@ -6,6 +6,7 @@ Thanks for helping improve the ASM Platform. This page covers how to set up, wha
 
 - Only scan systems you own or have written permission to test. Do not add features that bypass the target authorization gate.
 - Report vulnerabilities privately (see [SECURITY.md](SECURITY.md)), never in a public issue.
+- Be respectful: this project follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 - Keep changes small and focused: one concern per pull request.
 
 ## Set up

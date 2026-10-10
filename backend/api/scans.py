@@ -172,12 +172,14 @@ def scan_screenshot_image(scan_id: int, shot_id: int, db: Session = Depends(get_
 
 
 @router.get("/{scan_id}/assets")
-def get_scan_assets(scan_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def get_scan_assets(scan_id: int, response: Response, limit: int = Query(5000, ge=1, le=20000), offset: int = Query(0, ge=0),
+                    db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     scan = db.query(Scan).filter(Scan.id == scan_id).first()
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
-    assets = db.query(Asset).filter(Asset.target_id == scan.target_id).all()
-    return assets
+    q = db.query(Asset).filter(Asset.target_id == scan.target_id)
+    response.headers["X-Total-Count"] = str(q.count())
+    return q.order_by(Asset.id).limit(limit).offset(offset).all()
 
 @router.get("/{scan_id}/progress")
 def scan_progress(scan_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):

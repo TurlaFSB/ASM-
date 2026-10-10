@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import String, and_, case, cast, exists, func, or_
@@ -145,18 +145,18 @@ def vuln_rollup(limit: int = Query(1000, ge=1, le=5000), scope: str = Query("lat
 
 
 @router.get("/target/{target_id}")
-def vulns_by_target(target_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
-    vulns = db.query(Vulnerability).filter(
-        Vulnerability.target_id == target_id
-    ).order_by(SEVERITY_RANK, Vulnerability.id).all()
-    return _serialize_all(db, vulns)
+def vulns_by_target(target_id: int, response: Response, limit: int = Query(5000, ge=1, le=20000), offset: int = Query(0, ge=0),
+                    db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    q = db.query(Vulnerability).filter(Vulnerability.target_id == target_id)
+    response.headers["X-Total-Count"] = str(q.count())
+    return _serialize_all(db, q.order_by(SEVERITY_RANK, Vulnerability.id).limit(limit).offset(offset).all())
 
 @router.get("/scan/{scan_id}")
-def vulns_by_scan(scan_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
-    vulns = db.query(Vulnerability).filter(
-        Vulnerability.scan_id == scan_id
-    ).order_by(SEVERITY_RANK, Vulnerability.id).all()
-    return _serialize_all(db, vulns)
+def vulns_by_scan(scan_id: int, response: Response, limit: int = Query(5000, ge=1, le=20000), offset: int = Query(0, ge=0),
+                  db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    q = db.query(Vulnerability).filter(Vulnerability.scan_id == scan_id)
+    response.headers["X-Total-Count"] = str(q.count())
+    return _serialize_all(db, q.order_by(SEVERITY_RANK, Vulnerability.id).limit(limit).offset(offset).all())
 
 
 @router.get("/hidden-count")
