@@ -1,6 +1,7 @@
 """The end-to-end lab: its expectations are sound, and the lab's files really trip the platform's own checks."""
 import functools
 import http.server
+import shutil
 import sys
 import threading
 from pathlib import Path
@@ -50,7 +51,13 @@ def test_each_regression_is_reported(mutate, needle):
 
 
 def test_lab_files_produce_the_required_findings_with_the_real_check(tmp_path):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(ROOT / "lab" / "site"))
+    # Build the web root the way lab/nginx.conf publishes it: the tracked files, served at their dotfile paths.
+    site = tmp_path / "site"
+    (site / ".git").mkdir(parents=True)
+    shutil.copy(ROOT / "lab" / "site" / "index.html", site / "index.html")
+    shutil.copy(ROOT / "lab" / "files" / "git-HEAD", site / ".git" / "HEAD")
+    shutil.copy(ROOT / "lab" / "files" / "env.txt", site / ".env")
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(site))
     handler.log_message = lambda *a, **k: None
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -71,3 +78,15 @@ def test_the_lab_overlay_is_wired_for_a_fixed_address_and_private_targets():
     for svc in ("backend", "celery_worker"):
         assert lab["services"][svc]["environment"]["ASM_ALLOW_PRIVATE_TARGETS"] == "true"
     assert lab["services"]["lab"]["image"].startswith("nginx:")
+
+
+def test_every_file_the_lab_serves_is_tracked_in_the_repository():
+    """The first CI run failed because the fake .git and .env existed only in a working copy."""
+    import subprocess
+    tracked = set(subprocess.run(["git", "ls-files", "lab"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.split())
+    for needed in ("lab/files/git-HEAD", "lab/files/env.txt", "lab/site/index.html", "lab/nginx.conf"):
+        assert needed in tracked, needed
+    nginx = (ROOT / "lab" / "nginx.conf").read_text()
+    assert "location = /.git/HEAD" in nginx and "location = /.env" in nginx
+    lab = _load("lab/docker-compose.lab.yml")
+    assert "./lab/files:/usr/share/nginx/files:ro" in lab["services"]["lab"]["volumes"]
