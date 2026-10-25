@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, JSON, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 from backend.db import Base
 
@@ -20,4 +21,4 @@ class User(Base):
     mfa_enabled = Column(Boolean, nullable=False, default=False, server_default=text("false"))
     mfa_secret = Column(String, nullable=True)
     mfa_last_step = Column(Integer, nullable=True)        # newest accepted 30-second step: a code works once
-    mfa_recovery = Column(JSON, nullable=True)            # list of sha256 hashes of unused recovery codes
+    mfa_recovery = Column(JSON().with_variant(JSONB(), "postgresql"), nullable=True)            # list of sha256 hashes of unused recovery codes
