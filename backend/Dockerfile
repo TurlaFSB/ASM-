@@ -1,6 +1,6 @@
 # Stages: `base` (all tools) -> `prod` (non-root, for docker-compose.prod.yml) -> `dev` (root; the default target,
 # used by docker-compose.yml with the source bind-mounted).
-FROM python:3.13-slim AS base
+FROM python:3.15-slim AS base
 
 ENV DEBIAN_FRONTEND=noninteractive
 
