@@ -97,7 +97,7 @@ jobs:
                   print(f"::{level} title=Trivy {sev} {vid}::{pkg} {inst} -> {fix} ({tgt})")
               print(f"{len(rows)} fixable HIGH/CRITICAL findings")
           PY
-      - uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4
+      - uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         continue-on-error: true   # read-only token on Dependabot PRs
         if: always() && hashFiles(format('trivy-out/{0}.sarif', matrix.name)) != ''
         with:
